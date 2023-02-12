@@ -12,7 +12,7 @@ function aio:on_http(method, url, headers, body)
 end
 
 function aio:on_init(epollfd, parentfd)
-    if true then
+    if false then
         -- TCP socket example
         local sock, err = aio:connect(epollfd, "crymp.net", 80)
         if sock then
