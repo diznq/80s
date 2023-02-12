@@ -218,7 +218,7 @@ function aio:cor(target, event_handler, close_handler, callback)
 
     target[event_handler] = function(self, ...)
         data.data = {...}
-        print(coroutine.resume(cor, data))
+        coroutine.resume(cor, data)
     end
 
     if close_handler ~= nil then
