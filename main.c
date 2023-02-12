@@ -33,6 +33,15 @@ void on_receive(lua_State* L, int epollfd, int childfd, const char* buf, int rea
     }
 }
 
+void on_close(lua_State* L, int epollfd, int childfd) {
+    lua_getglobal(L, "on_close");
+    lua_pushlightuserdata(L, (void*)epollfd);
+    lua_pushlightuserdata(L, (void*)childfd);
+    if (lua_pcall(L, 2, 0, 0) != 0) {
+        printf("on_close: error running on_data: %s\n", lua_tostring(L, -1));
+    }
+}
+
 static int l_net_write(lua_State* L) {
     size_t len;
     struct epoll_event ev;
@@ -53,6 +62,7 @@ static int l_net_write(lua_State* L) {
         if(close(childfd) < 0) {
             puts("lua_write: failed to close childfd");
         }
+        on_close(L, epollfd, childfd);
     }
     lua_pushboolean(L, writelen >= 0);
     return 1;
@@ -62,20 +72,20 @@ static int l_net_write(lua_State* L) {
 static int l_net_close(lua_State* L) {
     size_t len;
     struct epoll_event ev;
+    int status;
     int epollfd = (int) lua_touserdata(L, 1);
     int childfd = (int) lua_touserdata(L, 2);
     ev.events = EPOLLIN | EPOLLET;
     ev.data.fd = childfd;
     if (epoll_ctl(epollfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
         error("lua_close: failed to remove child from epoll");
-        
     }
-    if(close(childfd) < 0) {
+    status = close(childfd);
+    if(status < 0) {
         puts("lua_close: failed to close childfd");
-        lua_pushboolean(L, 0);
-    } else {
-        lua_pushboolean(L, 1);
     }
+    on_close(L, epollfd, childfd);
+    lua_pushboolean(L, status >= 0);
     return 1;
 }
 
@@ -186,6 +196,7 @@ int main(int argc, char **argv) {
                     if(close(childfd) < 0) {
                         error("main: failed to close child socket");
                     }
+                    on_close(L, epollfd, childfd);
                 } else {
                     on_receive(L, epollfd, childfd, buf, readlen);
                 }

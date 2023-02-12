@@ -1,9 +1,10 @@
-requests = {}
+http_server = {requests={}}
 
-function requests:on_data(epollfd, childfd, data)
-    req = requests[childfd]
+function http_server:on_data(epollfd, childfd, data)
+    req = self.requests[childfd]
     if req == nil then
         req = { complete = data:find("\r\n\r\n"), data=data }
+        self.requests[childfd] = req
     end
     if not req.complete then
         req.data = req.data .. data
@@ -28,7 +29,11 @@ function requests:on_data(epollfd, childfd, data)
     end
 end
 
-function requests:on_http(method, url, headers, body)
+function http_server:on_close(epollfd, childfd)
+    self.requests[childfd] = nil
+end
+
+function http_server:on_http(method, url, headers, body)
     kv = ""
     for k, v in pairs(headers) do
         kv = kv .. " " .. k .. ": " .. v .. "\n"
@@ -37,5 +42,9 @@ function requests:on_http(method, url, headers, body)
 end
 
 function on_data(epollfd, childfd, data, len)
-    requests:on_data(epollfd, childfd, data)
+    http_server:on_data(epollfd, childfd, data)
+end
+
+function on_close(epollfd, childfd)
+    http_server:on_close(epollfd, childfd)
 end

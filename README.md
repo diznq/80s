@@ -17,5 +17,6 @@ To compile the project, simply run `gcc main.c -llua -lm -O3 -s -march=native -o
 
 ## Exposed APIs
 - `server.lua/on_data(epollfd, childfd, data, length)` is called by C server on each incoming packet of data
+- `server.lua/on_close(epollfd, childfd)` is called by C server when socket is closed
 - `net_write(epollfd, childfd, data, close?)`: write data on socket, if close is true, close the connection after write
 - `net_close(epollfd, childfd)`: close a socket
