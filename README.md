@@ -6,7 +6,7 @@ Minimalistic epoll server with bindings to Lua
 
 Over time I already grew tired of insane software complexity of modern software development, that requires 300MB RAM just to return Hello world on HTTP server in Python and 500MB Docker image as an extra.
 
-80's is a minimalistic server that leverages Lua to handle network traffic and is only 270kB when compiled yet still achieving 37 000 req/s on single core with async IO thanks to epoll!
+80's is a minimalistic server that leverages Lua to handle network traffic and is only 270kB when compiled yet still achieving 55 000 req/s on single core with async IO thanks to epoll!
 
 ## Compiling
 
