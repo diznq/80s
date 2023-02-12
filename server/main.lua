@@ -16,7 +16,7 @@ function aio:on_init(epollfd, parentfd)
     local sock, err = aio:connect(epollfd, "crymp.net", 80)
     if sock then
         function sock:on_connect(epollfd, childfd)
-            self:write("GET / HTTP/1.1\r\nHost: crymp.net\r\nAccept: text/html\r\nConnection: close\r\n\r\n")
+            self:write("GET /api/servers HTTP/1.1\r\nHost: crymp.net\r\nAccept: application/json\r\nConnection: close\r\n\r\n")
         end
         function sock:on_data(epollfd, childfd, data, length)
             print("Received " .. tostring(length) .. " of data ", data)

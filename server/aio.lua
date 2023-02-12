@@ -59,14 +59,14 @@ end
 function aio:on_close(epollfd, childfd)
     cl = self.cl[childfd]
     self.sv[childfd] = nil
+    self.cl[childfd] = nil
 
     -- external sockets get treated special way
     if cl ~= nil then
         if cl.on_close then
-            return cl:on_close(epoll, childfd)
+            cl:on_close(epoll, childfd)
         end
     end
-    self.cl[childfd] = nil
 end
 
 function aio:on_connect(epollfd, childfd)

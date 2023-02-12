@@ -15,9 +15,9 @@
 #include "lua/lualib.h"
 #include "lua/lauxlib.h"
 
-#define BUFSIZE 8192
+#define BUFSIZE 32768
 #define MAX_EVENTS 1024
-#define EPOLL_FLAGS (EPOLLIN | EPOLLET)
+#define EPOLL_FLAGS (EPOLLIN)
 
 void error(char *msg)
 {
@@ -30,7 +30,7 @@ void on_receive(lua_State *L, int epollfd, int childfd, const char *buf, int rea
     lua_getglobal(L, "on_data");
     lua_pushlightuserdata(L, (void *)epollfd);
     lua_pushlightuserdata(L, (void *)childfd);
-    lua_pushstring(L, buf);
+    lua_pushlstring(L, buf, readlen);
     lua_pushinteger(L, readlen);
     if (lua_pcall(L, 4, 0, 0) != 0)
     {
@@ -298,7 +298,7 @@ int main(int argc, char **argv)
             } else {
                 childfd = events[n].data.fd;    
                 if((events[n].events & EPOLLIN) == EPOLLIN) {
-                    bzero(buf, BUFSIZE);
+                    buf[0] = 0;
                     readlen = read(childfd, buf, BUFSIZE);
                     // if length is <= 0, remove the socket from event loop
                     if (readlen <= 0)
