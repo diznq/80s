@@ -34,7 +34,6 @@ void on_receive(lua_State* L, int epollfd, int childfd, const char* buf, int rea
 }
 
 static int l_net_write(lua_State* L) {
-    // write(epollfd, childfd, data, close?)
     size_t len;
     struct epoll_event ev;
     int epollfd = (int) lua_touserdata(L, 1);
@@ -61,7 +60,6 @@ static int l_net_write(lua_State* L) {
 
 
 static int l_net_close(lua_State* L) {
-    // write(epollfd, childfd, data, close?)
     size_t len;
     struct epoll_event ev;
     int epollfd = (int) lua_touserdata(L, 1);
@@ -69,11 +67,11 @@ static int l_net_close(lua_State* L) {
     ev.events = EPOLLIN | EPOLLET;
     ev.data.fd = childfd;
     if (epoll_ctl(epollfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
-        error("lua_write: failed to remove child from epoll");
+        error("lua_close: failed to remove child from epoll");
         
     }
     if(close(childfd) < 0) {
-        puts("lua_write: failed to close childfd");
+        puts("lua_close: failed to close childfd");
         lua_pushboolean(L, 0);
     } else {
         lua_pushboolean(L, 1);
