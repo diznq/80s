@@ -1,3 +1,4 @@
+---@type aio
 local aio = loadfile("server/aio.lua")()
 
 aio:start()
@@ -13,6 +14,7 @@ end
 function aio:on_init(epollfd, parentfd)
     --[[
     -- TCP socket example
+    for i=1, 5 do
     local sock, err = aio:connect(epollfd, "crymp.net", 80)
     if sock then
         function sock:on_connect(epollfd, childfd)
