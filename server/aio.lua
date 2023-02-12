@@ -193,38 +193,56 @@ end
 ---
 --- aio:cor(socket, "on_data", "on_close", function(stream)
 ---   local whole = ""
----   while stream.data ~= nil do
----      local data = stream.data
----      whole = whole .. data[3]
----      coroutine.yield()
+---   for item, length in stream() do
+---      whole = whole .. item
 ---   end
 ---   print(whole)
 --- end)
 ---
+--- If called as aio:cor(target, callback), event_handler is assumed to be on_data
+--- and close_handler is assumed to be on_close
+---
 ---@param target any object to be wrapped
 ---@param event_handler any main event source that resumes coroutine
 ---@param close_handler any secondary event source that closes coroutine (sends nil data)
----@param callback any coroutine code
+---@param callback any coroutine code, takes stream() that returns arguments (3, 4, ...) skipping epollfd, childfd of event_handler
 ---@return thread
 function aio:cor(target, event_handler, close_handler, callback)
-    local data = {data=nil}
+    local data = nil
 
     if callback == nil then
         callback = close_handler
         close_handler = nil
     end
 
+    if type(event_handler) == "function" then
+        callback = event_handler
+        event_handler = "on_data"
+        close_handler = "on_close"
+    end
+
     local cor = coroutine.create(callback)
 
-    target[event_handler] = function(self, ...)
-        data.data = {...}
-        coroutine.resume(cor, data)
+    local provider = function()
+        return function()
+            coroutine.yield()
+            if data == nil then return end
+            return table.unpack(data)
+        end
+    end
+
+    target[event_handler] = function(self, epfd, chdfd, ...)
+        data = {...}
+        local ok, result = coroutine.resume(cor, provider)
+        if not ok then
+            print("error", result)
+        end
     end
 
     if close_handler ~= nil then
         target[close_handler] = function(self, ...)
-            data.data = nil
-            coroutine.resume(cor, data)
+            data = nil
+            coroutine.resume(cor, provider)
         end
     end
 

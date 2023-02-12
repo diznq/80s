@@ -17,16 +17,14 @@ function aio:on_init(epollfd, parentfd)
         local sock, err = aio:connect(epollfd, "crymp.net", 80)
         if sock then
             -- coroutinized version
-            aio:cor(sock, "on_connect", function(data)
+            aio:cor(sock, "on_connect", function()
                 sock:write("GET /api/servers HTTP/1.1\r\nHost: crymp.net\r\nAccept: application/json\r\nConnection: close\r\n\r\n")
             end)
 
-            aio:cor(sock, "on_data", "on_close", function(stream)
+            aio:cor(sock, function(stream)
                 local data = ""
-                while stream.data ~= nil do
-                    local received = stream.data[3]
-                    data = data .. received
-                    coroutine.yield(true)
+                for chunk in stream() do
+                    data = data .. chunk
                 end
                 print("Data: ", data)
             end)
