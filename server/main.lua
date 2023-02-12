@@ -12,19 +12,24 @@ function aio:on_http(method, url, headers, body)
 end
 
 function aio:on_init(epollfd, parentfd)
-    if false then
+    if true then
         -- TCP socket example
         local sock, err = aio:connect(epollfd, "crymp.net", 80)
         if sock then
-            function sock:on_connect(epollfd, childfd)
-                self:write("GET /api/servers HTTP/1.1\r\nHost: crymp.net\r\nAccept: application/json\r\nConnection: close\r\n\r\n")
-            end
-            function sock:on_data(epollfd, childfd, data, length)
-                print("Received " .. tostring(length) .. " of data ")
-            end
-            function sock:on_close(epollfd, childfd)
-                print("Closed")
-            end
+            -- coroutinized version
+            aio:cor(sock, "on_connect", function(data)
+                sock:write("GET /api/servers HTTP/1.1\r\nHost: crymp.net\r\nAccept: application/json\r\nConnection: close\r\n\r\n")
+            end)
+
+            aio:cor(sock, "on_data", "on_close", function(_)
+                local data = ""
+                while _.data ~= nil do
+                    local received = _.data[3]
+                    data = data .. received
+                    coroutine.yield(true)
+                end
+                print("Data: ", data)
+            end)
         else
             print("failed to connect: ", err)
         end

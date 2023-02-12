@@ -189,4 +189,46 @@ function aio:on_http(method, url, headers, body)
     return "OK"
 end
 
+--- Wrap handlers into coroutine, example:
+---
+--- aio:cor(socket, "on_data", "on_close", function(stream)
+---   local whole = ""
+---   while stream.data ~= nil do
+---      local data = stream.data
+---      whole = whole .. data[3]
+---      coroutine.yield()
+---   end
+---   print(whole)
+--- end)
+---
+---@param target any object to be wrapped
+---@param event_handler any main event source that resumes coroutine
+---@param close_handler any secondary event source that closes coroutine (sends nil data)
+---@param callback any coroutine code
+---@return thread
+function aio:cor(target, event_handler, close_handler, callback)
+    local data = {data=nil}
+
+    if callback == nil then
+        callback = close_handler
+        close_handler = nil
+    end
+
+    local cor = coroutine.create(callback)
+
+    target[event_handler] = function(self, ...)
+        data.data = {...}
+        print(coroutine.resume(cor, data))
+    end
+
+    if close_handler ~= nil then
+        target[close_handler] = function(self, ...)
+            data.data = nil
+            coroutine.resume(cor, data)
+        end
+    end
+
+    return cor
+end
+
 return aio
