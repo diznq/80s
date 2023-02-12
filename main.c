@@ -163,11 +163,7 @@ static int l_net_connect(lua_State *L)
         ev.events = EPOLL_FLAGS | EPOLLOUT;
         if (epoll_ctl(epollfd, EPOLL_CTL_ADD, childfd, &ev) < 0)
         {
-            error("l_net_connect: failed to remove child from epoll");
-        }
-        if(status == 0) {
-            printf("Connected!\n");
-            fflush(stdout);
+            error("l_net_connect: failed to add child to epoll");
         }
         lua_pushlightuserdata(L, (void *)childfd);
         lua_pushnil(L);
