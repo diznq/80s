@@ -1,0 +1,1 @@
+gcc main.c -llua -lm -s -march=native -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast -Ofast -o bin/server
