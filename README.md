@@ -2,7 +2,7 @@
 
 Minimalistic epoll server with bindings to Lua
 
-## Motivation
+## Motivation
 
 Over time I already grew tired of insane software complexity of modern software development, that requires 300MB RAM just to return Hello world on HTTP server in Python and 500MB Docker image as an extra.
 
