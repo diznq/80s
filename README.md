@@ -11,10 +11,10 @@ Over time I already grew tired of insane software complexity of modern software 
 ## Compiling
 
 Prerequisites:
-- installed Lua librares (lualib.a)
+- installed Lua librares (lualib.a and Lua headers possibly in /usr/local/include)
 - Linux (as of now, only epoll is supported as event loop provider, kqueue and IOCP to be in future)
 
-To compile the project, simply run `gcc main.c -llua -lm -O3 -s -march=native -o bin/server`
+To compile the project, simply run `./build.sh` or `JIT=true ./build.sh` to build with LuaJIT.
 
 ## API
 C server exposes several APIs for Lua for both input and output.

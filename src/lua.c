@@ -128,14 +128,18 @@ static int l_net_connect(lua_State *L)
     return 2;
 }
 
-LUAMOD_API int luaopen_net (lua_State *L) {
+LUALIB_API int luaopen_net(lua_State *L) {
     const luaL_Reg netlib[] = {
         {"write", l_net_write},
         {"close", l_net_close},
         {"connect", l_net_connect},
         {NULL, NULL}
     };
+    #if LUA_VERSION_NUM > 501
     luaL_newlib(L, netlib);
+    #else
+    luaL_openlib(L, "net", netlib, 0);
+    #endif
     return 1;
 }
 
@@ -149,8 +153,12 @@ lua_State* create_lua(int id, const char* entrypoint) {
     }
 
     luaL_openlibs(L);
+    #if LUA_VERSION_NUM > 501
     luaL_requiref(L, "net", luaopen_net, 1);
     lua_pop(L, 1);
+    #else
+    luaopen_net(L);
+    #endif
     lua_pushinteger(L, id);
     lua_setglobal(L, "WORKERID");
 

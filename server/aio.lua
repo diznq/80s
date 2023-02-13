@@ -2,6 +2,8 @@
 --- @alias aiostream fun() : any[] AIO input stream
 --- @alias aiocor fun(stream: aiostream): nil AIO coroutine
 
+unpack = unpack or table.unpack
+
 --- AIOsocket class
 --- Provides easy wrapper to receive events per object instead of globally
 ---
@@ -301,7 +303,7 @@ function aio:cor2(target, event_handler, close_handler, callback)
 
     local provider = function()
         if data == nil then return end
-        return table.unpack(data)
+        return unpack(data)
     end
 
     target[event_handler] = function(self, epfd, chdfd, ...)
