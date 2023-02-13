@@ -23,10 +23,11 @@ function aio:on_init(epollfd, parentfd)
 
             aio:cor(sock, function(stream)
                 local data = ""
-                for chunk in stream() do
+                for chunk, length in stream do
+                    print("Received", length, "bytes")
                     data = data .. chunk
+                    coroutine.yield()
                 end
-                print("Data: ", data)
             end)
         else
             print("failed to connect: ", err)

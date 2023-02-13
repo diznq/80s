@@ -53,8 +53,7 @@ end
 ---------- aio
 --- @class aio
 local aio = {
-    sv={},
-    cl={}
+    fds={}
 }
 
 --- Handler called when data is received
@@ -63,38 +62,52 @@ local aio = {
 --- @param data string incoming stream data
 --- @param len integer length of data
 function aio:on_data(epollfd, childfd, data, len)
-    local cl = self.cl[childfd]
-    if cl ~= nil then
-        cl:on_data(epollfd, childfd, data, len)
+    -- default socket handling
+    local fd = self.fds[childfd]
+    if fd ~= nil then
+        fd:on_data(epollfd, childfd, data, len)
         return
     end
-    -- the data received to main HTTP server gets treated here
-    local req = self.sv[childfd]
-    if req == nil then
-        req = { complete = data:find("\r\n\r\n"), data=data }
-        self.sv[childfd] = req
-    end
-    if not req.complete then
-        req.data = req.data .. data
-        req.complete = req.data:find("\r\n\r\n")
-    end
-    if req.complete then
-        local headers = {}
-        local method, url, header, body = req.data:match("(.-) (.-) HTTP.-\r(.-)\n\r\n(.*)")
 
-        header:gsub("\n(.-):[ ]*(.-)\r", function(key, value)
-            headers[key] = value
-        end)
+    -- if socket didn't exist, create it with default handler
+    fd = aiosocket:new(epollfd, childfd)
+    self.fds[childfd] = fd
+    self:cor(fd, function (stream)
+        local req = { complete = false, data = "" };
+        for data in stream do
+            req.data = req.data .. data
+            req.complete = req.data:find("\r\n\r\n")
+            if req.complete then
+                break
+            else
+                coroutine.yield()
+            end
+        end
+        if req.complete then
+            local method, url, headers, body = aio:parse_http(req.data)
+            local response = aio:on_http(method, url, headers, body)
+            net.write(
+                epollfd, 
+                childfd, 
+                string.format("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: %d\r\n\r\n%s", #response, response), 
+                true
+            )
+        end
+    end)
 
-        local response = self:on_http(method, url, headers, body)
+    -- provide data event
+    fd:on_data(epollfd, childfd, data, len)
+end
 
-        net.write(
-            epollfd, 
-            childfd, 
-            string.format("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: %d\r\n\r\n%s", #response, response), 
-            true
-        )
-    end
+function aio:parse_http(data)
+    local headers = {}
+    local method, url, header, body = data:match("(.-) (.-) HTTP.-\r(.-)\n\r\n(.*)")
+
+    header:gsub("\n(.-):[ ]*(.-)\r", function(key, value)
+        headers[key] = value
+    end)
+
+    return method, url, headers, body
 end
 
 --- Create a new TCP socket to host:port
@@ -108,21 +121,20 @@ function aio:connect(epollfd, host, port)
     if err then
         return nil, err
     end
-    self.cl[sock] = aiosocket:new(epollfd, sock)
-    return self.cl[sock], nil
+    self.fds[sock] = aiosocket:new(epollfd, sock)
+    return self.fds[sock], nil
 end
 
 --- Handler called when socket is closed
 --- @param epollfd userdata epoll handle
 --- @param childfd userdata socket handle
 function aio:on_close(epollfd, childfd)
-    local cl = self.cl[childfd]
-    self.sv[childfd] = nil
-    self.cl[childfd] = nil
+    local fd = self.fds[childfd]
+    self.fds[childfd] = nil
 
-    -- external sockets get treated special way
-    if cl ~= nil then
-        cl:on_close(epollfd, childfd)
+    -- notify with close event
+    if fd ~= nil then
+        fd:on_close(epollfd, childfd)
     end
 end
 
@@ -130,11 +142,11 @@ end
 --- @param epollfd userdata epoll handle
 --- @param childfd userdata socket handle
 function aio:on_connect(epollfd, childfd)
-    local cl = self.cl[childfd]
+    local fd = self.fds[childfd]
 
-    -- external sockets get treated special way
-    if cl ~= nil then
-        cl:on_connect(epollfd, childfd)
+    -- notify with connect event
+    if fd ~= nil then
+        fd:on_connect(epollfd, childfd)
     end
 end
 
@@ -224,11 +236,8 @@ function aio:cor(target, event_handler, close_handler, callback)
     local cor = coroutine.create(callback)
 
     local provider = function()
-        return function()
-            coroutine.yield()
-            if data == nil then return end
-            return table.unpack(data)
-        end
+        if data == nil then return end
+        return table.unpack(data)
     end
 
     target[event_handler] = function(self, epfd, chdfd, ...)
