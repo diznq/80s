@@ -24,7 +24,7 @@ function aio:on_init(epollfd, parentfd)
             aio:cor(sock, function(stream)
                 local data = ""
                 for chunk, length in stream do
-                    print("Received", length, "bytes")
+                    print("#" .. WORKERID .. ": Received", length, "bytes")
                     data = data .. chunk
                     coroutine.yield()
                 end

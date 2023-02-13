@@ -76,6 +76,7 @@ function aio:on_data(epollfd, childfd, data, len)
         local req = {
             headerComplete = nil,
             bodyComplete = false, 
+            bodyOverflow = false,
             bodyLength = 0, 
             data = ""
         };
@@ -99,21 +100,36 @@ function aio:on_data(epollfd, childfd, data, len)
             end
 
             -- if body is not complete, we yield
-            if not req.bodyComplete then
-                coroutine.yield()
-            else
-                break
-            end
-        end
+            if req.bodyComplete then
+                local pivot = req.headerComplete + req.bodyLength
+                local rest = req.data:sub(pivot + 1)
 
-        local method, url, headers, body = aio:parse_http(req.data)
-        local response = aio:on_http(method, url, headers, body)
-        net.write(
-            epollfd, 
-            childfd, 
-            string.format("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: %d\r\n\r\n%s", #response, response), 
-            true
-        )
+                req.data = req.data:sub(1, pivot)
+
+                --print("---------" .. req.data:len() / 110 .. "/" .. #rest / 110 .. "+++++++++")
+                local method, url, headers, body = aio:parse_http(req.data)
+                local close = (headers["Connection"] or "close"):lower() == "close"
+                local response = aio:on_http(method, url, headers, body)
+
+                net.write(
+                    epollfd, 
+                    childfd, 
+                    string.format("HTTP/1.1 200 OK\r\nConnection: %s\r\nContent-length: %d\r\n\r\n%s",
+                        close and "close" or "keep-alive",
+                        #response, response
+                    ), 
+                    close
+                )
+
+                req.data = rest
+                if #rest > 0 and not close then
+                    req.headerComplete = nil
+                    req.bodyComplete = nil
+                    req.bodyLength = 0
+                end
+            end
+            coroutine.yield()
+        end
     end)
 
     -- provide data event

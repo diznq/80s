@@ -16,6 +16,8 @@
 #include "lua/lualib.h"
 #include "lua/lauxlib.h"
 
+#define WORKERS 8
+#define WORKERS_MASK (WORKERS - 1)
 #define BUFSIZE 32768
 #define MAX_EVENTS 1024
 #define EPOLL_FLAGS (EPOLLIN)
@@ -23,11 +25,13 @@
 struct serve_params {
     int parentfd;
     int workerid;
+    int* epolls;
 };
 
 void error(char *msg)
 {
     perror(msg);
+    fflush(stdout);
     exit(1);
 }
 
@@ -90,7 +94,8 @@ int l_net_write(lua_State *L)
 
     if (writelen < 0)
     {
-        puts("l_net_write: error on write");
+        printf("write error to %d: %s\n", childfd, strerror(errno));
+        toclose = 1;
     }
 
     if (toclose)
@@ -167,6 +172,7 @@ int l_net_connect(lua_State *L)
     if(status == 0 || errno == EINPROGRESS) {
         ev.data.fd = childfd;
         ev.events = EPOLL_FLAGS | EPOLLOUT;
+        // TODO: dangerous kind of?
         if (epoll_ctl(epollfd, EPOLL_CTL_ADD, childfd, &ev) < 0)
         {
             error("l_net_connect: failed to add child to epoll");
@@ -192,39 +198,20 @@ LUAMOD_API int luaopen_net (lua_State *L) {
     return 1;
 }
 
-int serve(void* vparams) {
-    int epollfd, parentfd, nfds, childfd, status, n, clientlen, readlen;
-    lua_State *L;
-    struct sockaddr_in clientaddr;
-    struct epoll_event ev, events[MAX_EVENTS];
-    struct serve_params* params;
-    char buf[BUFSIZE];
-    
-    params = (struct serve_params*)vparams;
-    parentfd = params->parentfd;
-    epollfd = epoll_create1(0);
+lua_State* create_lua(int id) {
+    int status;
+    lua_State* L = luaL_newstate();
 
-    if (epollfd < 0)
-        error("serve: failed to create epoll");
-
-    ev.events = EPOLLIN;
-    ev.data.fd = parentfd;
-    if (epoll_ctl(epollfd, EPOLL_CTL_ADD, parentfd, &ev) == -1)
-    {
-        error("serve: failed to add server socket to epoll");
-    }
-
-    // create Lua
-    L = luaL_newstate(); /* create state */
     if (L == NULL)
     {
         error("serve: failed to create Lua state");
     }
 
     luaL_openlibs(L);
-    
     luaL_requiref(L, "net", luaopen_net, 1);
     lua_pop(L, 1);
+    lua_pushinteger(L, id);
+    lua_setglobal(L, "WORKERID");
 
     status = luaL_dofile(L, "server/main.lua");
 
@@ -234,10 +221,43 @@ int serve(void* vparams) {
         exit(1);
     }
 
+    return L;
+}
+
+int serve(void* vparams) {
+    int *epolls, epollfd, parentfd, nfds, childfd, status, n, clientlen, readlen, workers, id;
+    lua_State *L;
+    struct sockaddr_in clientaddr;
+    struct epoll_event ev, events[MAX_EVENTS];
+    struct serve_params* params;
+    char buf[BUFSIZE];
+    
+    params = (struct serve_params*)vparams;
+    parentfd = params->parentfd;
+    epolls = params->epolls;
+    id = params->workerid;
+
+    // create local epoll and assign it to context's array of epolls, so others can reach it
+    epollfd = epolls[id] = epoll_create1(0);
+    if (epollfd < 0)
+        error("serve: failed to create epoll");
+
+    // only one thread can poll on server socket and accept others!
+    if((parentfd & WORKERS_MASK) == id) {
+        ev.events = EPOLL_FLAGS;
+        ev.data.fd = parentfd;
+        if (epoll_ctl(epollfd, EPOLL_CTL_ADD, parentfd, &ev) == -1)
+        {
+            error("serve: failed to add server socket to epoll");
+        }
+    }
+
+    L = create_lua(id);
     on_init(L, epollfd, parentfd);
 
-    printf("serve: started worker %d\n", params->workerid);
+    printf("serve: started worker %d, epollfd: %d, parentfd: %d\n", id, epollfd, parentfd);
 
+    // start polling
     for (;;)
     {
         // wait for new events
@@ -250,7 +270,8 @@ int serve(void* vparams) {
 
         for (n = 0; n < nfds; ++n)
         {
-            if (events[n].data.fd == parentfd)
+            childfd = events[n].data.fd;
+            if (childfd == parentfd)
             {
                 // only parent socket (server) can receive accept
                 childfd = accept(parentfd, (struct sockaddr *)&clientaddr, &clientlen);
@@ -262,13 +283,15 @@ int serve(void* vparams) {
                 fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
                 ev.events = EPOLL_FLAGS;
                 ev.data.fd = childfd;
-                // add the child socket to the event loop for polling as well
-                if (epoll_ctl(epollfd, EPOLL_CTL_ADD, childfd, &ev) < 0)
+                // add the child socket to the event loop it belongs to based on modulo
+                // with number of workers, to balance the load to other threads
+                if (epoll_ctl(epolls[childfd & WORKERS_MASK], EPOLL_CTL_ADD, childfd, &ev) < 0)
                 {
                     error("serve: on add child socket to epoll");
                 }
             } else {
-                childfd = events[n].data.fd;    
+                // only this very thread is able to poll given childfd as it was assigned only to
+                // this thread and other event loops don't have it
                 if((events[n].events & EPOLLIN) == EPOLLIN) {
                     buf[0] = 0;
                     readlen = read(childfd, buf, BUFSIZE);
@@ -312,8 +335,14 @@ int serve(void* vparams) {
 
 int main(int argc, char **argv)
 {
-    int parentfd, portno, optval, threads, i;
+    int epollfd, parentfd, portno, optval, i;
     struct sockaddr_in serveraddr;
+    struct epoll_event ev;
+    struct serve_params params[WORKERS];
+    thrd_t handles[WORKERS];
+    int epolls[WORKERS];
+
+    bzero(&ev, sizeof(ev));
 
     if (argc < 2)
     {
@@ -322,12 +351,6 @@ int main(int argc, char **argv)
     }
 
     portno = atoi(argv[1]);
-
-    if(argc == 3) {
-        threads = atoi(argv[2]);
-    } else {
-        threads = 1;
-    }
 
     parentfd = socket(AF_INET, SOCK_STREAM, 0);
     if (parentfd < 0)
@@ -346,22 +369,17 @@ int main(int argc, char **argv)
     if (listen(parentfd, 1000) < 0)
         error("main: failed to listen on server socket");
 
-    thrd_t* handles = (thrd_t*)malloc(sizeof(thrd_t) * threads);
-    struct serve_params* params = (struct serve_params*)malloc(sizeof(struct serve_params) * threads);
-
-    for (i = 1; i < threads; i++) {
+    for (i = 0; i < WORKERS; i++) {
         params[i].parentfd = parentfd;
         params[i].workerid = i;
-        thrd_create(&handles[i], serve, (void*)&params[i]);
+        params[i].epolls = epolls;
+
+        if(i > 0)
+            thrd_create(&handles[i], serve, (void*)&params[i]);
     }
 
-    params[0].parentfd = parentfd;
-    params[0].workerid = 0;
     serve((void*)&params[0]);
 
-    for (i = 1; i < threads; i++)
+    for (i = 1; i < WORKERS; i++)
         thrd_join(handles[i], NULL);
-
-    free(params);
-    free(handles);
 }
