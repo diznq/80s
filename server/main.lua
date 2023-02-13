@@ -7,10 +7,10 @@ function aio:on_http(method, url, headers, body)
     return "Hi"
 end
 
-function aio:on_init(epollfd, parentfd)
+function aio:on_init(elfd, parentfd)
     if false then
         -- TCP socket example
-        local sock, err = aio:connect(epollfd, "crymp.net", 80)
+        local sock, err = aio:connect(elfd, "crymp.net", 80)
         if sock then
             -- coroutinized version
             aio:cor1(sock, "on_connect", function()

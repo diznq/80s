@@ -16,12 +16,12 @@ Prerequisites:
 To compile the project, simply run `gcc main.c -llua -lm -O3 -s -march=native -o bin/server`
 
 ## Input APIs
-- `_G.on_data(epollfd, childfd, data, length)`: called on each incoming packet of data
-- `_G.on_close(epollfd, childfd)`: called when socket is closed
-- `_G.on_connect(epollfd, childfd)`: called when socket successfuly connects
-- `_G.on_init(epollfd, parentfd)`: called when epoll is initialized
+- `_G.on_data(elfd, childfd, data, length)`: called on each incoming packet of data
+- `_G.on_close(elfd, childfd)`: called when socket is closed
+- `_G.on_connect(elfd, childfd)`: called when socket successfuly connects
+- `_G.on_init(elfd, parentfd)`: called when epoll is initialized
 
 ## Output APIs
-- `net.connect(epollfd, hostName, port)`: create new TCP socket, returns `socket, error`
-- `net.write(epollfd, childfd, data, close?)`: write data on socket, if close is true, close the connection after write
-- `net.close(epollfd, childfd)`: close a socket
+- `net.connect(elfd, hostName, port)`: create new TCP socket, returns `socket, error`
+- `net.write(elfd, childfd, data, close?)`: write data on socket, if close is true, close the connection after write
+- `net.close(elfd, childfd)`: close a socket

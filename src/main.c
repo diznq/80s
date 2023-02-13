@@ -36,10 +36,10 @@ void error(const char *msg)
     exit(1);
 }
 
-void on_receive(lua_State *L, int epollfd, int childfd, const char *buf, int readlen)
+void on_receive(lua_State *L, int elfd, int childfd, const char *buf, int readlen)
 {
     lua_getglobal(L, "on_data");
-    lua_pushlightuserdata(L, (void *)epollfd);
+    lua_pushlightuserdata(L, (void *)elfd);
     lua_pushlightuserdata(L, (void *)childfd);
     lua_pushlstring(L, buf, readlen);
     lua_pushinteger(L, readlen);
@@ -49,10 +49,10 @@ void on_receive(lua_State *L, int epollfd, int childfd, const char *buf, int rea
     }
 }
 
-void on_close(lua_State *L, int epollfd, int childfd)
+void on_close(lua_State *L, int elfd, int childfd)
 {
     lua_getglobal(L, "on_close");
-    lua_pushlightuserdata(L, (void *)epollfd);
+    lua_pushlightuserdata(L, (void *)elfd);
     lua_pushlightuserdata(L, (void *)childfd);
     if (lua_pcall(L, 2, 0, 0) != 0)
     {
@@ -60,10 +60,10 @@ void on_close(lua_State *L, int epollfd, int childfd)
     }
 }
 
-void on_connect(lua_State *L, int epollfd, int childfd)
+void on_connect(lua_State *L, int elfd, int childfd)
 {
     lua_getglobal(L, "on_connect");
-    lua_pushlightuserdata(L, (void *)epollfd);
+    lua_pushlightuserdata(L, (void *)elfd);
     lua_pushlightuserdata(L, (void *)childfd);
     if (lua_pcall(L, 2, 0, 0) != 0)
     {
@@ -71,10 +71,10 @@ void on_connect(lua_State *L, int epollfd, int childfd)
     }
 }
 
-void on_init(lua_State *L, int epollfd, int parentfd)
+void on_init(lua_State *L, int elfd, int parentfd)
 {
     lua_getglobal(L, "on_init");
-    lua_pushlightuserdata(L, (void *)epollfd);
+    lua_pushlightuserdata(L, (void *)elfd);
     lua_pushlightuserdata(L, (void *)parentfd);
     if (lua_pcall(L, 2, 0, 0) != 0)
     {
@@ -83,7 +83,7 @@ void on_init(lua_State *L, int epollfd, int parentfd)
 }
 
 static int serve(void* vparams) {
-    int *epolls, epollfd, parentfd, nfds, childfd, status, n, clientlen, readlen, workers, id;
+    int *epolls, elfd, parentfd, nfds, childfd, status, n, clientlen, readlen, workers, id;
     lua_State *L;
     struct sockaddr_in clientaddr;
     struct epoll_event ev, events[MAX_EVENTS];
@@ -96,15 +96,15 @@ static int serve(void* vparams) {
     id = params->workerid;
 
     // create local epoll and assign it to context's array of epolls, so others can reach it
-    epollfd = epolls[id] = epoll_create1(0);
-    if (epollfd < 0)
+    elfd = epolls[id] = epoll_create1(0);
+    if (elfd < 0)
         error("serve: failed to create epoll");
 
     // only one thread can poll on server socket and accept others!
     if((parentfd & WORKERS_MASK) == id) {
         ev.events = EPOLLIN;
         ev.data.fd = parentfd;
-        if (epoll_ctl(epollfd, EPOLL_CTL_ADD, parentfd, &ev) == -1)
+        if (epoll_ctl(elfd, EPOLL_CTL_ADD, parentfd, &ev) == -1)
         {
             error("serve: failed to add server socket to epoll");
         }
@@ -116,12 +116,12 @@ static int serve(void* vparams) {
         error("failed to initialize Lua");
     }
     
-    on_init(L, epollfd, parentfd);
+    on_init(L, elfd, parentfd);
 
     for (;;)
     {
         // wait for new events
-        nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
+        nfds = epoll_wait(elfd, events, MAX_EVENTS, -1);
 
         if (nfds < 0)
         {
@@ -160,7 +160,7 @@ static int serve(void* vparams) {
                     {
                         ev.events = EPOLLIN;
                         ev.data.fd = childfd;
-                        if (epoll_ctl(epollfd, EPOLL_CTL_DEL, childfd, &ev) < 0)
+                        if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0)
                         {
                             dbg("serve: failed to remove child socket on readlen < 0");
                             continue;
@@ -170,22 +170,22 @@ static int serve(void* vparams) {
                             dbg("serve: failed to close child socket");
                             continue;
                         }
-                        on_close(L, epollfd, childfd);
+                        on_close(L, elfd, childfd);
                     }
                     else
                     {
-                        on_receive(L, epollfd, childfd, buf, readlen);
+                        on_receive(L, elfd, childfd, buf, readlen);
                     }
                 } else if((events[n].events & EPOLLOUT) == EPOLLOUT) {
                     // we should receive this only after connect, after that we remove it from EPOLLOUT queue
                     ev.events = EPOLLIN;
                     ev.data.fd = childfd;
-                    if (epoll_ctl(epollfd, EPOLL_CTL_MOD, childfd, &ev) < 0)
+                    if (epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev) < 0)
                     {
                         dbg("serve: failed to move child socket from out to in");
                         continue;
                     }
-                    on_connect(L, epollfd, childfd);
+                    on_connect(L, elfd, childfd);
                 }
             }
         }
@@ -198,7 +198,7 @@ static int serve(void* vparams) {
 
 int main(int argc, char **argv)
 {
-    int epollfd, parentfd, portno, optval, i;
+    int elfd, parentfd, portno, optval, i;
     struct sockaddr_in serveraddr;
     struct epoll_event ev;
     struct serve_params params[WORKERS];

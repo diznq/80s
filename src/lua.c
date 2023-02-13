@@ -23,7 +23,7 @@ static int l_net_write(lua_State *L)
     size_t len;
     struct epoll_event ev;
 
-    int epollfd = (int)lua_touserdata(L, 1);
+    int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
     const char *data = lua_tolstring(L, 3, &len);
     int toclose = lua_toboolean(L, 4);
@@ -39,7 +39,7 @@ static int l_net_write(lua_State *L)
     {
         ev.events = EPOLLIN;
         ev.data.fd = childfd;
-        if (epoll_ctl(epollfd, EPOLL_CTL_DEL, childfd, &ev) < 0)
+        if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0)
         {
             dbg("l_net_write: failed to remove child from epoll");
         }
@@ -47,7 +47,7 @@ static int l_net_write(lua_State *L)
         {
             dbg("l_net_write: failed to close childfd");
         }
-        on_close(L, epollfd, childfd);
+        on_close(L, elfd, childfd);
     }
     lua_pushboolean(L, writelen >= 0);
     return 1;
@@ -59,11 +59,11 @@ static int l_net_close(lua_State *L)
     struct epoll_event ev;
     int status;
 
-    int epollfd = (int)lua_touserdata(L, 1);
+    int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
     ev.events = EPOLLIN;
     ev.data.fd = childfd;
-    if (epoll_ctl(epollfd, EPOLL_CTL_DEL, childfd, &ev) < 0)
+    if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0)
     {
         dbg("l_net_close: failed to remove child from epoll");
         lua_pushboolean(L, 0);
@@ -74,7 +74,7 @@ static int l_net_close(lua_State *L)
     {
         dbg("l_net_close: failed to close childfd");
     }
-    on_close(L, epollfd, childfd);
+    on_close(L, elfd, childfd);
     lua_pushboolean(L, status >= 0);
     return 1;
 }
@@ -87,7 +87,7 @@ static int l_net_connect(lua_State *L)
     int status;
     struct hostent *hp;
 
-    int epollfd = (int)lua_touserdata(L, 1);
+    int elfd = (int)lua_touserdata(L, 1);
     const char *addr = (const char*)lua_tolstring(L, 2, &len);
     int portno = (int)lua_tointeger(L, 3);
     
@@ -111,7 +111,7 @@ static int l_net_connect(lua_State *L)
     if(status == 0 || errno == EINPROGRESS) {
         ev.data.fd = childfd;
         ev.events = EPOLLIN | EPOLLOUT;
-        if (epoll_ctl(epollfd, EPOLL_CTL_ADD, childfd, &ev) < 0)
+        if (epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, &ev) < 0)
         {
             dbg("l_net_connect: failed to add child to epoll");
             lua_pushnil(L);

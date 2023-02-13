@@ -10,7 +10,7 @@ local aiosocket = {
     --- @type userdata
     childfd = nil,
     --- @type userdata
-    epollfd = nil
+    elfd = nil
 }
 
 --- Write data to network
@@ -19,46 +19,46 @@ local aiosocket = {
 --- @param close boolean|nil asdf
 --- @return boolean
 function aiosocket:write(data, close)
-    return net.write(self.epollfd, self.childfd, data, close or false)
+    return net.write(self.elfd, self.childfd, data, close or false)
 end
 
 function aiosocket:close()
-    return net.close(self.epollfd, self.childfd)
+    return net.close(self.elfd, self.childfd)
 end
 
 --- Close handler of socket, overridable
 ---
---- @param epollfd userdata epoll handle
+--- @param elfd userdata epoll handle
 --- @param childfd userdata socket handle
-function aiosocket:on_close(epollfd, childfd)
+function aiosocket:on_close(elfd, childfd)
 
 end
 
 --- Data handler of socket, overridable
 ---
---- @param epollfd userdata epoll handle
+--- @param elfd userdata epoll handle
 --- @param childfd userdata socket handle
 --- @param data string stream data
 --- @param length integer length of data
-function aiosocket:on_data(epollfd, childfd, data, length)
+function aiosocket:on_data(elfd, childfd, data, length)
 
 end
 
 --- Connect handler of socket, overridable
 ---
---- @param epollfd userdata epoll handle
+--- @param elfd userdata epoll handle
 --- @param childfd userdata socket handle
-function aiosocket:on_connect(epollfd, childfd)
+function aiosocket:on_connect(elfd, childfd)
 
 end
 
 --- Create new socket instance
 ---
---- @param epollfd userdata
+--- @param elfd userdata
 --- @param childfd userdata
 --- @return aiosocket
-function aiosocket:new(epollfd, childfd)
-    local socket = { epollfd = epollfd, childfd = childfd }
+function aiosocket:new(elfd, childfd)
+    local socket = { elfd = elfd, childfd = childfd }
     setmetatable(socket, self)
     self.__index = self
     return socket
@@ -78,28 +78,28 @@ end
 
 --- Generic handler called when data is received
 ---
---- @param epollfd userdata epoll handle
+--- @param elfd userdata epoll handle
 --- @param childfd userdata socket handle
 --- @param data string incoming stream data
 --- @param len integer length of data
-function aio:on_data(epollfd, childfd, data, len)
+function aio:on_data(elfd, childfd, data, len)
     local fd = self.fds[childfd]
     if fd ~= nil then
-        fd:on_data(epollfd, childfd, data, len)
+        fd:on_data(elfd, childfd, data, len)
         return
     end
 
-    self:handle_as_http(epollfd, childfd, data, len)
+    self:handle_as_http(elfd, childfd, data, len)
 end
 
 --- Create new HTTP handler for network stream
 ---
---- @param epollfd userdata epoll handle
+--- @param elfd userdata epoll handle
 --- @param childfd userdata socket handle
 --- @param data string incoming stream data
 --- @param len integer length of data
-function aio:handle_as_http(epollfd, childfd, data, len)
-    local fd = aiosocket:new(epollfd, childfd)
+function aio:handle_as_http(elfd, childfd, data, len)
+    local fd = aiosocket:new(elfd, childfd)
     self.fds[childfd] = fd
 
     self:cor(fd, function (stream)
@@ -142,7 +142,7 @@ function aio:handle_as_http(epollfd, childfd, data, len)
                 local response = aio:on_http(method, url, headers, body)
 
                 net.write(
-                    epollfd, 
+                    elfd, 
                     childfd, 
                     string.format("HTTP/1.1 200 OK\r\nConnection: %s\r\nContent-length: %d\r\n\r\n%s",
                         close and "close" or "keep-alive",
@@ -163,7 +163,7 @@ function aio:handle_as_http(epollfd, childfd, data, len)
     end)
 
     -- provide data event
-    fd:on_data(epollfd, childfd, data, len)
+    fd:on_data(elfd, childfd, data, len)
 end
 
 ---Parse HTTP request
@@ -185,85 +185,85 @@ function aio:parse_http(data)
 end
 
 --- Create a new TCP socket to host:port
---- @param epollfd userdata epoll handle
+--- @param elfd userdata epoll handle
 --- @param host string host name or IP address
 --- @param port integer port
 --- @return aiosocket|nil socket
 --- @return string|nil error
-function aio:connect(epollfd, host, port)
-    local sock, err = net.connect(epollfd, host, port)
+function aio:connect(elfd, host, port)
+    local sock, err = net.connect(elfd, host, port)
     if err then
         return nil, err
     end
-    self.fds[sock] = aiosocket:new(epollfd, sock)
+    self.fds[sock] = aiosocket:new(elfd, sock)
     return self.fds[sock], nil
 end
 
 --- Handler called when socket is closed
---- @param epollfd userdata epoll handle
+--- @param elfd userdata epoll handle
 --- @param childfd userdata socket handle
-function aio:on_close(epollfd, childfd)
+function aio:on_close(elfd, childfd)
     local fd = self.fds[childfd]
     self.fds[childfd] = nil
 
     -- notify with close event
     if fd ~= nil then
-        fd:on_close(epollfd, childfd)
+        fd:on_close(elfd, childfd)
     end
 end
 
 --- Handler called when socket connects
---- @param epollfd userdata epoll handle
+--- @param elfd userdata epoll handle
 --- @param childfd userdata socket handle
-function aio:on_connect(epollfd, childfd)
+function aio:on_connect(elfd, childfd)
     local fd = self.fds[childfd]
 
     -- notify with connect event
     if fd ~= nil then
-        fd:on_connect(epollfd, childfd)
+        fd:on_connect(elfd, childfd)
     end
 end
 
 --- Initialize AIO hooks
 function aio:start()
     --- Init handler
-    --- @param epollfd userdata
+    --- @param elfd userdata
     --- @param parentfd userdata
-    _G.on_init = function(epollfd, parentfd)
+    _G.on_init = function(elfd, parentfd)
         if aio.on_init then
-            aio:on_init(epollfd, parentfd)
+            aio:on_init(elfd, parentfd)
         end
     end
     
     --- Data handler
-    --- @param epollfd userdata
+    --- @param elfd userdata
     --- @param childfd userdata
     --- @param data string
     --- @param len integer
-    _G.on_data = function(epollfd, childfd, data, len)
-        aio:on_data(epollfd, childfd, data, len)
+    _G.on_data = function(elfd, childfd, data, len)
+        aio:on_data(elfd, childfd, data, len)
     end
     
     --- Close handler
-    --- @param epollfd userdata
+    --- @param elfd userdata
     --- @param childfd userdata
-    _G.on_close = function(epollfd, childfd)
-        aio:on_close(epollfd, childfd)
+    _G.on_close = function(elfd, childfd)
+        aio:on_close(elfd, childfd)
     end
     
     --- Connect handler
-    --- @param epollfd userdata
+    --- @param elfd userdata
     --- @param childfd userdata
-    _G.on_connect = function(epollfd, childfd)
-        aio:on_connect(epollfd, childfd)
+    _G.on_connect = function(elfd, childfd)
+        aio:on_connect(elfd, childfd)
     end
 end
 
 --- Initialization handler
 ---
---- @param epollfd userdata epoll handle
+--- @param elfd userdata epoll handle
 --- @param parentfd userdata server socket handle
-function aio:on_init(epollfd, parentfd)
+function aio:on_init(elfd, parentfd)
 
 end
 
@@ -293,7 +293,7 @@ end
 --- @param target aiosocket object to be wrapped
 --- @param event_handler string main event source that resumes coroutine
 --- @param close_handler string|nil secondary event source that closes coroutine (sends nil data)
---- @param callback aiocor coroutine code, takes stream() that returns arguments (3, 4, ...) skipping epollfd, childfd of event_handler
+--- @param callback aiocor coroutine code, takes stream() that returns arguments (3, 4, ...) skipping elfd, childfd of event_handler
 --- @return thread
 function aio:cor2(target, event_handler, close_handler, callback)
     local data = nil
