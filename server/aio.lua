@@ -1,5 +1,10 @@
----------- aiosocket
+--- Aliases to be defined here
+--- @alias aiostream fun() : any[] AIO input stream
+--- @alias aiocor fun(stream: aiostream): nil AIO coroutine
 
+--- AIOsocket class
+--- Provides easy wrapper to receive events per object instead of globally
+---
 --- @class aiosocket
 local aiosocket = {
     --- @type userdata
@@ -8,6 +13,11 @@ local aiosocket = {
     epollfd = nil
 }
 
+--- Write data to network
+---
+--- @param data string data to write
+--- @param close boolean|nil asdf
+--- @return boolean
 function aiosocket:write(data, close)
     return net.write(self.epollfd, self.childfd, data, close or false)
 end
@@ -17,6 +27,7 @@ function aiosocket:close()
 end
 
 --- Close handler of socket, overridable
+---
 --- @param epollfd userdata epoll handle
 --- @param childfd userdata socket handle
 function aiosocket:on_close(epollfd, childfd)
@@ -24,6 +35,7 @@ function aiosocket:on_close(epollfd, childfd)
 end
 
 --- Data handler of socket, overridable
+---
 --- @param epollfd userdata epoll handle
 --- @param childfd userdata socket handle
 --- @param data string stream data
@@ -33,6 +45,7 @@ function aiosocket:on_data(epollfd, childfd, data, length)
 end
 
 --- Connect handler of socket, overridable
+---
 --- @param epollfd userdata epoll handle
 --- @param childfd userdata socket handle
 function aiosocket:on_connect(epollfd, childfd)
@@ -40,6 +53,7 @@ function aiosocket:on_connect(epollfd, childfd)
 end
 
 --- Create new socket instance
+---
 --- @param epollfd userdata
 --- @param childfd userdata
 --- @return aiosocket
@@ -50,28 +64,44 @@ function aiosocket:new(epollfd, childfd)
     return socket
 end
 
----------- aio
---- @class aio
-local aio = {
-    fds={}
-}
+if not aio then
+    --- AIO object
+    --- There can be only one instance of AIO, enabling hot-reloads
+    --- as fds won't be lost during the reload
+    ---
+    --- @class aio
+    aio = {
+        --- @type {[string]: aiosocket}
+        fds={}
+    }
+end
 
---- Handler called when data is received
+--- Generic handler called when data is received
+---
 --- @param epollfd userdata epoll handle
 --- @param childfd userdata socket handle
 --- @param data string incoming stream data
 --- @param len integer length of data
 function aio:on_data(epollfd, childfd, data, len)
-    -- default socket handling
     local fd = self.fds[childfd]
     if fd ~= nil then
         fd:on_data(epollfd, childfd, data, len)
         return
     end
 
-    -- if socket didn't exist, create it with default handler
-    fd = aiosocket:new(epollfd, childfd)
+    self:handle_as_http(epollfd, childfd, data, len)
+end
+
+--- Create new HTTP handler for network stream
+---
+--- @param epollfd userdata epoll handle
+--- @param childfd userdata socket handle
+--- @param data string incoming stream data
+--- @param len integer length of data
+function aio:handle_as_http(epollfd, childfd, data, len)
+    local fd = aiosocket:new(epollfd, childfd)
     self.fds[childfd] = fd
+
     self:cor(fd, function (stream)
         local req = {
             headerComplete = nil,
@@ -136,6 +166,13 @@ function aio:on_data(epollfd, childfd, data, len)
     fd:on_data(epollfd, childfd, data, len)
 end
 
+---Parse HTTP request
+---
+---@param data string http request
+---@return string method HTTP method
+---@return string url request URL
+---@return {[string]: string} headers headers table
+---@return string|nil request body
 function aio:parse_http(data)
     local headers = {}
     local method, url, header, body = data:match("(.-) (.-) HTTP.-\r(.-)\n\r\n(.*)")
@@ -187,6 +224,7 @@ function aio:on_connect(epollfd, childfd)
     end
 end
 
+--- Initialize AIO hooks
 function aio:start()
     --- Init handler
     --- @param epollfd userdata
@@ -222,6 +260,7 @@ function aio:start()
 end
 
 --- Initialization handler
+---
 --- @param epollfd userdata epoll handle
 --- @param parentfd userdata server socket handle
 function aio:on_init(epollfd, parentfd)
@@ -232,13 +271,13 @@ end
 --- @param method string http method
 --- @param url string URL
 --- @param headers table headers table
---- @param body string request body
+--- @param body string|nil request body
 --- @return string response
 function aio:on_http(method, url, headers, body)
     return "OK"
 end
 
---- Wrap handlers into coroutine, example:
+--- Wrap event handlers into coroutine, example:
 ---
 --- aio:cor(socket, "on_data", "on_close", function(stream)
 ---   local whole = ""
@@ -251,25 +290,13 @@ end
 --- If called as aio:cor(target, callback), event_handler is assumed to be on_data
 --- and close_handler is assumed to be on_close
 ---
----@param target any object to be wrapped
----@param event_handler any main event source that resumes coroutine
----@param close_handler any secondary event source that closes coroutine (sends nil data)
----@param callback any coroutine code, takes stream() that returns arguments (3, 4, ...) skipping epollfd, childfd of event_handler
----@return thread
-function aio:cor(target, event_handler, close_handler, callback)
+--- @param target aiosocket object to be wrapped
+--- @param event_handler string main event source that resumes coroutine
+--- @param close_handler string|nil secondary event source that closes coroutine (sends nil data)
+--- @param callback aiocor coroutine code, takes stream() that returns arguments (3, 4, ...) skipping epollfd, childfd of event_handler
+--- @return thread
+function aio:cor2(target, event_handler, close_handler, callback)
     local data = nil
-
-    if callback == nil then
-        callback = close_handler
-        close_handler = nil
-    end
-
-    if type(event_handler) == "function" then
-        callback = event_handler
-        event_handler = "on_data"
-        close_handler = "on_close"
-    end
-
     local cor = coroutine.create(callback)
 
     local provider = function()
@@ -293,6 +320,25 @@ function aio:cor(target, event_handler, close_handler, callback)
     end
 
     return cor
+end
+
+--- Wrap single event handler into a coroutine, evaluates to aio:cor2(target, event_handler, nil, callback)
+---
+--- @param target aiosocket object to be wrapped
+--- @param event_handler string event source that resumes a coroutine
+--- @param callback aiocor  coroutine code
+--- @return thread
+function aio:cor1(target, event_handler, callback)
+    return self:cor2(target, event_handler, nil, callback)
+end
+
+--- Wrap aiosocket receiver into coroutine, evaluates to aio:cor2(target, "on_data", "on_close", callback)
+---
+--- @param target aiosocket object to be wrapped
+--- @param callback aiocor coroutine code
+--- @return thread
+function aio:cor(target, callback)
+    return self:cor2(target, "on_data", "on_close", callback)
 end
 
 return aio

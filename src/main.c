@@ -82,7 +82,7 @@ void on_init(lua_State *L, int epollfd, int parentfd)
     }
 }
 
-int serve(void* vparams) {
+static int serve(void* vparams) {
     int *epolls, epollfd, parentfd, nfds, childfd, status, n, clientlen, readlen, workers, id;
     lua_State *L;
     struct sockaddr_in clientaddr;

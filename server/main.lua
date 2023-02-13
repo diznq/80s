@@ -17,7 +17,7 @@ function aio:on_init(epollfd, parentfd)
         local sock, err = aio:connect(epollfd, "crymp.net", 80)
         if sock then
             -- coroutinized version
-            aio:cor(sock, "on_connect", function()
+            aio:cor1(sock, "on_connect", function()
                 sock:write("GET /api/servers HTTP/1.1\r\nHost: crymp.net\r\nAccept: application/json\r\nConnection: close\r\n\r\n")
             end)
 
