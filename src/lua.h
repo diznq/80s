@@ -1,6 +1,6 @@
 #ifndef __80S_LUA_H__
 #define __80S_LUA_H__
-#include <lua/lua.h>
+#include <lua.h>
 
 // implemented in lua.c
 lua_State* create_lua(int workerid, const char* entrypoint);

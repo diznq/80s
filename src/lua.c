@@ -1,7 +1,7 @@
 #include "lua.h"
 #include "80s.h"
-#include <lua/lualib.h>
-#include <lua/lauxlib.h>
+#include <lualib.h>
+#include <lauxlib.h>
 
 #include <string.h>
 #include <errno.h>
