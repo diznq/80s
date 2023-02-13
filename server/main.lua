@@ -4,11 +4,7 @@ local aio = loadfile("server/aio.lua")()
 aio:start()
 
 function aio:on_http(method, url, headers, body)
-    local kv = ""
-    for k, v in pairs(headers) do
-        kv = kv .. " " .. k .. ": " .. v .. "\n"
-    end
-    return string.format("Method: %s\nURL: %s\nHeaders:\n%s\nBody: %s", method, url, kv, body)
+    return "Hi"
 end
 
 function aio:on_init(epollfd, parentfd)
