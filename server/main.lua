@@ -8,7 +8,7 @@ function aio:on_http(method, url, headers, body)
     for k, v in pairs(headers) do
         kv = kv .. " " .. k .. ": " .. v .. "\n"
     end
-    return string.format("Method: %s\nURL: %s\nHeaders:\n%s", method, url, kv)
+    return string.format("Method: %s\nURL: %s\nHeaders:\n%s\nBody: %s", method, url, kv, body)
 end
 
 function aio:on_init(epollfd, parentfd)

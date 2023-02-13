@@ -73,26 +73,47 @@ function aio:on_data(epollfd, childfd, data, len)
     fd = aiosocket:new(epollfd, childfd)
     self.fds[childfd] = fd
     self:cor(fd, function (stream)
-        local req = { complete = false, data = "" };
+        local req = {
+            headerComplete = nil,
+            bodyComplete = false, 
+            bodyLength = 0, 
+            data = ""
+        };
         for data in stream do
             req.data = req.data .. data
-            req.complete = req.data:find("\r\n\r\n")
-            if req.complete then
-                break
-            else
+            -- check for header completion
+            if req.headerComplete == nil then
+                req.headerComplete = data:find("\r\n\r\n")
+                if req.headerComplete then
+                    req.headerComplete = req.headerComplete + 3 -- offset by \r\n\r\n length
+                    local length = req.data:match("[Cc]ontent%-[Ll]ength: (%d+)")
+                    if length ~= nil then
+                        req.bodyLength = tonumber(length)
+                    end
+                end
+            end
+
+            -- check for body completion
+            if req.headerComplete and not req.bodyComplete then
+                req.bodyComplete = #req.data - req.headerComplete >= req.bodyLength
+            end
+
+            -- if body is not complete, we yield
+            if not req.bodyComplete then
                 coroutine.yield()
+            else
+                break
             end
         end
-        if req.complete then
-            local method, url, headers, body = aio:parse_http(req.data)
-            local response = aio:on_http(method, url, headers, body)
-            net.write(
-                epollfd, 
-                childfd, 
-                string.format("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: %d\r\n\r\n%s", #response, response), 
-                true
-            )
-        end
+
+        local method, url, headers, body = aio:parse_http(req.data)
+        local response = aio:on_http(method, url, headers, body)
+        net.write(
+            epollfd, 
+            childfd, 
+            string.format("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: %d\r\n\r\n%s", #response, response), 
+            true
+        )
     end)
 
     -- provide data event
