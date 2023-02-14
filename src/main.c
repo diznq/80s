@@ -27,6 +27,7 @@ struct serve_params {
     int parentfd;
     int workerid;
     int* epolls;
+    const char* entrypoint;
 };
 
 // 80s.h/error implementation
@@ -110,7 +111,7 @@ static int serve(void* vparams) {
         }
     }
 
-    L = create_lua(id, "server/main.lua");
+    L = create_lua(id, params->entrypoint);
 
     if(L == NULL) {
         error("failed to initialize Lua");
@@ -201,6 +202,7 @@ int main(int argc, char **argv)
     int elfd, parentfd, portno, optval, i;
     struct sockaddr_in serveraddr;
     struct epoll_event ev;
+    const char* entrypoint = "server/main.lua";
     struct serve_params params[WORKERS];
     thrd_t handles[WORKERS];
     int epolls[WORKERS];
@@ -209,11 +211,15 @@ int main(int argc, char **argv)
 
     if (argc < 2)
     {
-        fprintf(stderr, "usage: %s <port> <threads>\n", argv[0]);
+        fprintf(stderr, "usage: %s <port> [entrypoint]\n", argv[0]);
         exit(1);
     }
 
     portno = atoi(argv[1]);
+
+    if(argc >= 3) {
+        entrypoint = argv[2];
+    }
 
     parentfd = socket(AF_INET, SOCK_STREAM, 0);
     if (parentfd < 0)
@@ -236,6 +242,7 @@ int main(int argc, char **argv)
         params[i].parentfd = parentfd;
         params[i].workerid = i;
         params[i].epolls = epolls;
+        params[i].entrypoint = entrypoint;
 
         if(i > 0)
             thrd_create(&handles[i], serve, (void*)&params[i]);

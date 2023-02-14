@@ -1,6 +1,7 @@
 --- Aliases to be defined here
 --- @alias aiostream fun() : any[] AIO input stream
 --- @alias aiocor fun(stream: aiostream): nil AIO coroutine
+--- @alias aiohttphandler fun(script: string, query: string, headers: {[string]: string}, body: string): string, string AIO HTTP handler
 
 unpack = unpack or table.unpack
 
@@ -66,6 +67,16 @@ function aiosocket:new(elfd, childfd)
     return socket
 end
 
+if not aiohttp then
+    --- AIO default HTTP server
+    ---
+    --- @class aiohttp
+    aiohttp = {
+        GET={},
+        POST={}
+    }
+end
+
 if not aio then
     --- AIO object
     --- There can be only one instance of AIO, enabling hot-reloads
@@ -74,7 +85,9 @@ if not aio then
     --- @class aio
     aio = {
         --- @type {[string]: aiosocket}
-        fds={}
+        fds={},
+        ---@type aiohttp
+        http=aiohttp
     }
 end
 
@@ -116,7 +129,7 @@ function aio:handle_as_http(elfd, childfd, data, len)
             req.data = req.data .. data
             -- check for header completion
             if req.headerComplete == nil then
-                req.headerComplete = data:find("\r\n\r\n")
+                req.headerComplete = data:find("\r\n\r\n", nil, true)
                 if req.headerComplete then
                     req.headerComplete = req.headerComplete + 3 -- offset by \r\n\r\n length
                     local length = req.data:match("[Cc]ontent%-[Ll]ength: (%d+)")
@@ -141,12 +154,13 @@ function aio:handle_as_http(elfd, childfd, data, len)
                 --print("---------" .. req.data:len() / 110 .. "/" .. #rest / 110 .. "+++++++++")
                 local method, url, headers, body = aio:parse_http(req.data)
                 local close = (headers["Connection"] or "close"):lower() == "close"
-                local response = aio:on_http(method, url, headers, body)
+                local status, response = aio:on_http(method, url, headers, body)
 
                 net.write(
                     elfd, 
                     childfd, 
-                    string.format("HTTP/1.1 200 OK\r\nConnection: %s\r\nContent-length: %d\r\n\r\n%s",
+                    string.format("HTTP/1.1 %s\r\nConnection: %s\r\nContent-length: %d\r\n\r\n%s",
+                        status,
                         close and "close" or "keep-alive",
                         #response, response
                     ), 
@@ -179,9 +193,9 @@ function aio:parse_http(data)
     local headers = {}
     local method, url, header, body = data:match("(.-) (.-) HTTP.-\r(.-)\n\r\n(.*)")
 
-    header:gsub("\n(.-):[ ]*(.-)\r", function(key, value)
+    for key, value in header:gmatch("\n(.-):[ ]*(.-)\r") do
         headers[key] = value
-    end)
+    end
 
     return method, url, headers, body
 end
@@ -269,14 +283,39 @@ function aio:on_init(elfd, parentfd)
 
 end
 
---- HTTP request handler
+--- Default HTTP request handler
 --- @param method string http method
 --- @param url string URL
 --- @param headers table headers table
 --- @param body string|nil request body
---- @return string response
+--- @return string statusCode status code
+--- @return string response response text
 function aio:on_http(method, url, headers, body)
-    return "OK"
+    local pivot = url:find("?", 0, true)
+    local script = url:sub(0, pivot and pivot - 1 or nil)
+    local query = pivot and url:sub(pivot + 1) or ""
+    local handlers = self.http[method]
+    if handlers ~= nil then
+        local handler = handlers[script]
+        if handler ~= nil then
+            return handler(script, query, headers, body)
+        end
+    end
+    return "404 Not found", script .. " was not found on this server"
+end
+
+--- Add HTTP GET handler
+--- @param url string URL
+--- @param callback aiohttphandler handler
+function aiohttp:get(url, callback)
+    self.GET[url] = callback
+end
+
+--- Add HTTP POST handler
+--- @param url string URL
+--- @param callback aiohttphandler handler
+function aiohttp:post(url, callback)
+    self.POST[url] = callback
 end
 
 --- Wrap event handlers into coroutine, example:
