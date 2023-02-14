@@ -1,7 +1,7 @@
 --- Aliases to be defined here
 --- @alias aiostream fun() : any[] AIO input stream
 --- @alias aiocor fun(stream: aiostream): nil AIO coroutine
---- @alias aiohttphandler fun(script: string, query: string, headers: {[string]: string}, body: string): string, string AIO HTTP handler
+--- @alias aiohttphandler fun(script: string, query: string, headers: {[string]: string}, body: string): status: string, mime: string, response: string AIO HTTP handler
 
 unpack = unpack or table.unpack
 
@@ -154,14 +154,15 @@ function aio:handle_as_http(elfd, childfd, data, len)
                 --print("---------" .. req.data:len() / 110 .. "/" .. #rest / 110 .. "+++++++++")
                 local method, url, headers, body = aio:parse_http(req.data)
                 local close = (headers["Connection"] or "close"):lower() == "close"
-                local status, response = aio:on_http(method, url, headers, body)
+                local status, mime, response = aio:on_http(method, url, headers, body)
 
                 net.write(
                     elfd, 
                     childfd, 
-                    string.format("HTTP/1.1 %s\r\nConnection: %s\r\nContent-length: %d\r\n\r\n%s",
+                    string.format("HTTP/1.1 %s\r\nConnection: %s\r\nContent-type: %s\nContent-length: %d\r\n\r\n%s",
                         status,
                         close and "close" or "keep-alive",
+                        mime,
                         #response, response
                     ), 
                     close
@@ -288,7 +289,8 @@ end
 --- @param url string URL
 --- @param headers table headers table
 --- @param body string|nil request body
---- @return string statusCode status code
+--- @return string status status code
+--- @return string mime mime type
 --- @return string response response text
 function aio:on_http(method, url, headers, body)
     local pivot = url:find("?", 0, true)
@@ -301,7 +303,7 @@ function aio:on_http(method, url, headers, body)
             return handler(script, query, headers, body)
         end
     end
-    return "404 Not found", script .. " was not found on this server"
+    return "404 Not found", "text/plain", script .. " was not found on this server"
 end
 
 --- Add HTTP GET handler

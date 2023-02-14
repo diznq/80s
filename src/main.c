@@ -18,10 +18,10 @@
 #include "80s.h"
 #include "lua.h"
 
-#define WORKERS 8
+#define WORKERS 4
 #define WORKERS_MASK (WORKERS - 1)
-#define BUFSIZE 32768
-#define MAX_EVENTS 1024
+#define BUFSIZE 16384
+#define MAX_EVENTS 4096
 
 struct serve_params {
     int parentfd;
@@ -85,12 +85,14 @@ void on_init(lua_State *L, int elfd, int parentfd)
 
 static int serve(void* vparams) {
     int *epolls, elfd, parentfd, nfds, childfd, status, n, clientlen, readlen, workers, id;
+    unsigned accepts;
     lua_State *L;
     struct sockaddr_in clientaddr;
     struct epoll_event ev, events[MAX_EVENTS];
     struct serve_params* params;
     char buf[BUFSIZE];
     
+    accepts = 0;
     params = (struct serve_params*)vparams;
     parentfd = params->parentfd;
     epolls = params->epolls;
@@ -146,7 +148,7 @@ static int serve(void* vparams) {
                 ev.data.fd = childfd;
                 // add the child socket to the event loop it belongs to based on modulo
                 // with number of workers, to balance the load to other threads
-                if (epoll_ctl(epolls[childfd & WORKERS_MASK], EPOLL_CTL_ADD, childfd, &ev) < 0)
+                if (epoll_ctl(epolls[(accepts++) & WORKERS_MASK], EPOLL_CTL_ADD, childfd, &ev) < 0)
                 {
                     dbg("serve: on add child socket to epoll");
                 }
