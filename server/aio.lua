@@ -5,6 +5,12 @@
 --- @field reload fun() reload server
 net = net or {}
 
+--- @type lightuserdata
+ELFD = ELFD or nil
+
+--- @type integer
+WORKERID = WORKERID or nil
+
 --- Aliases to be defined here
 --- @alias aiostream fun() : any ... AIO input stream
 --- @alias aiocor fun(stream: aiostream): nil AIO coroutine
