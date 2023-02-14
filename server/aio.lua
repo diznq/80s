@@ -67,14 +67,39 @@ function aiosocket:new(elfd, childfd)
     return socket
 end
 
-if not aiohttp then
-    --- AIO default HTTP server
-    ---
-    --- @class aiohttp
-    aiohttp = {
-        GET={},
-        POST={}
-    }
+--- AIO default HTTP server
+---
+--- @class aiohttp
+local aiohttp = {
+    GET={},
+    POST={}
+}
+
+--- Add HTTP GET handler
+--- @param url string URL
+--- @param callback aiohttphandler handler
+function aiohttp:get(url, callback)
+    self.GET[url] = callback
+end
+
+--- Add HTTP POST handler
+--- @param url string URL
+--- @param callback aiohttphandler handler
+function aiohttp:post(url, callback)
+    self.POST[url] = callback
+end
+
+--- Parse HTTP query
+---@param query string query string
+---@return {[string]: string} query query params
+function aiohttp:parse_query(query)
+    local params = {}
+    query = "&" .. query
+    -- match everything where first part doesn't contain = and second part doesn't contain &
+    for key, value in query:gmatch("%&([^=]+)=?([^&]*)") do
+        params[key] = value
+    end
+    return params
 end
 
 if not aio then
@@ -201,6 +226,10 @@ function aio:parse_http(data)
     return method, url, headers, body
 end
 
+function aio:parse_query()
+
+end
+
 --- Create a new TCP socket to host:port
 --- @param elfd userdata epoll handle
 --- @param host string host name or IP address
@@ -304,20 +333,6 @@ function aio:on_http(method, url, headers, body)
         end
     end
     return "404 Not found", "text/plain", script .. " was not found on this server"
-end
-
---- Add HTTP GET handler
---- @param url string URL
---- @param callback aiohttphandler handler
-function aiohttp:get(url, callback)
-    self.GET[url] = callback
-end
-
---- Add HTTP POST handler
---- @param url string URL
---- @param callback aiohttphandler handler
-function aiohttp:post(url, callback)
-    self.POST[url] = callback
 end
 
 --- Wrap event handlers into coroutine, example:
