@@ -1,7 +1,14 @@
+--- @class net
+--- @field write fun(elfd: lightuserdata, childfd: lightuserdata, data: string, close: boolean): boolean write tdata o file descriptor
+--- @field close fun(elfd: lightuserdata, childfd: lightuserdata): boolean close a file descriptor
+--- @field connect fun(elfd: lightuserdata, host: string, port: integer): fd: lightuserdata|nil, err: string|nil open a new network connection
+--- @field reload fun() reload server
+net = net or {}
+
 --- Aliases to be defined here
---- @alias aiostream fun() : any[] AIO input stream
+--- @alias aiostream fun() : any ... AIO input stream
 --- @alias aiocor fun(stream: aiostream): nil AIO coroutine
---- @alias aiohttphandler fun(script: string, query: string, headers: {[string]: string}, body: string): status: string, mime: string, response: string AIO HTTP handler
+--- @alias aiohttphandler fun(self: aiosocket, query: string, headers: {[string]: string}, body: string) AIO HTTP handler
 
 unpack = unpack or table.unpack
 
@@ -10,10 +17,12 @@ unpack = unpack or table.unpack
 ---
 --- @class aiosocket
 local aiosocket = {
-    --- @type userdata
+    --- @type lightuserdata socket file scriptor
     childfd = nil,
-    --- @type userdata
-    elfd = nil
+    --- @type lightuserdata event loop file descriptor
+    elfd = nil,
+    --- @type boolean keep alive
+    ka = false
 }
 
 --- Write data to network
@@ -25,22 +34,43 @@ function aiosocket:write(data, close)
     return net.write(self.elfd, self.childfd, data, close or false)
 end
 
+--- Close socket
+--- @return boolean
 function aiosocket:close()
     return net.close(self.elfd, self.childfd)
 end
 
+--- Write HTTP respose
+---@param status string status code
+---@param mime string mime type
+---@param response string response body
+---@return boolean
+function aiosocket:http_response(status, mime, response)
+    return net.write(
+        self.elfd, 
+        self.childfd, 
+        string.format("HTTP/1.1 %s\r\nConnection: %s\r\nContent-type: %s\nContent-length: %d\r\n\r\n%s",
+            status,
+            self.ka and "keep-alive" or "close",
+            mime,
+            #response, response
+        ), 
+        not self.ka
+    )
+end
+
 --- Close handler of socket, overridable
 ---
---- @param elfd userdata epoll handle
---- @param childfd userdata socket handle
+--- @param elfd lightuserdata epoll handle
+--- @param childfd lightuserdata socket handle
 function aiosocket:on_close(elfd, childfd)
 
 end
 
 --- Data handler of socket, overridable
 ---
---- @param elfd userdata epoll handle
---- @param childfd userdata socket handle
+--- @param elfd lightuserdata epoll handle
+--- @param childfd lightuserdata socket handle
 --- @param data string stream data
 --- @param length integer length of data
 function aiosocket:on_data(elfd, childfd, data, length)
@@ -49,57 +79,22 @@ end
 
 --- Connect handler of socket, overridable
 ---
---- @param elfd userdata epoll handle
---- @param childfd userdata socket handle
+--- @param elfd lightuserdata epoll handle
+--- @param childfd lightuserdata socket handle
 function aiosocket:on_connect(elfd, childfd)
 
 end
 
 --- Create new socket instance
 ---
---- @param elfd userdata
---- @param childfd userdata
+--- @param elfd lightuserdata
+--- @param childfd lightuserdata
 --- @return aiosocket
 function aiosocket:new(elfd, childfd)
-    local socket = { elfd = elfd, childfd = childfd }
+    local socket = { elfd = elfd, childfd = childfd, ka = false }
     setmetatable(socket, self)
     self.__index = self
     return socket
-end
-
---- AIO default HTTP server
----
---- @class aiohttp
-local aiohttp = {
-    GET={},
-    POST={}
-}
-
---- Add HTTP GET handler
---- @param url string URL
---- @param callback aiohttphandler handler
-function aiohttp:get(url, callback)
-    self.GET[url] = callback
-end
-
---- Add HTTP POST handler
---- @param url string URL
---- @param callback aiohttphandler handler
-function aiohttp:post(url, callback)
-    self.POST[url] = callback
-end
-
---- Parse HTTP query
----@param query string query string
----@return {[string]: string} query query params
-function aiohttp:parse_query(query)
-    local params = {}
-    query = "&" .. query
-    -- match everything where first part doesn't contain = and second part doesn't contain &
-    for key, value in query:gmatch("%&([^=]+)=?([^&]*)") do
-        params[key] = value
-    end
-    return params
 end
 
 if not aio then
@@ -111,15 +106,20 @@ if not aio then
     aio = {
         --- @type {[string]: aiosocket}
         fds={},
-        ---@type aiohttp
-        http=aiohttp
+        --- @type {[string]: {[string]: aiohttphandler}}
+        http={
+            --- @type {[string]: aiohttphandler}
+            GET={},
+            --- @type {[string]: aiohttphandler}
+            POST={}
+        }
     }
 end
 
 --- Generic handler called when data is received
 ---
---- @param elfd userdata epoll handle
---- @param childfd userdata socket handle
+--- @param elfd lightuserdata epoll handle
+--- @param childfd lightuserdata socket handle
 --- @param data string incoming stream data
 --- @param len integer length of data
 function aio:on_data(elfd, childfd, data, len)
@@ -134,8 +134,8 @@ end
 
 --- Create new HTTP handler for network stream
 ---
---- @param elfd userdata epoll handle
---- @param childfd userdata socket handle
+--- @param elfd lightuserdata epoll handle
+--- @param childfd lightuserdata socket handle
 --- @param data string incoming stream data
 --- @param len integer length of data
 function aio:handle_as_http(elfd, childfd, data, len)
@@ -178,20 +178,10 @@ function aio:handle_as_http(elfd, childfd, data, len)
 
                 --print("---------" .. req.data:len() / 110 .. "/" .. #rest / 110 .. "+++++++++")
                 local method, url, headers, body = aio:parse_http(req.data)
-                local close = (headers["Connection"] or "close"):lower() == "close"
-                local status, mime, response = aio:on_http(method, url, headers, body)
+                local close = (headers["connection"] or "close"):lower() == "close"
+                fd.ka = not close
 
-                net.write(
-                    elfd, 
-                    childfd, 
-                    string.format("HTTP/1.1 %s\r\nConnection: %s\r\nContent-type: %s\nContent-length: %d\r\n\r\n%s",
-                        status,
-                        close and "close" or "keep-alive",
-                        mime,
-                        #response, response
-                    ), 
-                    close
-                )
+                aio:on_http(fd, method, url, headers, body)
 
                 req.data = rest
                 if #rest > 0 and not close then
@@ -214,31 +204,54 @@ end
 ---@return string method HTTP method
 ---@return string url request URL
 ---@return {[string]: string} headers headers table
----@return string|nil request body
+---@return string request body
 function aio:parse_http(data)
     local headers = {}
     local method, url, header, body = data:match("(.-) (.-) HTTP.-\r(.-)\n\r\n(.*)")
 
     for key, value in header:gmatch("\n(.-):[ ]*(.-)\r") do
-        headers[key] = value
+        headers[key:lower()] = value
     end
 
     return method, url, headers, body
 end
 
-function aio:parse_query()
+--- Parse HTTP query
+---@param query string query string
+---@return {[string]: string} query query params
+function aio:parse_query(query)
+    local params = {}
+    query = "&" .. query
+    -- match everything where first part doesn't contain = and second part doesn't contain &
+    for key, value in query:gmatch("%&([^=]+)=?([^&]*)") do
+        params[key] = value
+    end
+    return params
+end
 
+--- Add HTTP GET handler
+--- @param url string URL
+--- @param callback aiohttphandler handler
+function aio:http_get(url, callback)
+    self.http.GET[url] = callback
+end
+
+--- Add HTTP POST handler
+--- @param url string URL
+--- @param callback aiohttphandler handler
+function aio:http_post(url, callback)
+    self.http.POST[url] = callback
 end
 
 --- Create a new TCP socket to host:port
---- @param elfd userdata epoll handle
+--- @param elfd lightuserdata epoll handle
 --- @param host string host name or IP address
 --- @param port integer port
 --- @return aiosocket|nil socket
 --- @return string|nil error
 function aio:connect(elfd, host, port)
     local sock, err = net.connect(elfd, host, port)
-    if err then
+    if sock == nil then
         return nil, err
     end
     self.fds[sock] = aiosocket:new(elfd, sock)
@@ -246,8 +259,8 @@ function aio:connect(elfd, host, port)
 end
 
 --- Handler called when socket is closed
---- @param elfd userdata epoll handle
---- @param childfd userdata socket handle
+--- @param elfd lightuserdata epoll handle
+--- @param childfd lightuserdata socket handle
 function aio:on_close(elfd, childfd)
     local fd = self.fds[childfd]
     self.fds[childfd] = nil
@@ -259,8 +272,8 @@ function aio:on_close(elfd, childfd)
 end
 
 --- Handler called when socket connects
---- @param elfd userdata epoll handle
---- @param childfd userdata socket handle
+--- @param elfd lightuserdata epoll handle
+--- @param childfd lightuserdata socket handle
 function aio:on_connect(elfd, childfd)
     local fd = self.fds[childfd]
 
@@ -273,8 +286,8 @@ end
 --- Initialize AIO hooks
 function aio:start()
     --- Init handler
-    --- @param elfd userdata
-    --- @param parentfd userdata
+    --- @param elfd lightuserdata
+    --- @param parentfd lightuserdata
     _G.on_init = function(elfd, parentfd)
         if aio.on_init then
             aio:on_init(elfd, parentfd)
@@ -282,8 +295,8 @@ function aio:start()
     end
     
     --- Data handler
-    --- @param elfd userdata
-    --- @param childfd userdata
+    --- @param elfd lightuserdata
+    --- @param childfd lightuserdata
     --- @param data string
     --- @param len integer
     _G.on_data = function(elfd, childfd, data, len)
@@ -291,15 +304,15 @@ function aio:start()
     end
     
     --- Close handler
-    --- @param elfd userdata
-    --- @param childfd userdata
+    --- @param elfd lightuserdata
+    --- @param childfd lightuserdata
     _G.on_close = function(elfd, childfd)
         aio:on_close(elfd, childfd)
     end
     
     --- Connect handler
-    --- @param elfd userdata
-    --- @param childfd userdata
+    --- @param elfd lightuserdata
+    --- @param childfd lightuserdata
     _G.on_connect = function(elfd, childfd)
         aio:on_connect(elfd, childfd)
     end
@@ -307,32 +320,33 @@ end
 
 --- Initialization handler
 ---
---- @param elfd userdata epoll handle
---- @param parentfd userdata server socket handle
+--- @param elfd lightuserdata epoll handle
+--- @param parentfd lightuserdata server socket handle
 function aio:on_init(elfd, parentfd)
 
 end
 
 --- Default HTTP request handler
+--- @param fd aiosocket file descriptor
 --- @param method string http method
 --- @param url string URL
 --- @param headers table headers table
---- @param body string|nil request body
---- @return string status status code
---- @return string mime mime type
---- @return string response response text
-function aio:on_http(method, url, headers, body)
+--- @param body string request body
+function aio:on_http(fd, method, url, headers, body)
     local pivot = url:find("?", 0, true)
     local script = url:sub(0, pivot and pivot - 1 or nil)
     local query = pivot and url:sub(pivot + 1) or ""
     local handlers = self.http[method]
+
     if handlers ~= nil then
         local handler = handlers[script]
         if handler ~= nil then
-            return handler(script, query, headers, body)
+            handler(fd, query, headers, body)
+            return
         end
     end
-    return "404 Not found", "text/plain", script .. " was not found on this server"
+
+    fd:http_response("404 Not found", "text/plain", script .. " was not found on this server")
 end
 
 --- Wrap event handlers into coroutine, example:

@@ -3,7 +3,7 @@
 #include <lua.h>
 
 // implemented in lua.c
-lua_State* create_lua(int workerid, const char* entrypoint);
+lua_State* create_lua(int elfd, int workerid, const char* entrypoint);
 
 // implemented in main.c
 void on_receive(lua_State *L, int elfd, int childfd, const char *buf, int readlen);

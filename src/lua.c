@@ -128,11 +128,29 @@ static int l_net_connect(lua_State *L)
     return 2;
 }
 
+static int l_net_reload(lua_State* L) {
+    const char* entrypoint;
+    int status;
+
+    lua_getglobal(L, "ENTRYPOINT");
+    entrypoint = lua_tostring(L, -1);
+
+    status = luaL_dofile(L, entrypoint);
+    if (status)
+    {
+        fprintf(stderr, "l_net_reload: error running %s: %s\n", entrypoint, lua_tostring(L, -1));
+    }
+
+    lua_pushboolean(L, status == 0);
+    return 1;
+}
+
 LUALIB_API int luaopen_net(lua_State *L) {
     const luaL_Reg netlib[] = {
         {"write", l_net_write},
         {"close", l_net_close},
         {"connect", l_net_connect},
+        {"reload", l_net_reload},
         {NULL, NULL}
     };
     #if LUA_VERSION_NUM > 501
@@ -143,7 +161,7 @@ LUALIB_API int luaopen_net(lua_State *L) {
     return 1;
 }
 
-lua_State* create_lua(int id, const char* entrypoint) {
+lua_State* create_lua(int elfd, int id, const char* entrypoint) {
     int status;
     lua_State* L = luaL_newstate();
 
@@ -159,8 +177,15 @@ lua_State* create_lua(int id, const char* entrypoint) {
     #else
     luaopen_net(L);
     #endif
+
     lua_pushinteger(L, id);
     lua_setglobal(L, "WORKERID");
+
+    lua_pushstring(L, entrypoint);
+    lua_setglobal(L, "ENTRYPOINT");
+
+    lua_pushlightuserdata(L, (void*) elfd);
+    lua_setglobal(L, "ELFD");
 
     status = luaL_dofile(L, entrypoint);
 

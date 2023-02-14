@@ -113,7 +113,7 @@ static int serve(void* vparams) {
         }
     }
 
-    L = create_lua(id, params->entrypoint);
+    L = create_lua(elfd, id, params->entrypoint);
 
     if(L == NULL) {
         error("failed to initialize Lua");
