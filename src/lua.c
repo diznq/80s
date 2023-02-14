@@ -4,9 +4,14 @@
 #include <lauxlib.h>
 
 #include <string.h>
+#include <stdlib.h>
 #include <errno.h>
 
+#ifndef _BSD_SOURCE
+#define _BSD_SOURCE
+#endif
 #include <unistd.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <netdb.h>
 
@@ -145,12 +150,41 @@ static int l_net_reload(lua_State* L) {
     return 1;
 }
 
+static int l_net_listdir(lua_State* L) {
+    struct dirent **eps;
+    int n, i;
+    char buf[257];
+
+    n = scandir(lua_tostring(L, 1), &eps, NULL, alphasort);
+
+    lua_newtable(L);
+
+    while (n >= 0 && n--) {
+        if(!strcmp(eps[n]->d_name, ".") || !strcmp(eps[n]->d_name, ".."))
+            continue;
+        // treat directores special way, they will end with / always
+        // so we don't need isdir? later
+        if(eps[n]->d_type == DT_DIR) {
+            strncpy(buf, eps[n]->d_name, sizeof(buf));
+            strncat(buf, "/", sizeof(buf));
+            lua_pushstring(L, buf);
+        } else {
+            lua_pushstring(L, eps[n]->d_name);
+        }
+        lua_rawseti(L, -2, ++i);
+    }
+    free(eps);
+
+    return 1;
+}
+
 LUALIB_API int luaopen_net(lua_State *L) {
     const luaL_Reg netlib[] = {
         {"write", l_net_write},
         {"close", l_net_close},
         {"connect", l_net_connect},
         {"reload", l_net_reload},
+        {"listdir", l_net_listdir},
         {NULL, NULL}
     };
     #if LUA_VERSION_NUM > 501

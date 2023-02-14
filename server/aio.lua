@@ -3,6 +3,7 @@
 --- @field close fun(elfd: lightuserdata, childfd: lightuserdata): boolean close a file descriptor
 --- @field connect fun(elfd: lightuserdata, host: string, port: integer): fd: lightuserdata|nil, err: string|nil open a new network connection
 --- @field reload fun() reload server
+--- @field listdir fun(dir: string): string[] list files in directory
 net = net or {}
 
 --- @type lightuserdata
@@ -190,7 +191,7 @@ function aio:handle_as_http(elfd, childfd, data, len)
                 aio:on_http(fd, method, url, headers, body)
 
                 req.data = rest
-                if #rest > 0 and not close then
+                if not close then
                     req.headerComplete = nil
                     req.bodyComplete = nil
                     req.bodyLength = 0
