@@ -1,5 +1,5 @@
 ---@type aio
-local aio = require("aio.aio")
+require("aio.aio")
 
 function GET(host, script, accept)
     local sock, err = aio:connect(ELFD, host, 80)

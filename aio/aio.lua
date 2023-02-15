@@ -377,6 +377,32 @@ function aio:on_http(fd, method, url, headers, body)
     fd:http_response("404 Not found", "text/plain", script .. " was not found on this server")
 end
 
+---Prepare promise
+---@return function on_resolved callback
+---@return fun(on_resolved: fun(...: any)) resolver
+function aio:prepare_promise()
+    local early, early_val = false, nil
+
+    --- Resolve callback with coroutine return value
+    --- This code is indeed repeated 3x in this repository to avoid unnecessary
+    --- encapsulation on on_resolved (as it would be changed later and reference would be lost)
+    --- and save us some performance
+    --- @param ... any coroutine return values
+    local on_resolved = function(...) early, early_val = true, {...} end
+
+    --- Set AIO resolver callback
+    --- @type aiothen
+    local resolve_event = function(callback)
+        if early then
+            callback(unpack(early_val))
+        else
+            on_resolved = callback
+        end
+    end
+
+    return function(...) return on_resolved(...) end, resolve_event
+end
+
 --- Wrap event handlers into coroutine, example:
 ---
 --- aio:cor(socket, "on_data", "on_close", function(stream)

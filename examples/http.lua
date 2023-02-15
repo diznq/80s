@@ -1,70 +1,15 @@
----@type aio
-local aio = require("aio.aio")
-
---- Process a dynamic output template
---- Syntax for dynamic content is:
---- <?lu ... ?> for synchronous functions that don't have to use done() at the end
---- <?lua ... ?> for asynchronous functions that must signalize they are done by making done() call at end
---- Further description can be found in README.md
----
----@param res aiosocket socket handle
----@param headers {[string]: string} headers table
----@param endpoint string request URL
----@param query {[string]: string} query parameters
----@param mime string expected mime type
----@param content string original file content
-local function process_dynamic(res, headers, body, endpoint, query, mime, content)
-    local parts = {}
-    local session = {}
-    local writeHeaders = {["Content-type"] = mime}
-    local status = "200 OK"
-    local new = content:gsub("<%?lu(a?)(.-)%?>", function (async, match)
-        local code = load("return function(session, headers, body, endpoint, query, write, header, status, done)" .. match .. "end")()
-        local data = ""
-        table.insert(parts, 
-        function(done)
-            code(
-                session,
-                headers,
-                body,
-                endpoint, 
-                query, 
-                function(text, unsafe)
-                    if not unsafe then
-                        text = text:gsub("%&", "&amp;"):gsub("%\"", "&quot;"):gsub("%<", "&lt;"):gsub("%>", "&gt;") 
-                    end
-                    data = data .. text 
-                end, 
-                function(name, value)
-                    writeHeaders[name] = value
-                end,
-                function(value)
-                    status = value
-                end,
-                function ()
-                    done(data)
-                end)
-            if #async == 0 then
-                done(data)
-            end
-        end)
-        return "<?l" .. tostring(#parts) .. "?>"
-    end)
-    --print(new)
-    aio:gather(unpack(parts))(function (...)
-        local responses = {...}
-        local response = new:gsub("<%?l([0-9]+)%?>", function(match)
-            return tostring(responses[tonumber(match, 10)])
-        end)
-        res:http_response(status, writeHeaders, response)
-    end)
-end
+require("aio.aio")
+local templates = require("examples.templates")
 
 local function create_endpoint(endpoint, mime, content, dynamic)
     aio:http_get(endpoint, function (self, query, headers, body)
         if dynamic then
+            -- process as dynamic template
+            local session = {}
             query = aio:parse_query(query)
-            process_dynamic(self, headers, body, endpoint, query, mime, content)
+            templates:render(session, headers, body, endpoint, query, mime, content)(function (result)
+                self:http_response(result.status, result.headers, result.content)
+            end)
         else
             self:http_response("200 OK", mime, content)
         end
@@ -112,7 +57,7 @@ local function init_dir(base, prefix)
     end
 end
 
-init_dir("examples/public_html/")
+init_dir("server/public_html/")
 
 aio:http_post("/reload", function (self, query, headers, body)
     net.reload()

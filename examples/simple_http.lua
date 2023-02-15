@@ -1,5 +1,5 @@
 ---@type aio
-local aio = require("aio.aio")
+require("aio.aio")
 
 aio:http_get("/haha", function (fd, query, headers, body)
     local params = aio:parse_query(query)
