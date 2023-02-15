@@ -8,12 +8,12 @@
     <link href="/assets/style.css" rel="stylesheet">
 </head>
 <body>
-    <h1>Hi, <?lu write(query.name or "Nomad") ?></h1>
+    <h1>Hello, <?lu write(query.name or "Nomad") ?></h1>
     <h2>Welcome to 80's HTTP server!</h2>
     <img src="/assets/srgen.jpg">
     <p>w3.org response:</p>
-    <pre><?lua 
-
+    <pre><?lua
+        header("X-Server-Time", os.time())
         function GET(host, script, accept)
             local sock, err = aio:connect(ELFD, host, 80)
             if sock then
@@ -39,7 +39,9 @@
                     done(data)
                 end)
             else
-                print("failed to connect: ", err)
+                return function(done)
+                    done("Failed to open socket")
+                end
             end
         end
         GET("www.w3.org", "/", "text/html")(function(response)

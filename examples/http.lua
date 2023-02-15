@@ -7,33 +7,45 @@ aio:start()
 --- Syntax for dynamic content is:
 --- <?lu ... ?> for synchronous functions that don't have to use done() at the end
 --- <?lua ... ?> for asynchronous functions that must signalize they are done by making done() call at end
---- During function executon, following variables and functions are available within context:
---- - endpoint: request URL
---- - query: key, value table of query parameters
---- - mime: request mime type
---- - write(text, unsafe?): write text to response, if unsafe is true, no HTML escaping is performed
---- - done(): called to signalize dynamic content is complete
+--- Further description can be found in README.md
 ---
----@param res aiosocket
----@param endpoint string
----@param query {[string]: string}
----@param mime string
----@param content string
-local function process_dynamic(res, endpoint, query, mime, content)
+---@param res aiosocket socket handle
+---@param headers {[string]: string} headers table
+---@param endpoint string request URL
+---@param query {[string]: string} query parameters
+---@param mime string expected mime type
+---@param content string original file content
+local function process_dynamic(res, headers, body, endpoint, query, mime, content)
     local parts = {}
+    local session = {}
+    local writeHeaders = {}
+    local status = "200 OK"
     local new = content:gsub("<%?lu(a?)(.-)%?>", function (async, match)
-        local code = load("return function(endpoint, query, write, done)" .. match .. "end")()
+        local code = load("return function(session, headers, body, endpoint, query, write, header, status, done)" .. match .. "end")()
         local data = ""
         table.insert(parts, 
         function(done)
-            code(endpoint, query, function(text, unsafe)
-                if not unsafe then
-                    text = text:gsub("%&", "&amp;"):gsub("%\"", "&quot;"):gsub("%<", "&lt;"):gsub("%>", "&gt;") 
-                end
-                data = data .. text 
-            end, function ()
-                done(data)
-            end)
+            code(
+                session,
+                headers,
+                body,
+                endpoint, 
+                query, 
+                function(text, unsafe)
+                    if not unsafe then
+                        text = text:gsub("%&", "&amp;"):gsub("%\"", "&quot;"):gsub("%<", "&lt;"):gsub("%>", "&gt;") 
+                    end
+                    data = data .. text 
+                end, 
+                function(name, value)
+                    writeHeaders[name] = value
+                end,
+                function(value)
+                    status = value
+                end,
+                function ()
+                    done(data)
+                end)
             if #async == 0 then
                 done(data)
             end
@@ -46,7 +58,7 @@ local function process_dynamic(res, endpoint, query, mime, content)
         local response = new:gsub("<%?l([0-9]+)%?>", function(match)
             return tostring(responses[tonumber(match, 10)])
         end)
-        res:http_response("200 OK", mime, response)
+        res:http_response(status, writeHeaders, response)
     end)
 end
 
@@ -54,7 +66,7 @@ local function create_endpoint(endpoint, mime, content, dynamic)
     aio:http_get(endpoint, function (self, query, headers, body)
         if dynamic then
             query = aio:parse_query(query)
-            process_dynamic(self, endpoint, query, mime, content)
+            process_dynamic(self, headers, body, endpoint, query, mime, content)
         else
             self:http_response("200 OK", mime, content)
         end

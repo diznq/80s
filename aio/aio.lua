@@ -51,17 +51,25 @@ end
 
 --- Write HTTP respose
 ---@param status string status code
----@param mime string mime type
+---@param headers {[string]: any}|string headers or content-type
 ---@param response string response body
 ---@return boolean
-function aiosocket:http_response(status, mime, response)
+function aiosocket:http_response(status, headers, response)
+    local str_headers = ""
+    if type(headers) == "string" then
+        str_headers = "Content-type: " .. headers .. "\r\n"
+    else
+        for k, v in pairs(headers) do
+            str_headers = str_headers .. string.format("%s: %s\r\n", k, v)
+        end
+    end
     return net.write(
         self.elfd, 
         self.childfd, 
-        string.format("HTTP/1.1 %s\r\nConnection: %s\r\nContent-type: %s\nContent-length: %d\r\n\r\n%s",
+        string.format("HTTP/1.1 %s\r\nConnection: %s\r\n%sContent-length: %d\r\n\r\n%s",
             status,
             self.ka and "keep-alive" or "close",
-            mime,
+            str_headers,
             #response, response
         ), 
         not self.ka

@@ -49,14 +49,18 @@ Naming conventions:
 Default `http.lua` comes preconfigured to serve files in `public_html` and if file name contains `.dyn.` (i.e. `index.dyn.html`), it also applies templating, which make dynamic content possible.
 
 ### Templating syntax
-To insert dynamic content to the file, wrap Lua code between either `<?lu ... ?>` for synchronous code or `<?lua ... ?>` asynchronous code.
+To insert dynamic content to the file, wrap Lua code between either `<?lu ... ?>` for synchronous code or `<?lua ... ?>` asynchronous code. All asynchronous dynamic code blocks are executed in parallel, there is no guarantee of sequential code execution.
 
 The code must use `write(text, unsafe?=false)` to write dynamic content, which will be replaced back into original page and in case the call is asynchronous, finish the generation by calling `done()` that is available during the execution.
 
 During code execution, several variables are set within context:
 - `endpoint`: request URL without query part
 - `query`: table with query parameters
-- `mime`: mime type that will be sent to client
+- `headers`: table of request headers
+- `body`: request body
+- `session`: session context
+- `status(http_status)`: write HTTP status
+- `header(header_name, header_value)`: write HTTP header
 - `write(text, unsafe?)`: writer callback
 - `done()`: done signalizer
 
