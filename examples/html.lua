@@ -3,6 +3,20 @@ local aio = loadfile("server/aio.lua")()
 
 aio:start()
 
+local function create_endpoint(endpoint,  mime,content, dynamic)
+    aio:http_get(endpoint, function (self, query, headers, body)
+        if dynamic then
+            query = aio:parse_query(query)
+            local dyncontent = content:gsub("%{(.-)%}", function(match)
+                return query[match] or ("query." .. match)
+            end)
+            self:http_response("200 OK", mime, dyncontent)
+        else
+            self:http_response("200 OK", mime, content)
+        end
+    end)
+end
+
 local function init_dir(base, prefix)
     prefix = prefix or "/"
     for _, file in pairs(net.listdir(base)) do
@@ -28,26 +42,15 @@ local function init_dir(base, prefix)
                     mime = "application/javascript"
                 end
 
-                -- just for URL sake
-                file = file:gsub("%.dyn", "")
+                -- omit .html from files so we get nice URLs
+                local endpoint = file:gsub("%.dyn", ""):gsub("%.html", "")
 
-                if file == "index.html" then
-                    file = ""
+                -- /index.html can be simplified to /
+                if endpoint == "index" then
+                    endpoint = ""
                 end
 
-                print("Created GET " .. prefix.. file)
-
-                aio:http_get(prefix .. file, function (self, query, headers, body)
-                    if dynamic then
-                        query = aio:parse_query(query)
-                        local dyncontent = content:gsub("%{(.-)%}", function(match)
-                            return query[match] or ("query." .. match)
-                        end)
-                        self:http_response("200 OK", mime, dyncontent)
-                    else
-                        self:http_response("200 OK", mime, content)
-                    end
-                end)
+                create_endpoint(prefix .. endpoint, mime, content, dynamic)
             end
         end
     end

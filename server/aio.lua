@@ -14,7 +14,9 @@ WORKERID = WORKERID or nil
 
 --- Aliases to be defined here
 --- @alias aiostream fun() : any ... AIO input stream
---- @alias aiocor fun(stream: aiostream): nil AIO coroutine
+--- @alias aiocor fun(stream: aiostream, resolve?: fun(value: any)): nil AIO coroutine
+--- @alias aioresolve fun(result: any): nil AIO resolver
+--- @alias aiothen fun(on_resolved: fun(...: any)) AIO then
 --- @alias aiohttphandler fun(self: aiosocket, query: string, headers: {[string]: string}, body: string) AIO HTTP handler
 
 unpack = unpack or table.unpack
@@ -373,32 +375,54 @@ end
 --- @param event_handler string main event source that resumes coroutine
 --- @param close_handler string|nil secondary event source that closes coroutine (sends nil data)
 --- @param callback aiocor coroutine code, takes stream() that returns arguments (3, 4, ...) skipping elfd, childfd of event_handler
---- @return thread
+--- @return aiothen
 function aio:cor2(target, event_handler, close_handler, callback)
     local data = nil
     local cor = coroutine.create(callback)
 
+    --- Resolve callback with coroutine return value
+    --- @param ... any coroutine return value
+    local on_resolved = function(...) end
+
+    --- Set AIO resolver callback
+    --- @type aiothen
+    local resolve_event = function(callback)
+        on_resolved = callback
+    end
+
+    --- Resolver callable within coroutine
+    --- @param ... any return value
+    local resolver = function(...)
+        on_resolved(...)
+    end
+
+    -- coroutine data iterator
     local provider = function()
         if data == nil then return end
         return unpack(data)
     end
 
+    -- main event handler that resumes coroutine as events arrive and provides data for iterator
     target[event_handler] = function(self, epfd, chdfd, ...)
         data = {...}
-        local ok, result = coroutine.resume(cor, provider)
+        local ok, result = coroutine.resume(cor, provider, resolver)
         if not ok then
             print("error", result)
         end
     end
 
+    -- closing event handler that sends nil signal to coroutine to terminate the iterator
     if close_handler ~= nil then
         target[close_handler] = function(self, ...)
             data = nil
-            coroutine.resume(cor, provider)
+            local ok, result = coroutine.resume(cor, provider, resolver)
+            if not ok then
+                print("error", result)
+            end
         end
     end
 
-    return cor
+    return resolve_event
 end
 
 --- Wrap single event handler into a coroutine, evaluates to aio:cor2(target, event_handler, nil, callback)
@@ -406,7 +430,7 @@ end
 --- @param target aiosocket object to be wrapped
 --- @param event_handler string event source that resumes a coroutine
 --- @param callback aiocor  coroutine code
---- @return thread
+--- @return aiothen
 function aio:cor1(target, event_handler, callback)
     return self:cor2(target, event_handler, nil, callback)
 end
@@ -415,9 +439,91 @@ end
 ---
 --- @param target aiosocket object to be wrapped
 --- @param callback aiocor coroutine code
---- @return thread
+--- @return aiothen
 function aio:cor(target, callback)
     return self:cor2(target, "on_data", "on_close", callback)
+end
+
+--- Gather multiple asynchronous tasks
+--- @param ... aiothen coroutine resolvers
+--- @return aiothen resolver values
+function aio:gather(...)
+    local tasks = {...}
+    local counter = #{...}
+    local retvals = {}
+
+    --- Resolve callback with coroutine return value
+    --- @param ... any coroutine return values
+    local on_resolved = function(...) end
+
+    --- Set AIO resolver callback
+    --- @type aiothen
+    local resolve_event = function(callback)
+        on_resolved = callback
+    end
+
+    for i, task in ipairs(tasks) do
+        table.insert(retvals, nil)
+        task(function (value)
+            counter = counter - 1
+            retvals[i] = value
+            if counter == 0 then
+                on_resolved(unpack(retvals))
+            end
+        end)
+    end
+
+    return resolve_event
+end
+
+--- Chain multiple AIO operations sequentially
+--- @param first aiothen
+--- @param ... fun(...: any): aiothen|any
+--- @return aiothen retval return value of last task
+function aio:chain(first, ...)
+    local callbacks = {...}
+    local at = 1
+    --- Resolve callback with coroutine return value
+    --- @param ... any coroutine return values
+    local on_resolved = function(...) end
+
+    --- Set AIO resolver callback
+    --- @type aiothen
+    local resolve_event = function(callback)
+        on_resolved = callback
+    end
+
+    local function next_callback(...)
+        if at > #callbacks then
+            on_resolved(...)
+        else
+            local callback = callbacks[at]
+            local retval = callback(...)
+            at = at + 1
+            if type(retval) == "function" then
+                retval(function (...)
+                    local ok, err = pcall(next_callback, ...)
+                    if not ok then
+                        print(err)
+                    end
+                end)
+            else
+                local ok, err = pcall(next_callback, retval)
+                if not ok then
+                    print(err)
+                end
+            end
+        end
+    end
+
+    first(function (...)
+        local ok, err = pcall(next_callback, ...)
+        if not ok then
+            print(err)
+        end
+    end)
+
+    return resolve_event
 end
 
 return aio
