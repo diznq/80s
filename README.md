@@ -20,7 +20,7 @@ To compile the project, simply run `./build.sh` or `JIT=true ./build.sh` to buil
 
 ## Running
 
-To run the server, execute `bin/80s examples/simple_http.lua`, optionally `bin/80s examples/simple_http.lua 8080` to specify the port. After this, the server is running and can be reloaded by calling `net.reload()` from within Lua code.
+To run the server, execute `bin/80s server/simple_http.lua`, optionally `bin/80s server/simple_http.lua 8080` to specify the port. After this, the server is running and can be reloaded by calling `net.reload()` from within Lua code.
 
 ## API
 C server exposes several APIs for Lua for both input and output.
@@ -44,7 +44,7 @@ Naming conventions:
 - `net.reload()`: reload entrypoint Lua
 - `net.listdir(dir)`: list files in a directory, directories will end with `/` in returned result
 
-## Default `examples/http.lua` as content server
+## Default `server/http.lua` as content server
 
 Default `http.lua` comes preconfigured to serve files in `public_html` and if file name contains `.dyn.` (i.e. `index.dyn.html`), it also applies templating, which make dynamic content possible.
 
@@ -64,4 +64,4 @@ During code execution, several variables are set within context:
 - `write(text, unsafe?)`: writer callback
 - `done()`: done signalizer
 
-You can see examples in `examples/public_html/` directory.
+You can see examples in `server/public_html/` directory.
