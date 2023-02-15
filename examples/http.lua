@@ -18,7 +18,7 @@ aio:start()
 local function process_dynamic(res, headers, body, endpoint, query, mime, content)
     local parts = {}
     local session = {}
-    local writeHeaders = {}
+    local writeHeaders = {["Content-type"] = mime}
     local status = "200 OK"
     local new = content:gsub("<%?lu(a?)(.-)%?>", function (async, match)
         local code = load("return function(session, headers, body, endpoint, query, write, header, status, done)" .. match .. "end")()
@@ -84,7 +84,7 @@ local function init_dir(base, prefix)
                 local content = f:read("*all")
                 f:close()
 
-                local mime = "text/html"
+                local mime = "text/html; charset=utf-8"
                 local dynamic = false
 
                 --- if file contains .dyn., it will be ran through template engine in later stage
