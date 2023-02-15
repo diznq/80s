@@ -151,7 +151,7 @@ static int l_net_reload(lua_State* L) {
 }
 
 static int l_net_listdir(lua_State* L) {
-    struct dirent **eps;
+    struct dirent **eps = NULL;
     int n, i;
     char buf[260];
 
@@ -160,8 +160,9 @@ static int l_net_listdir(lua_State* L) {
     lua_newtable(L);
 
     while (n >= 0 && n--) {
-        if(!strcmp(eps[n]->d_name, ".") || !strcmp(eps[n]->d_name, ".."))
+        if(!strcmp(eps[n]->d_name, ".") || !strcmp(eps[n]->d_name, "..")) {
             continue;
+        }
         // treat directores special way, they will end with / always
         // so we don't need isdir? later
         if(eps[n]->d_type == DT_DIR) {
@@ -173,7 +174,10 @@ static int l_net_listdir(lua_State* L) {
         }
         lua_rawseti(L, -2, ++i);
     }
-    free(eps);
+
+    if(eps != NULL) {
+        free(eps);
+    }
 
     return 1;
 }

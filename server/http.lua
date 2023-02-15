@@ -1,5 +1,5 @@
 require("aio.aio")
-local templates = require("examples.templates")
+local templates = require("server.templates")
 
 local function create_endpoint(endpoint, mime, content, dynamic)
     aio:http_get(endpoint, function (self, query, headers, body)
