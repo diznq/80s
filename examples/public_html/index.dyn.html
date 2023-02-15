@@ -8,8 +8,44 @@
     <link href="/assets/style.css" rel="stylesheet">
 </head>
 <body>
-    <h1>Hi, {name}!</h1>
+    <h1>Hi, <?lu write(query.name or "Nomad") ?></h1>
     <h2>Welcome to 80's HTTP server!</h2>
     <img src="/assets/srgen.jpg">
+    <p>w3.org response:</p>
+    <pre><?lua 
+
+        function GET(host, script, accept)
+            local sock, err = aio:connect(ELFD, host, 80)
+            if sock then
+                -- coroutinized version
+                aio:cor1(sock, "on_connect", function(_, done)
+                    sock:write(
+                        string.format(
+                            "GET %s HTTP/1.1\r\nHost: %s\r\nAccept: %s\r\nConnection: close\r\n\r\n", 
+                            script,
+                            host,
+                            accept
+                        )
+                    )
+                    done(true)
+                end)
+
+                return aio:cor(sock, function(stream, done)
+                    local data = ""
+                    for chunk in stream do
+                        data = data .. chunk
+                        coroutine.yield()
+                    end
+                    done(data)
+                end)
+            else
+                print("failed to connect: ", err)
+            end
+        end
+        GET("www.w3.org", "/", "text/html")(function(response)
+            write(response)
+            done()
+        end)
+    ?></pre>
 </body>
 </html>

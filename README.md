@@ -43,3 +43,21 @@ Naming conventions:
 - `net.close(elfd, childfd)`: close a socket
 - `net.reload()`: reload entrypoint Lua
 - `net.listdir(dir)`: list files in a directory, directories will end with `/` in returned result
+
+## Default `examples/http.lua` as content server
+
+Default `http.lua` comes preconfigured to serve files in `public_html` and if file name contains `.dyn.` (i.e. `index.dyn.html`), it also applies templating, which make dynamic content possible.
+
+### Templating syntax
+To insert dynamic content to the file, wrap Lua code between either `<?lu ... ?>` for synchronous code or `<?lua ... ?>` asynchronous code.
+
+The code must use `write(text, unsafe?=false)` to write dynamic content, which will be replaced back into original page and in case the call is asynchronous, finish the generation by calling `done()` that is available during the execution.
+
+During code execution, several variables are set within context:
+- `endpoint`: request URL without query part
+- `query`: table with query parameters
+- `mime`: mime type that will be sent to client
+- `write(text, unsafe?)`: writer callback
+- `done()`: done signalizer
+
+You can see examples in `examples/public_html/` directory.

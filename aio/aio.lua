@@ -242,11 +242,11 @@ end
 --- Parse URL encoded string
 --- @param url string url encoded string
 --- @return string text url decoded value
---- @return integer matches
 function aio:parse_url(url)
-    return url:gsub("%+", " "):gsub("%%([0-9A-F][0-9A-F])", function(part)
+    local new = url:gsub("%+", " "):gsub("%%([0-9A-F][0-9A-F])", function(part)
         return string.char(tonumber(part, 16))
     end)
+    return new
 end
 
 --- Add HTTP GET handler
@@ -390,15 +390,23 @@ end
 function aio:cor2(target, event_handler, close_handler, callback)
     local data = nil
     local cor = coroutine.create(callback)
+    local early, early_val = false, nil
 
     --- Resolve callback with coroutine return value
-    --- @param ... any coroutine return value
-    local on_resolved = function(...) end
+    --- This code is indeed repeated 3x in this repository to avoid unnecessary
+    --- encapsulation on on_resolved (as it would be changed later and reference would be lost)
+    --- and save us some performance
+    --- @param ... any coroutine return values
+    local on_resolved = function(...) early, early_val = true, {...} end
 
     --- Set AIO resolver callback
     --- @type aiothen
     local resolve_event = function(callback)
-        on_resolved = callback
+        if early then
+            callback(unpack(early_val))
+        else
+            on_resolved = callback
+        end
     end
 
     --- Resolver callable within coroutine
@@ -486,15 +494,20 @@ function aio:gather(...)
     local tasks = {...}
     local counter = #{...}
     local retvals = {}
+    local early, early_val = false, nil
 
     --- Resolve callback with coroutine return value
     --- @param ... any coroutine return values
-    local on_resolved = function(...) end
+    local on_resolved = function(...) early, early_val = true, {...} end
 
     --- Set AIO resolver callback
     --- @type aiothen
     local resolve_event = function(callback)
-        on_resolved = callback
+        if early then
+            callback(unpack(early_val))
+        else
+            on_resolved = callback
+        end
     end
 
     for i, task in ipairs(tasks) do
@@ -518,14 +531,19 @@ end
 function aio:chain(first, ...)
     local callbacks = {...}
     local at = 1
+    local early, early_val = false, nil
     --- Resolve callback with coroutine return value
     --- @param ... any coroutine return values
-    local on_resolved = function(...) end
+    local on_resolved = function(...) early, early_val = true, {...} end
 
     --- Set AIO resolver callback
     --- @type aiothen
     local resolve_event = function(callback)
+        if early then
+            callback(unpack(early_val))
+        else
         on_resolved = callback
+        end
     end
 
     local function next_callback(...)
