@@ -1,7 +1,5 @@
 ---@type aio
-local aio = loadfile("aio/aio.lua")()
-
-aio:start()
+local aio = require("aio.aio")
 
 aio:http_get("/haha", function (fd, query, headers, body)
     local params = aio:parse_query(query)

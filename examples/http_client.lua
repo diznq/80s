@@ -1,8 +1,5 @@
 ---@type aio
-local aio = loadfile("aio/aio.lua")()
-
--- HTTP client example
-aio:start()
+local aio = require("aio.aio")
 
 function GET(host, script, accept)
     local sock, err = aio:connect(ELFD, host, 80)

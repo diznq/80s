@@ -587,4 +587,6 @@ function aio:chain(first, ...)
     return resolve_event
 end
 
+aio:start()
+
 return aio

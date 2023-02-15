@@ -1,7 +1,5 @@
 ---@type aio
-local aio = loadfile("aio/aio.lua")()
-
-aio:start()
+local aio = require("aio.aio")
 
 --- Process a dynamic output template
 --- Syntax for dynamic content is:
