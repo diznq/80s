@@ -18,6 +18,10 @@ Prerequisites:
 
 To compile the project, simply run `./build.sh` or `JIT=true ./build.sh` to build with LuaJIT.
 
+## Running
+
+To run the server, execute `bin/80s examples/simple_http.lua`, optionally `bin/80s examples/simple_http.lua 8080` to specify the port. After this, the server is running and can be reloaded by calling `net.reload()` from within Lua code.
+
 ## API
 C server exposes several APIs for Lua for both input and output.
 
@@ -37,3 +41,5 @@ Naming conventions:
 - `net.connect(elfd, hostName, port)`: create new TCP socket, returns `socket, error`
 - `net.write(elfd, childfd, data, close?)`: write data on socket, if close is true, close the connection after write
 - `net.close(elfd, childfd)`: close a socket
+- `net.reload()`: reload entrypoint Lua
+- `net.listdir(dir)`: list files in a directory, directories will end with `/` in returned result
