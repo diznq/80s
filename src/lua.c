@@ -153,7 +153,7 @@ static int l_net_reload(lua_State* L) {
 static int l_net_listdir(lua_State* L) {
     struct dirent **eps;
     int n, i;
-    char buf[257];
+    char buf[260];
 
     n = scandir(lua_tostring(L, 1), &eps, NULL, alphasort);
 
@@ -165,8 +165,8 @@ static int l_net_listdir(lua_State* L) {
         // treat directores special way, they will end with / always
         // so we don't need isdir? later
         if(eps[n]->d_type == DT_DIR) {
-            strncpy(buf, eps[n]->d_name, sizeof(buf));
-            strncat(buf, "/", sizeof(buf));
+            strncpy(buf, eps[n]->d_name, 256);
+            strncat(buf, "/", 256);
             lua_pushstring(L, buf);
         } else {
             lua_pushstring(L, eps[n]->d_name);

@@ -160,11 +160,11 @@ function aio:handle_as_http(elfd, childfd, data, len)
             data = ""
         };
         for data in stream do
-            req.data = req.data .. data
             -- check for header completion
             if req.headerComplete == nil then
                 req.headerComplete = data:find("\r\n\r\n", nil, true)
                 if req.headerComplete then
+                    req.headerComplete = req.headerComplete + #req.data
                     req.headerComplete = req.headerComplete + 3 -- offset by \r\n\r\n length
                     local length = req.data:match("[Cc]ontent%-[Ll]ength: (%d+)")
                     if length ~= nil then
@@ -172,6 +172,8 @@ function aio:handle_as_http(elfd, childfd, data, len)
                     end
                 end
             end
+
+            req.data = req.data .. data
 
             -- check for body completion
             if req.headerComplete and not req.bodyComplete then
@@ -182,10 +184,8 @@ function aio:handle_as_http(elfd, childfd, data, len)
             if req.bodyComplete then
                 local pivot = req.headerComplete + req.bodyLength
                 local rest = req.data:sub(pivot + 1)
-
                 req.data = req.data:sub(1, pivot)
 
-                --print("---------" .. req.data:len() / 110 .. "/" .. #rest / 110 .. "+++++++++")
                 local method, url, headers, body = aio:parse_http(req.data)
                 local close = (headers["connection"] or "close"):lower() == "close"
                 fd.ka = not close
@@ -199,7 +199,7 @@ function aio:handle_as_http(elfd, childfd, data, len)
                     req.bodyLength = 0
                 end
             end
-            coroutine.yield()
+            coroutine.yield(true)
         end
     end)
 
@@ -402,12 +402,28 @@ function aio:cor2(target, event_handler, close_handler, callback)
         return unpack(data)
     end
 
+    local running, ended = false, false
+
     -- main event handler that resumes coroutine as events arrive and provides data for iterator
     target[event_handler] = function(self, epfd, chdfd, ...)
         data = {...}
+
+        running = true
         local ok, result = coroutine.resume(cor, provider, resolver)
+        running = false
+
         if not ok then
             print("error", result)
+        end
+
+        -- in case close event was invoked from the coroutine, it shall be handled here
+        if ended then
+            ok, result = coroutine.resume(cor, provider, resolver)
+            ended = false
+
+            if not ok then
+                print("error", result)
+            end
         end
     end
 
@@ -415,9 +431,17 @@ function aio:cor2(target, event_handler, close_handler, callback)
     if close_handler ~= nil then
         target[close_handler] = function(self, ...)
             data = nil
-            local ok, result = coroutine.resume(cor, provider, resolver)
-            if not ok then
-                print("error", result)
+            -- it might be possible that while coroutine is running, it issues a write together
+            -- with close, in that case, this would be called while coroutine is still running
+            -- and fail, therefore we issue ended=true signal, so after main handler finishes
+            -- its job, it will close the coroutine for us instead
+            if running then
+                ended = true
+            else
+                local ok, result = coroutine.resume(cor, provider, resolver)
+                if not ok then
+                    print("error", result)
+                end
             end
         end
     end
