@@ -1,5 +1,5 @@
 ---@type aio
-local aio = loadfile("server/aio.lua")()
+local aio = loadfile("aio/aio.lua")()
 
 aio:start()
 

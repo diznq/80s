@@ -226,16 +226,27 @@ function aio:parse_http(data)
 end
 
 --- Parse HTTP query
----@param query string query string
----@return {[string]: string} query query params
+--- @param query string query string
+--- @return {[string]: string} query query params
 function aio:parse_query(query)
     local params = {}
     query = "&" .. query
     -- match everything where first part doesn't contain = and second part doesn't contain &
     for key, value in query:gmatch("%&([^=]+)=?([^&]*)") do
-        params[key] = value
+        params[key] = self:parse_url(value)
     end
     return params
+end
+
+
+--- Parse URL encoded string
+--- @param url string url encoded string
+--- @return string text url decoded value
+--- @return integer matches
+function aio:parse_url(url)
+    return url:gsub("%+", " "):gsub("%%([0-9A-F][0-9A-F])", function(part)
+        return string.char(tonumber(part, 16))
+    end)
 end
 
 --- Add HTTP GET handler

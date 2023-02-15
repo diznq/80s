@@ -1,5 +1,5 @@
 ---@type aio
-local aio = loadfile("server/aio.lua")()
+local aio = loadfile("aio/aio.lua")()
 
 aio:start()
 
@@ -7,7 +7,7 @@ aio:http_get("/haha", function (fd, query, headers, body)
     local params = aio:parse_query(query)
     fd:http_response(
         "200 OK", 
-        "text/plain", 
+        "text/plain; charset=utf-8", 
         ("Hi, %s!"):format(params.name or "Nomad")
     )
 end)

@@ -201,10 +201,10 @@ static int serve(void* vparams) {
 
 int main(int argc, char **argv)
 {
-    int elfd, parentfd, portno, optval, i;
+    int elfd, parentfd, optval, i, portno = 8080;
     struct sockaddr_in serveraddr;
     struct epoll_event ev;
-    const char* entrypoint = "server/main.lua";
+    const char* entrypoint;
     struct serve_params params[WORKERS];
     thrd_t handles[WORKERS];
     int epolls[WORKERS];
@@ -213,14 +213,14 @@ int main(int argc, char **argv)
 
     if (argc < 2)
     {
-        fprintf(stderr, "usage: %s <port> [entrypoint]\n", argv[0]);
+        fprintf(stderr, "usage: %s <lua entrypoint> [port: 8080]\n", argv[0]);
         exit(1);
     }
 
-    portno = atoi(argv[1]);
+    entrypoint = argv[1];
 
-    if(argc >= 3) {
-        entrypoint = argv[2];
+    if (argc >= 3) {
+        portno = atoi(argv[2]);
     }
 
     parentfd = socket(AF_INET, SOCK_STREAM, 0);
