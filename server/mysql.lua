@@ -2,6 +2,9 @@ require("aio.aio")
 
 --- @alias mysqlerror {error: string} mysql error
 --- @alias mysqlok {ok: boolean, affected_rows: integer, last_insert_id: integer, status_flags: integer, warnings: integer, info: string|nil} mysql ok
+--- @alias mysqleof {eof: boolean}
+--- @alias mysqlfielddef {catalog: string, schema: string, table: string, org_table: string, name: string, org_name: string, character_set: integer, column_length: integer, type: integer, flags: integer, decimals: integer}
+--- @alias mysqlresult string[] items
 
 --- @class mysql
 local mysql = {
@@ -9,6 +12,7 @@ local mysql = {
     fd = nil,
     connected = false,   -- whether we are authenticated to db
     callbacks = {},
+    active_callback = nil,
 
     user = "root",
     password = "toor",
@@ -153,6 +157,7 @@ function mysql:reset()
     self.sequence_id = 0
     self.connected = false
     self.callbacks = {}
+    self.active_callback = nil
 end
 
 --- Connect to MySQL server, supports only mysql_native_password auth as of ow
@@ -197,17 +202,26 @@ function mysql:connect(user, password, db, host, port)
                 local seq, command = self:read_packet()
 
                 -- responses from MySQL arrive sequentially, so we can call on_resolved callbacks in that fashion too
-                if #self.callbacks > 0 then
+                if #self.callbacks > 0 and seq == 1 then
                     local first = self.callbacks[1]
+                    self.active_callback = first
                     table.remove(self.callbacks, 1)
+                    local invoke = type(first) == "thread" and coroutine.resume or pcall
                     -- use protected call, so it doesn't break our loop
-                    local ok, res =  pcall(first, seq, command)
+                    local ok, res = invoke(first, seq, command)
                     if not ok then
-                        print(res)
+                        print("mysql.on_data: first call failed: ", res)
+                    end
+                elseif self.active_callback ~= nil and seq > 1 then
+                    -- use protected call, so it doesn't break our loop
+                    local invoke = type(self.active_callback) == "thread" and coroutine.resume or pcall
+                    local ok, res =  invoke(self.active_callback, seq, command)
+                    if not ok then
+                        print("mysql.on_data: next call failed: ", res)
                     end
                 else
                     print("unhandled command arrived: ", seq)
-                    self:debug_packet("Received", command)
+                    --self:debug_packet("Received", command)
                     --print("Command: ", command)
                 end
             end
@@ -240,7 +254,7 @@ function mysql:read_packet()
         return 0, ""
     end
     local d, c, b, a = length:byte(1, 5)
-    length = b * 65536 + c * 256 + d
+    length = (d) | (c << 16) | (b << 24)
     local packet = coroutine.yield(length)
     if packet == nil then
         self:reset()
@@ -335,7 +349,7 @@ end
 --- Execute SQL query
 ---@param query string query
 ---@param ... string arguments
----@return fun(on_resolved: fun(seq: integer, response: string)) promise response promise
+---@return fun(on_resolved: fun(seq: integer, response: string)|thread) promise response promise
 function mysql:exec(query, ...)
     local params = {...}
     local on_resolved, resolve_event = aio:prepare_promise()
@@ -359,9 +373,60 @@ function mysql:exec(query, ...)
     return resolve_event
 end
 
+--- Execute SQL Select query and return results
+---@param query string SQL query
+---@param ... any query parameters
+---@return fun(on_resolved: fun(rows: table[]|nil, error: mysqlerror|nil)) promise
+function mysql:select(query, ...)
+    local resolve, resolve_event = aio:prepare_promise()
+
+    self:exec(query, ...)(
+        coroutine.create(function (seq, res)
+            if not seq then
+                resolve(nil, {error="received invalid sequence"})
+                return
+            end
+            local reader = mysql_decoder:new(res)
+            local is_error = res:byte(1, 1) == 255
+            local n_fields = reader:lenint()
+            if is_error then
+                resolve(nil, self:decode_packet(res))
+                return
+            end
+            --- @type mysqlfielddef[]
+            local fields = {}
+            local rows = {}
+            for i=1, n_fields do
+                local seq, field_res = coroutine.yield()
+                if seq == nil then resolve(nil, {error="network error while fetching fields"}) return end
+                table.insert(fields, self:decode_field(field_res))
+            end
+            local _, eof = coroutine.yield()
+            if eof:byte(1, 1) ~= 254 then
+                resolve(nil, {error="network error, expected eof after field definitions"})
+                return
+            end
+            while true do
+                seq, res = coroutine.yield()
+                if seq == nil then resolve(nil, {error="network error while fetching rows"}) return end
+                if res:byte(1, 1) == 254 then break end
+                reader = mysql_decoder:new(res)
+                local row = {}
+                for i=1, n_fields do
+                    row[fields[i].name] = reader:var_string()
+                end
+                table.insert(rows, row)
+            end
+            resolve(rows)
+        end)
+    )
+
+    return resolve_event
+end
+
 --- Decode MySQL server response
 ---@param packet string response
----@return mysqlerror|mysqlok decoded decoded response
+---@return mysqlerror|mysqlok|nil decoded decoded response
 function mysql:decode_packet(packet)
     local packet_type = packet:byte(1, 1)
     if packet_type == 255 then
@@ -378,8 +443,29 @@ function mysql:decode_packet(packet)
             warnings = reader:int(2),
             info = reader:eof()
         }
+    elseif packet_type == 254 then
+        return {
+            eof = true
+        }
     end
-    return {}
+    return nil
+end
+
+function mysql:decode_field(packet)
+    local reader = mysql_decoder:new(packet)
+    return {
+        catalog = reader:var_string(),
+        schema = reader:var_string(),
+        table = reader:var_string(),
+        org_table = reader:var_string(),
+        name = reader:var_string(),
+        org_name = reader:var_string(),
+        character_set = reader:int(2),
+        column_length = reader:int(4),
+        type = reader:int(1),
+        flags = reader:int(2),
+        decimals = reader:int(1)
+    }
 end
 
 function aio:on_init()
@@ -387,13 +473,14 @@ function aio:on_init()
 
     sql:connect("80s", "password", "db80")(function (ok, err)
         print("Connected: ", ok)
-        sql:exec("SELECT * FROM users;")(function (seq, res)
-            local result = sql:decode_packet(res)
-            if result.error then
-                print(result.error)
-            else
-                for k, v in pairs(result) do
-                    print(k, v)
+        local result = sql:select("SELECT * FROM users")
+        
+        result(function (rows, err)
+            if rows == nil and err ~= nil then
+                print("failed to select users: ", err.error)
+            elseif rows ~= nil then
+                for i, user in ipairs(rows) do
+                    print("id: ", user.id, "name: ", user.name)
                 end
             end
         end)

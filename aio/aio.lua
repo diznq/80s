@@ -401,7 +401,16 @@ function aio:prepare_promise()
         end
     end
 
-    return function(...) return on_resolved(...) end, resolve_event
+    return function(...) 
+        if type(on_resolved) == "thread" then
+            local ok, err = coroutine.resume(on_resolved, ...)
+            if not ok then
+                error(err)
+            end
+        else
+            return on_resolved(...)
+        end
+    end, resolve_event
 end
 
 --- Wrap event handlers into coroutine, example:
@@ -425,24 +434,7 @@ end
 function aio:cor2(target, event_handler, close_handler, callback)
     local data = nil
     local cor = coroutine.create(callback)
-    local early, early_val = false, nil
-
-    --- Resolve callback with coroutine return value
-    --- This code is indeed repeated 3x in this repository to avoid unnecessary
-    --- encapsulation on on_resolved (as it would be changed later and reference would be lost)
-    --- and save us some performance
-    --- @param ... any coroutine return values
-    local on_resolved = function(...) early, early_val = true, {...} end
-
-    --- Set AIO resolver callback
-    --- @type aiothen
-    local resolve_event = function(callback)
-        if early then
-            callback(unpack(early_val))
-        else
-            on_resolved = callback
-        end
-    end
+    local on_resolved, resolve_event = self:prepare_promise()
 
     --- Resolver callable within coroutine
     --- @param ... any return value
@@ -638,21 +630,7 @@ function aio:gather(...)
     local tasks = {...}
     local counter = #{...}
     local retvals = {}
-    local early, early_val = false, nil
-
-    --- Resolve callback with coroutine return value
-    --- @param ... any coroutine return values
-    local on_resolved = function(...) early, early_val = true, {...} end
-
-    --- Set AIO resolver callback
-    --- @type aiothen
-    local resolve_event = function(callback)
-        if early then
-            callback(unpack(early_val))
-        else
-            on_resolved = callback
-        end
-    end
+    local on_resolved, resolve_event = self:prepare_promise()
 
     for i, task in ipairs(tasks) do
         table.insert(retvals, nil)
@@ -675,20 +653,7 @@ end
 function aio:chain(first, ...)
     local callbacks = {...}
     local at = 1
-    local early, early_val = false, nil
-    --- Resolve callback with coroutine return value
-    --- @param ... any coroutine return values
-    local on_resolved = function(...) early, early_val = true, {...} end
-
-    --- Set AIO resolver callback
-    --- @type aiothen
-    local resolve_event = function(callback)
-        if early then
-            callback(unpack(early_val))
-        else
-            on_resolved = callback
-        end
-    end
+    local on_resolved, resolve_event = self:prepare_promise()
 
     local function next_callback(...)
         if at > #callbacks then
