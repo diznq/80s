@@ -14,37 +14,7 @@
     <p>w3.org response:</p>
     <pre><?lua
         header("X-Server-Time", os.time())
-        function GET(host, script, accept)
-            local sock, err = aio:connect(ELFD, host, 80)
-            if sock then
-                -- coroutinized version
-                aio:cor1(sock, "on_connect", function(_, done)
-                    sock:write(
-                        string.format(
-                            "GET %s HTTP/1.1\r\nHost: %s\r\nAccept: %s\r\nConnection: close\r\n\r\n", 
-                            script,
-                            host,
-                            accept
-                        )
-                    )
-                    done(true)
-                end)
-
-                return aio:cor(sock, function(stream, done)
-                    local data = ""
-                    for chunk in stream do
-                        data = data .. chunk
-                        coroutine.yield()
-                    end
-                    done(data)
-                end)
-            else
-                return function(done)
-                    done("Failed to open socket")
-                end
-            end
-        end
-        GET("www.w3.org", "/", "text/html")(function(response)
+        HTTP:GET("www.w3.org", "/", "text/html")(function(response)
             write(response)
             done()
         end)
@@ -54,7 +24,7 @@
     <pre><?lua
         SQL:select("SELECT * FROM users")(function(users, err)
             if err then
-                write("SQL error happened: " .. err.error)
+                write("SQL error happened: " .. err)
             else
                 for i, user in ipairs(users) do
                     write("Name: " .. user.name .. "\n")

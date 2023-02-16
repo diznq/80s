@@ -466,16 +466,18 @@ function aio:cor2(target, event_handler, close_handler, callback)
         running = false
 
         if not ok then
-            print("error", result)
+            print("aio.cor("..event_handler..") failed", result)
         end
 
         -- in case close event was invoked from the coroutine, it shall be handled here
         if ended then
-            ok, result = coroutine.resume(cor, provider, resolver)
-            ended = false
+            if coroutine.status(cor) ~= "dead" then
+                ok, result = coroutine.resume(cor, provider, resolver)
+                ended = false
 
-            if not ok then
-                print("error", result)
+                if not ok then
+                    print("aio.cor(" .. event_handler .."|close) failed", result)
+                end
             end
         end
     end
@@ -500,7 +502,7 @@ function aio:cor2(target, event_handler, close_handler, callback)
             else
                 local ok, result = coroutine.resume(cor, provider, resolver)
                 if not ok then
-                    print("error", result)
+                    print("aio.cor("..close_handler..") failed", result)
                 end
             end
         end
@@ -560,7 +562,7 @@ function aio:buffered_cor(target, reader)
 
         -- if we failed in very first step, return early and resolve with nil
         if not ok then
-            print(requested)
+            print("aio.buffered_cor: coroutine failed in initial run", requested)
             resolve(nil)
             return
         end
@@ -588,7 +590,7 @@ function aio:buffered_cor(target, reader)
 
                 if not ok then
                     -- if coroutine fails, exit and print error
-                    print(requested)
+                    print("aio.buffered_cor: coroutine failed to resume", requested)
                     nil_resolve = true
                     exit = true
                     break
@@ -612,7 +614,7 @@ function aio:buffered_cor(target, reader)
         if coroutine.status(reader) ~= "dead" then
             ok, requested = coroutine.resume(reader, nil, "eof")
             if not ok then
-                print(requested)
+                print("aio.buffered_cor: finishing coroutine failed", requested)
             end
         end
 
@@ -634,13 +636,16 @@ function aio:gather(...)
 
     for i, task in ipairs(tasks) do
         table.insert(retvals, nil)
-        task(function (value)
+        local ok, err = pcall(task, function (value)
             counter = counter - 1
             retvals[i] = value
             if counter == 0 then
                 on_resolved(unpack(retvals))
             end
         end)
+        if not ok then
+            print("aio.gather: task " .. i .. " failed to execute", err)
+        end
     end
 
     return resolve_event
@@ -666,13 +671,13 @@ function aio:chain(first, ...)
                 retval(function (...)
                     local ok, err = pcall(next_callback, ...)
                     if not ok then
-                        print(err)
+                        print("aio.chain: retval(next_callback) failed", err)
                     end
                 end)
             else
                 local ok, err = pcall(next_callback, retval)
                 if not ok then
-                    print(err)
+                    print("aio.chain: next_callback failed", err)
                 end
             end
         end
@@ -681,7 +686,7 @@ function aio:chain(first, ...)
     first(function (...)
         local ok, err = pcall(next_callback, ...)
         if not ok then
-            print(err)
+            print("aio.chain: first call failed", err)
         end
     end)
 

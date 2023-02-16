@@ -194,17 +194,9 @@ function mysql:connect(user, password, db, host, port)
             if not ok then
                 self.connected = false
                 on_resolved(nil, err)
-                for i, callback in ipairs(self.callbacks) do
-                    local invoke = type(self.active_callback) == "thread" and coroutine.resume or pcall
-                    local ok, inv_err = invoke(callback, nil, err)
-                    if not ok then
-                        print("mysql.connect: failed to execute callback on failed connect: ", inv_err)
-                    end
-                end
-                self.callbacks = {}
                 self.fd:close()
                 self.fd = nil
-                self:reset()
+                return
             else
                 self.connected = true
                 on_resolved(ok, nil)
@@ -212,6 +204,9 @@ function mysql:connect(user, password, db, host, port)
 
             while true do
                 local seq, command = self:read_packet()
+                if seq == nil then
+                    print("mysql.on_data: seq returned empty response")
+                end
 
                 -- responses from MySQL arrive sequentially, so we can call on_resolved callbacks in that fashion too
                 if #self.callbacks > 0 and seq == 1 then
@@ -365,7 +360,6 @@ function mysql:exec(query, ...)
         table.insert(self.callbacks, on_resolved)
         self:write_packet(0, string.char(3) .. query)
     end
-
     if not self.fd then
         self:connect(self.user, self.password, self.db)(function (ok, err)
             if not ok then
@@ -384,21 +378,21 @@ end
 --- Execute SQL Select query and return results
 ---@param query string SQL query
 ---@param ... any query parameters
----@return fun(on_resolved: fun(rows: table[]|nil, error: mysqlerror|nil)) promise
+---@return fun(on_resolved: fun(rows: table[]|nil, error: string|nil)) promise
 function mysql:select(query, ...)
     local resolve, resolve_event = aio:prepare_promise()
 
     self:exec(query, ...)(
         coroutine.create(function (seq, res)
             if not seq then
-                resolve(nil, {error="received invalid sequence"})
+                resolve(nil, res)
                 return
             end
             local reader = mysql_decoder:new(res)
             local is_error = res:byte(1, 1) == 255
             local n_fields = reader:lenint()
             if is_error then
-                resolve(nil, self:decode_packet(res))
+                resolve(nil, self:decode_packet(res).error)
                 return
             end
             --- @type mysqlfielddef[]
@@ -406,17 +400,17 @@ function mysql:select(query, ...)
             local rows = {}
             for i=1, n_fields do
                 local seq, field_res = coroutine.yield()
-                if seq == nil then resolve(nil, {error="network error while fetching fields"}) return end
+                if seq == nil then resolve(nil, "network error while fetching fields") return end
                 table.insert(fields, self:decode_field(field_res))
             end
             local _, eof = coroutine.yield()
             if eof:byte(1, 1) ~= 254 then
-                resolve(nil, {error="network error, expected eof after field definitions"})
+                resolve(nil, "network error, expected eof after field definitions")
                 return
             end
             while true do
                 seq, res = coroutine.yield()
-                if seq == nil then resolve(nil, {error="network error while fetching rows"}) return end
+                if seq == nil then resolve(nil, "network error while fetching rows") return end
                 if res:byte(1, 1) == 254 then break end
                 reader = mysql_decoder:new(res)
                 local row = {}
@@ -485,7 +479,7 @@ function aio:on_init()
         
         result(function (rows, err)
             if rows == nil and err ~= nil then
-                print("failed to select users: ", err.error)
+                print("failed to select users: ", err)
             elseif rows ~= nil then
                 for i, user in ipairs(rows) do
                     print("id: ", user.id, "name: ", user.name)

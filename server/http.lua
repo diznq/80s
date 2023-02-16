@@ -1,9 +1,11 @@
 require("aio.aio")
 local mysql = require("server.mysql")
 local templates = require("server.templates")
+local http_client = require("server.http_client")
 
 --- @class mysql
 SQL = nil
+HTTP = http_client
 
 local function create_endpoint(endpoint, mime, content, dynamic)
     aio:http_get(endpoint, function (self, query, headers, body)

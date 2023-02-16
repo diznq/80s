@@ -1,7 +1,10 @@
 ---@type aio
 require("aio.aio")
 
-function GET(host, script, accept)
+--- @class http_client
+local http_client = {}
+
+function http_client:GET(host, script, accept)
     local sock, err = aio:connect(ELFD, host, 80)
     if sock then
         -- coroutinized version
@@ -31,10 +34,12 @@ function GET(host, script, accept)
 end
 
 function aio:on_init(elfd, parentfd)
-    local task1 = GET("crymp.net", "/api/servers", "application/json")
-    local task2 = GET("crymp.net", "/api/mirror", "application/xml")
+    local task1 = http_client:GET("crymp.net", "/api/servers", "application/json")
+    local task2 = http_client:GET("crymp.net", "/api/mirror", "application/xml")
 
     aio:gather(task1, task2)(function (res1, res2)
         print("#/api/servers: " .. #res1 .. "\n#/api/mirror: " .. #res2)
     end)
 end
+
+return http_client
