@@ -185,17 +185,29 @@ function mysql:connect(user, password, db, host, port)
     end
 
     if not sock then
-        on_resolved("failed to create socket: " .. tostring(err))
+        on_resolved(nil, "failed to create socket: " .. tostring(err))
     else
         self.fd = sock
         aio:buffered_cor(self.fd, function (resolve)
             local ok, err = self:handshake()
+            
             if not ok then
                 self.connected = false
-                on_resolved(err)
+                on_resolved(nil, err)
+                for i, callback in ipairs(self.callbacks) do
+                    local invoke = type(self.active_callback) == "thread" and coroutine.resume or pcall
+                    local ok, inv_err = invoke(callback, nil, err)
+                    if not ok then
+                        print("mysql.connect: failed to execute callback on failed connect: ", inv_err)
+                    end
+                end
+                self.callbacks = {}
+                self.fd:close()
+                self.fd = nil
+                self:reset()
             else
-                self.connected = true;
-                on_resolved(ok)
+                self.connected = true
+                on_resolved(ok, nil)
             end
 
             while true do
@@ -219,10 +231,6 @@ function mysql:connect(user, password, db, host, port)
                     if not ok then
                         print("mysql.on_data: next call failed: ", res)
                     end
-                else
-                    print("unhandled command arrived: ", seq)
-                    --self:debug_packet("Received", command)
-                    --print("Command: ", command)
                 end
             end
         end)
@@ -325,7 +333,7 @@ function mysql:handshake()
     local seq, packet = self:read_packet()
     local method, scramble = self:decode_server_handshake(packet)
     self:write_packet(
-        seq + 1,
+        1,
         encode_le32(CONN_FLAGS) .. 
         encode_le32(1 << 24) ..
         string.char(8) ..

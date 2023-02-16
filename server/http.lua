@@ -65,7 +65,11 @@ init_dir("server/public_html/")
 
 function aio:on_init()
     SQL = mysql:new()
-    SQL:connect("80s", "password", "db80")
+    SQL:connect("80s", "password", "db80")(function (ok, err)
+        if not ok then
+            print("Failed to connect to SQL: ", err)
+        end
+    end)
 end
 
 aio:http_post("/reload", function (self, query, headers, body)

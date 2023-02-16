@@ -54,7 +54,7 @@
     <pre><?lua
         SQL:select("SELECT * FROM users")(function(users, err)
             if err then
-                write("SQL error happened: ", err.error)
+                write("SQL error happened: " .. err.error)
             else
                 for i, user in ipairs(users) do
                     write("Name: " .. user.name .. "\n")
