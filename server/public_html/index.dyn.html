@@ -14,10 +14,15 @@
     <p>w3.org response:</p>
     <pre><?lua
         header("X-Server-Time", os.time())
-        HTTP:GET("www.w3.org", "/", "text/html")(function(response)
-            write(response)
+        if query.w3 then
+            HTTP:GET("www.w3.org", "/", "text/html")(function(response)
+                write(response)
+                done()
+            end)
+        else
+            write("w3 was not requested")
             done()
-        end)
+        end
     ?></pre>
 
     <h3>Users:</h3>
