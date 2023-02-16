@@ -1,15 +1,21 @@
 require("aio.aio")
 
+--- @alias mysqlerror {error: string} mysql error
+--- @alias mysqlok {ok: boolean, affected_rows: integer, last_insert_id: integer, status_flags: integer, warnings: integer, info: string|nil} mysql ok
+
 --- @class mysql
 local mysql = {
     --- @type aiosocket
     fd = nil,
+    connected = false,   -- whether we are authenticated to db
+    callbacks = {},
 
     user = "root",
     password = "toor",
     host = "127.0.0.1",
     port = 3306,
-    db = ""
+    db = "",
+    sequence_id = 0
 }
 
 local CLIENT_PROTOCOL_41 = 512
@@ -17,6 +23,8 @@ local CLIENT_CONNECT_WITH_DB = 8
 local CLIENT_PLUGIN_AUTH = 1 << 19
 local CLIENT_CONNECT_ATTRS = 1 << 20
 local CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA = 1 << 24
+local CLIENT_QUERY_ATTRIBUTES = 1 << 27
+local CONN_FLAGS = 0x0FA68D
 
 local function encode_le32(number)
     local d = number & 255
@@ -41,12 +49,93 @@ local function encode_str(str)
     return str .. "\0"
 end
 
+---@class mysql_decoder
+local mysql_decoder = {ptr=1, data=""}
+
+--- Create new MySQL decoder instance
+---@param data string packet data
+---@return mysql_decoder instance
+function mysql_decoder:new(data)
+    local instance = {data=data, ptr=1}
+    setmetatable(instance, self)
+    self.__index = self
+    return instance
+end
+
+--- Read data
+--- @param n any
+--- @return string
+function mysql_decoder:read(n)
+    local chunk = self.data:sub(self.ptr, self.ptr + n - 1)
+    self.ptr = self.ptr + n
+    return chunk
+end
+
+--- Read zero terminated string
+---@return string
+function mysql_decoder:zero_terminated_string()
+    local start = self.data:find("\0", self.ptr, true)
+    if start then
+        local str = self.data:sub(self.ptr, start - 1)
+        self.ptr = start + 1
+        return str
+    end
+    return ""
+end
+
+--- Read length encoded int variable length string
+---@return string
+function mysql_decoder:var_string()
+    return self:read(self:lenint())
+end
+
+--- Read remaining contents
+---@return string
+function mysql_decoder:eof()
+    local str = self.data:sub(self.ptr)
+    self.ptr = #self.data
+    return str
+end
+
+--- Read low endian integer
+---@param size integer number of bytes
+---@return integer result
+function mysql_decoder:int(size)
+    local bytes = {self.data:byte(self.ptr, self.ptr + size - 1)}
+    local value = 0
+    for i=1,#bytes do
+        local byte = bytes[i]
+        value = value | (byte << ((i - 1) * 8))
+    end
+    self.ptr = self.ptr + size
+    return value
+end
+
+--- Read length-encoded integer
+---@return integer result
+function mysql_decoder:lenint()
+    local int = self:int(1)
+    if int >= 251 then
+        if int == 251 then
+            return self:int(2)
+        elseif int == 252 then
+            return self:int(3)
+        elseif int == 253 then
+            return self:int(8)
+        else
+            -- reserved
+            return 0
+        end
+    else
+        return int
+    end
+end
+
 --- Initialize new MySQL instance
 ---@return mysql instance
 function mysql:new()
+    --- @type mysql
     local instance = {
-        --- @type aiosocket
-        fd = nil,
         user = "root",
         password = "toor",
         host = "127.0.0.1",
@@ -55,7 +144,15 @@ function mysql:new()
     }
     setmetatable(instance, self)
     self.__index = self
+    instance:reset()
     return instance
+end
+
+function mysql:reset()
+    self.fd = nil
+    self.sequence_id = 0
+    self.connected = false
+    self.callbacks = {}
 end
 
 --- Connect to MySQL server, supports only mysql_native_password auth as of ow
@@ -71,29 +168,48 @@ function mysql:connect(user, password, db, host, port)
     self.user = user
     self.db = db
     self.password = password
+    self.sequence_id = 0
 
     local on_resolved, resolve_event = aio:prepare_promise()
 
-    local sock, err = aio:connect(ELFD, self.host, self.port)
+    --- @type aiosocket|nil, string|nil
+    local sock, err = self.fd, nil
+    
+    if not sock then
+        sock, err = aio:connect(ELFD, self.host, self.port)
+    end
 
     if not sock then
         on_resolved("failed to create socket: " .. tostring(err))
     else
         self.fd = sock
-        function sock:on_connect(elfd, childfd)
-
-        end
         aio:buffered_cor(self.fd, function (resolve)
             local ok, err = self:handshake()
             if not ok then
+                self.connected = false
                 on_resolved(err)
             else
+                self.connected = true;
                 on_resolved(ok)
             end
 
             while true do
                 local seq, command = self:read_packet()
-                self:debug_packet("Received", command)
+
+                -- responses from MySQL arrive sequentially, so we can call on_resolved callbacks in that fashion too
+                if #self.callbacks > 0 then
+                    local first = self.callbacks[1]
+                    table.remove(self.callbacks, 1)
+                    -- use protected call, so it doesn't break our loop
+                    local ok, res =  pcall(first, seq, command)
+                    if not ok then
+                        print(res)
+                    end
+                else
+                    print("unhandled command arrived: ", seq)
+                    self:debug_packet("Received", command)
+                    --print("Command: ", command)
+                end
             end
         end)
     end
@@ -119,9 +235,18 @@ end
 ---@return string packet payload
 function mysql:read_packet()
     local length = coroutine.yield(4)
+    if length == nil then
+        self:reset()
+        return 0, ""
+    end
     local d, c, b, a = length:byte(1, 5)
     length = b * 65536 + c * 256 + d
-    return a, coroutine.yield(length)
+    local packet = coroutine.yield(length)
+    if packet == nil then
+        self:reset()
+        return 0, ""
+    end
+    return a, packet
 end
 
 --- Write MySQL client packet
@@ -129,8 +254,20 @@ end
 ---@param packet string payload
 ---@return boolean ok true if write was ok
 function mysql:write_packet(seq, packet)
+    if not self.fd then
+        print("mysql.write_packet: self.fd is nil")
+        self:reset()
+        return false
+    end
+
     local pkt = encode_le24(#packet).. string.char(seq) .. packet
-    return self.fd:write(pkt, false)
+
+    local res = self.fd:write(pkt, false)
+    if not res then
+        print("mysql.write_packet: socket write failed")
+        self:reset()
+    end
+    return res
 end
 
 --- Perform MySQL password/scramble hash
@@ -175,7 +312,7 @@ function mysql:handshake()
     local method, scramble = self:decode_server_handshake(packet)
     self:write_packet(
         seq + 1,
-        encode_le32(0x0FA68D) .. 
+        encode_le32(CONN_FLAGS) .. 
         encode_le32(1 << 24) ..
         string.char(8) ..
         ("\0"):rep(23) ..
@@ -195,11 +332,71 @@ function mysql:handshake()
     end
 end
 
+--- Execute SQL query
+---@param query string query
+---@param ... string arguments
+---@return fun(on_resolved: fun(seq: integer, response: string)) promise response promise
+function mysql:exec(query, ...)
+    local params = {...}
+    local on_resolved, resolve_event = aio:prepare_promise()
+    local executor = function()
+        table.insert(self.callbacks, on_resolved)
+        self:write_packet(0, string.char(3) .. query)
+    end
+
+    if not self.fd then
+        self:connect(self.user, self.password, self.db)(function (ok, err)
+            if not ok then
+                on_resolved(nil, err)
+            else
+                executor()
+            end
+        end)
+    else
+        executor()
+    end
+
+    return resolve_event
+end
+
+--- Decode MySQL server response
+---@param packet string response
+---@return mysqlerror|mysqlok decoded decoded response
+function mysql:decode_packet(packet)
+    local packet_type = packet:byte(1, 1)
+    if packet_type == 255 then
+        return {
+            error = packet:sub(10)
+        }
+    elseif packet_type == 0 then
+        local reader = mysql_decoder:new(packet:sub(2))
+        return {
+            ok = true,
+            affected_rows = reader:lenint(),
+            last_insert_id = reader:lenint(),
+            status_flags = reader:int(2),
+            warnings = reader:int(2),
+            info = reader:eof()
+        }
+    end
+    return {}
+end
+
 function aio:on_init()
     local sql = mysql:new()
 
-    sql:connect("80s", "password", "db80")(function (...)
-        print("Connection status: ", ...)
+    sql:connect("80s", "password", "db80")(function (ok, err)
+        print("Connected: ", ok)
+        sql:exec("SELECT * FROM users;")(function (seq, res)
+            local result = sql:decode_packet(res)
+            if result.error then
+                print(result.error)
+            else
+                for k, v in pairs(result) do
+                    print(k, v)
+                end
+            end
+        end)
     end)
 end
 

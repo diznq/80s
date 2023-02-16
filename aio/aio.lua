@@ -616,6 +616,14 @@ function aio:buffered_cor(target, reader)
             coroutine.yield()
         end
 
+        -- after main stream is over, signalize end by sending nil to the reader
+        if coroutine.status(reader) ~= "dead" then
+            ok, requested = coroutine.resume(reader, nil, "eof")
+            if not ok then
+                print(requested)
+            end
+        end
+
         -- if coroutine failed, resolve with nil value
         if nil_resolve then
             resolve(nil)
