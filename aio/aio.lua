@@ -4,6 +4,7 @@
 --- @field connect fun(elfd: lightuserdata, host: string, port: integer): fd: lightuserdata|nil, err: string|nil open a new network connection
 --- @field reload fun() reload server
 --- @field listdir fun(dir: string): string[] list files in directory
+--- @field sha1 fun(data: string): string perform sha1(data), returns bytestring with raw data
 net = net or {}
 
 --- @type lightuserdata
@@ -461,6 +462,13 @@ function aio:cor2(target, event_handler, close_handler, callback)
     target[event_handler] = function(self, epfd, chdfd, ...)
         data = {...}
 
+        -- if coroutine finished it's job, unsubscribe the event handler
+        local status = coroutine.status(cor)
+        if status == "dead" then
+            target[event_handler] = function () end
+            return
+        end
+
         running = true
         local ok, result = coroutine.resume(cor, provider, resolver)
         running = false
@@ -483,11 +491,18 @@ function aio:cor2(target, event_handler, close_handler, callback)
     -- closing event handler that sends nil signal to coroutine to terminate the iterator
     if close_handler ~= nil then
         target[close_handler] = function(self, ...)
+            local status = coroutine.status(cor)
+            if status == "dead" then
+                target[close_handler] = function () end
+                return
+            end
+
             data = nil
             -- it might be possible that while coroutine is running, it issues a write together
             -- with close, in that case, this would be called while coroutine is still running
             -- and fail, therefore we issue ended=true signal, so after main handler finishes
             -- its job, it will close the coroutine for us instead
+            
             if running then
                 ended = true
             else
@@ -519,6 +534,93 @@ end
 --- @return aiothen
 function aio:cor(target, callback)
     return self:cor2(target, "on_data", "on_close", callback)
+end
+
+
+--- Buffered reader of aio:cor. Allows to read data stream
+--- in buffered manner by calling coroutine.yield(n) to receive
+--- n bytes of data from network or if n is a string, coroutine
+--- is resumed after delimiter n in data was encountered, which
+--- is useful for tasks like get all bytes until \0 or \r\n is
+--- encountered.
+---
+--- Example:
+--- aio:buffered_cor(fd, function(resolve)
+---   local length = tonumber(coroutine.yield(4))
+---   local data = coroutine.yield(length)
+---   resolve(data)
+--- end)
+---@param target aiosocket file descriptor
+---@param reader fun(resolve: fun(...: any)) reader coroutine
+---@return aiothen 
+function aio:buffered_cor(target, reader)
+    return self:cor(target, function (stream, resolve)
+        local reader = coroutine.create(reader)
+        -- resume the coroutine the first time and receive initial
+        -- requested number of bytes to be read
+        local ok, requested = coroutine.resume(reader, resolve)
+        local read = ""
+        local req_delim = false
+        local exit = requested == nil
+        local nil_resolve = false
+
+        req_delim = type(requested) == "string"
+
+        -- if we failed in very first step, return early and resolve with nil
+        if not ok then
+            print(requested)
+            resolve(nil)
+            return
+        end
+
+        -- iterate over bytes from network as we receive them
+        for data in stream do
+            --- @type string
+            read = read .. data
+
+            -- check if state is ok, and if we read >= bytes requested to read
+            while not exit and ok do
+                local pivot = requested
+                local skip = 1
+                if req_delim then
+                    pivot = read:find(requested, 0, true)
+                    skip = #requested
+                end
+                if not pivot or pivot > #read then
+                    break
+                end
+                -- iterate over all surplus we have and resume the receiver coroutine
+                -- with chunks of size requested by it
+                ok, requested = coroutine.resume(reader, read:sub(1, pivot))
+                req_delim = type(requested) == "string"
+
+                if not ok then
+                    -- if coroutine fails, exit and print error
+                    print(requested)
+                    nil_resolve = true
+                    exit = true
+                    break
+                elseif requested == nil then
+                    -- if coroutine is finished, exit
+                    exit = true
+                    break
+                end
+                if requested ~= nil then
+                    read = read:sub(pivot + skip)
+                end
+            end
+            -- if we ended reading in buffered reader, exit this loop
+            if exit then
+                break
+            end
+            coroutine.yield()
+        end
+
+        -- if coroutine failed, resolve with nil value
+        if nil_resolve then
+            resolve(nil)
+        end
+    end)
 end
 
 --- Gather multiple asynchronous tasks
@@ -576,7 +678,7 @@ function aio:chain(first, ...)
         if early then
             callback(unpack(early_val))
         else
-        on_resolved = callback
+            on_resolved = callback
         end
     end
 

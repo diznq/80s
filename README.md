@@ -16,7 +16,14 @@ Prerequisites:
 - installed Lua librares (lualib.a and Lua headers possibly in /usr/local/include)
 - Linux (as of now, only epoll is supported as event loop provider, kqueue and IOCP to be in future)
 
-To compile the project, simply run `./build.sh` or `JIT=true ./build.sh` to build with LuaJIT.
+To compile the project, simply run `./build.sh`.
+
+You can also define following environment variables before running the build to enable certain features:
+
+- `JIT=true`: use LuaJIT instead of Lua
+- `CRYPTO=true`: enable cryptographic extensions, so Lua has hashing functions
+
+i.e. `JIT=true CRYPTO=true ./build.sh`
 
 ## Running
 
@@ -37,14 +44,19 @@ Naming conventions:
 - `_G.on_connect(elfd, childfd)`: called when socket successfuly connects
 - `_G.on_init(elfd, parentfd)`: called when epoll is initialized
 
-### Output APIs
+### Lua APIs
 - `net.connect(elfd, hostName, port)`: create new TCP socket, returns `socket, error`
 - `net.write(elfd, childfd, data, close?)`: write data on socket, if close is true, close the connection after write
 - `net.close(elfd, childfd)`: close a socket
 - `net.reload()`: reload entrypoint Lua
 - `net.listdir(dir)`: list files in a directory, directories will end with `/` in returned result
 
-## Default `server/http.lua` as content server
+If binary is compiled with `-DCRYPTOGRAPHIC_EXTENSIONS=1`, also following APIs are available:
+
+- `net.sha1(data)`: returns raw SHA1 of data
+
+
+## Default server/http.lua as content server
 
 Default `http.lua` comes preconfigured to serve files in `public_html` and if file name contains `.dyn.` (i.e. `index.dyn.html`), it also applies templating, which make dynamic content possible.
 

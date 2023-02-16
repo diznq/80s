@@ -18,7 +18,10 @@
 #include "80s.h"
 #include "lua.h"
 
+#ifndef WORKERS
 #define WORKERS 4
+#endif
+
 #define WORKERS_MASK (WORKERS - 1)
 #define BUFSIZE 16384
 #define MAX_EVENTS 4096

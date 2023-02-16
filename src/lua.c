@@ -1,5 +1,10 @@
 #include "lua.h"
 #include "80s.h"
+
+#ifdef CRYPTOGRAPHIC_EXTENSIONS
+#include "lib/sha1.h"
+#endif
+
 #include <lualib.h>
 #include <lauxlib.h>
 
@@ -182,6 +187,17 @@ static int l_net_listdir(lua_State* L) {
     return 1;
 }
 
+#ifdef CRYPTOGRAPHIC_EXTENSIONS
+static int l_net_sha1(lua_State* L) {
+    size_t len;
+    char buffer[21];
+    const char *data = (const char*)lua_tolstring(L, 1, &len);
+    SHA1(buffer, data, (uint32_t)len);
+    lua_pushlstring(L, buffer, 20);
+    return 1;
+}
+#endif
+
 LUALIB_API int luaopen_net(lua_State *L) {
     const luaL_Reg netlib[] = {
         {"write", l_net_write},
@@ -189,6 +205,9 @@ LUALIB_API int luaopen_net(lua_State *L) {
         {"connect", l_net_connect},
         {"reload", l_net_reload},
         {"listdir", l_net_listdir},
+        #ifdef CRYPTOGRAPHIC_EXTENSIONS
+        {"sha1", l_net_sha1},
+        #endif
         {NULL, NULL}
     };
     #if LUA_VERSION_NUM > 501
