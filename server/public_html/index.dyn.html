@@ -49,5 +49,19 @@
             done()
         end)
     ?></pre>
+
+    <h3>Users:</h3>
+    <pre><?lua
+        SQL:select("SELECT * FROM users")(function(users, err)
+            if err then
+                write("SQL error happened: ", err.error)
+            else
+                for i, user in ipairs(users) do
+                    write("Name: " .. user.name .. "\n")
+                end
+            end
+            done()
+        end)
+    ?></pre>
 </body>
 </html>

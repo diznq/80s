@@ -1,5 +1,9 @@
 require("aio.aio")
+local mysql = require("server.mysql")
 local templates = require("server.templates")
+
+--- @class mysql
+SQL = nil
 
 local function create_endpoint(endpoint, mime, content, dynamic)
     aio:http_get(endpoint, function (self, query, headers, body)
@@ -58,6 +62,11 @@ local function init_dir(base, prefix)
 end
 
 init_dir("server/public_html/")
+
+function aio:on_init()
+    SQL = mysql:new()
+    SQL:connect("80s", "password", "db80")
+end
 
 aio:http_post("/reload", function (self, query, headers, body)
     net.reload()
