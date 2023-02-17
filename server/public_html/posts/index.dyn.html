@@ -26,7 +26,7 @@
         <?lua
             -- we expect CREATE TABLE posts(id int primary key auto_increment, author varchar(50), text varchar(255)) to exist
             
-            local posts, err = aio:await(SQL:select("SELECT * FROM posts ORDER BY id DESC"))
+            local posts, err = await(SQL:select("SELECT * FROM posts ORDER BY id DESC"))
             if err then
                 write("Failed to load posts: " .. err)
                 return done()

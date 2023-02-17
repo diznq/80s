@@ -392,8 +392,8 @@ function aio:on_http(fd, method, url, headers, body)
 end
 
 ---Prepare promise
----@return function on_resolved callback
----@return fun(on_resolved: fun(...: any)) resolver
+---@return function|thread on_resolved callback
+---@return aiothen resolver
 function aio:prepare_promise()
     local early, early_val = false, nil
 
@@ -401,14 +401,21 @@ function aio:prepare_promise()
     --- This code is indeed repeated 3x in this repository to avoid unnecessary
     --- encapsulation on on_resolved (as it would be changed later and reference would be lost)
     --- and save us some performance
-    --- @param ... any coroutine return values
+    --- @type aiocor|thread coroutine return values
     local on_resolved = function(...) early, early_val = true, {...} end
 
     --- Set AIO resolver callback
     --- @type aiothen
     local resolve_event = function(callback)
         if early then
-            callback(unpack(early_val))
+            if type(callback) == "thread" then
+                local ok, err = coroutine.resume(callback, unpack(early_val))
+                if not ok then
+                    error(err)
+                end
+            else
+                callback(unpack(early_val))
+            end
         else
             on_resolved = callback
         end
