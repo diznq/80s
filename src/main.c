@@ -22,6 +22,10 @@
 #define WORKERS 4
 #endif
 
+#if (WORKERS & (WORKERS - 1)) != 0
+#error number of workers must be a power of 2
+#endif
+
 #define WORKERS_MASK (WORKERS - 1)
 #define BUFSIZE 16384
 #define MAX_EVENTS 4096
