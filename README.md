@@ -100,7 +100,7 @@ To gather multiple parallel promises and get their overall results once all of t
 
 ```lua
 aio:gather(
-    http_client.GET("www.w3.org", "/", "text/html"), 
+    http_client.GET("w3.org", "/", "text/html"), 
     http_client.GET("en.wikipedia.org", "/", "text/html")
 )(function(w3, wiki)
     print("W3 response length: ", #w3)

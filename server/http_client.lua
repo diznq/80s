@@ -34,11 +34,12 @@ function http_client:GET(host, script, accept)
 end
 
 function aio:on_init(elfd, parentfd)
-    local task1 = http_client:GET("crymp.net", "/api/servers", "application/json")
-    local task2 = http_client:GET("crymp.net", "/api/mirror", "application/xml")
-
-    aio:gather(task1, task2)(function (res1, res2)
-        print("#/api/servers: " .. #res1 .. "\n#/api/mirror: " .. #res2)
+    aio:gather(
+        http_client:GET("w3.org", "/", "text/html"), 
+        http_client:GET("en.wikipedia.org", "/", "text/html")
+    )(function(w3, wiki)
+        print("W3 response length: ", #w3)
+        print("Wiki response length: ", #wiki)
     end)
 end
 
