@@ -14,6 +14,7 @@ Over time I already grew tired of insane software complexity of modern software 
 
 Prerequisites:
 - installed Lua librares (lualib.a and Lua headers possibly in /usr/local/include)
+- installed OpenSSL libraries if cryptograpic extensions are enabled
 - Linux (as of now, only epoll is supported as event loop provider, kqueue and IOCP to be in future)
 
 To compile the project, simply run `./build.sh`.
@@ -53,7 +54,8 @@ Naming conventions:
 
 If binary is compiled with `-DCRYPTOGRAPHIC_EXTENSIONS=1`, also following APIs are available:
 
-- `net.sha1(data)`: returns raw SHA1 of data
+- `crext.sha1(data)`: returns raw SHA1 of data
+- `crext.sha256(data)`: returns raw SHA256 of data
 
 ## Async helpers
 

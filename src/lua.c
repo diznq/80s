@@ -2,7 +2,7 @@
 #include "80s.h"
 
 #ifdef CRYPTOGRAPHIC_EXTENSIONS
-#include "lib/sha1.h"
+#include <openssl/sha.h>
 #endif
 
 #include <lualib.h>
@@ -12,9 +12,6 @@
 #include <stdlib.h>
 #include <errno.h>
 
-#ifndef _BSD_SOURCE
-#define _BSD_SOURCE
-#endif
 #include <unistd.h>
 #include <dirent.h>
 #include <fcntl.h>
@@ -190,10 +187,21 @@ static int l_net_listdir(lua_State* L) {
 #ifdef CRYPTOGRAPHIC_EXTENSIONS
 static int l_net_sha1(lua_State* L) {
     size_t len;
-    char buffer[21];
+    char buffer[20];
+    SHA_CTX ctx;
     const char *data = (const char*)lua_tolstring(L, 1, &len);
-    SHA1(buffer, data, (uint32_t)len);
+    SHA1(data, len, buffer);
     lua_pushlstring(L, buffer, 20);
+    return 1;
+}
+
+static int l_net_sha256(lua_State* L) {
+    size_t len;
+    char buffer[32];
+    SHA_CTX ctx;
+    const char *data = (const char*)lua_tolstring(L, 1, &len);
+    SHA1(data, len, buffer);
+    lua_pushlstring(L, buffer, 32);
     return 1;
 }
 #endif
@@ -205,9 +213,6 @@ LUALIB_API int luaopen_net(lua_State *L) {
         {"connect", l_net_connect},
         {"reload", l_net_reload},
         {"listdir", l_net_listdir},
-        #ifdef CRYPTOGRAPHIC_EXTENSIONS
-        {"sha1", l_net_sha1},
-        #endif
         {NULL, NULL}
     };
     #if LUA_VERSION_NUM > 501
@@ -217,6 +222,22 @@ LUALIB_API int luaopen_net(lua_State *L) {
     #endif
     return 1;
 }
+
+#ifdef CRYPTOGRAPHIC_EXTENSIONS
+LUALIB_API int luaopen_cryptoext(lua_State *L) {
+    const luaL_Reg netlib[] = {
+        {"sha1", l_net_sha1},
+        {"sha256", l_net_sha256},
+        {NULL, NULL}
+    };
+    #if LUA_VERSION_NUM > 501
+    luaL_newlib(L, netlib);
+    #else
+    luaL_openlib(L, "crext", netlib, 0);
+    #endif
+    return 1;
+}
+#endif
 
 lua_State* create_lua(int elfd, int id, const char* entrypoint) {
     int status;
@@ -233,6 +254,15 @@ lua_State* create_lua(int elfd, int id, const char* entrypoint) {
     lua_pop(L, 1);
     #else
     luaopen_net(L);
+    #endif
+
+    #ifdef CRYPTOGRAPHIC_EXTENSIONS
+    #if LUA_VERSION_NUM > 501
+    luaL_requiref(L, "crext", luaopen_cryptoext, 1);
+    lua_pop(L, 1);
+    #else
+    luaopen_cryptoext(L);
+    #endif
     #endif
 
     lua_pushinteger(L, id);
