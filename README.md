@@ -127,7 +127,7 @@ aio:chain(
 end)
 ```
 
-### Coroutinization
+### Coroutinization
 
 To make coding easier, `aio:cor` and `aio:buffered_cor` exist to make code look more sequential when dealing with events of incoming data.
 
