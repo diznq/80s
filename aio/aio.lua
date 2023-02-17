@@ -4,8 +4,12 @@
 --- @field connect fun(elfd: lightuserdata, host: string, port: integer): fd: lightuserdata|nil, err: string|nil open a new network connection
 --- @field reload fun() reload server
 --- @field listdir fun(dir: string): string[] list files in directory
---- @field sha1 fun(data: string): string perform sha1(data), returns bytestring with raw data
 net = net or {}
+
+--- @class crext
+--- @field sha1 fun(data: string): string perform sha1(data), returns bytestring with raw data
+--- @field sha256 fun(data: string): string perform sha256(data), returns bytestring with raw data
+crext = crext or {}
 
 --- @type lightuserdata
 ELFD = ELFD or nil

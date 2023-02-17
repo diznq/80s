@@ -400,7 +400,7 @@ end
 function mysql:exec(query, ...)
     local on_resolved, resolve_event = aio:prepare_promise()
     self:raw_exec(query, ...)(function (_, response)
-        local response = self:decode_field(response)
+        local response = self:decode_packet(response)
         on_resolved(response)
     end)
     return resolve_event
