@@ -34,12 +34,13 @@ function http_client:GET(host, script, accept)
 end
 
 function aio:on_init(elfd, parentfd)
-    aio:gather(
-        http_client:GET("w3.org", "/", "text/html"), 
-        http_client:GET("en.wikipedia.org", "/", "text/html")
-    )(function(w3, wiki)
-        print("W3 response length: ", #w3)
-        print("Wiki response length: ", #wiki)
+    aio:async(function()
+        local w3, wiki = aio:await(aio:gather(
+            http_client:GET("w3.org", "/", "text/html"), 
+            http_client:GET("en.wikipedia.org", "/", "text/html")
+        ))
+        print("W3: ", #w3)
+        print("Wiki: ", #wiki)
     end)
 end
 

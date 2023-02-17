@@ -173,12 +173,30 @@ end)(function(server_name, rest)
 end)
 ```
 
+### Awaiting promises
+Coroutinization also allows for awaiting promises, using `aio:async` and `aio:await`. `aio:await` must always be ran from within `aio:async` context.
+
+Example with previous `aio:gather` use case:
+
+```lua
+aio:async(function()
+    local w3, wiki = aio:await(aio:gather(
+        http_client.GET("w3.org", "/", "text/html"), 
+        http_client.GET("en.wikipedia.org", "/", "text/html")
+    ))
+    print("W3 response length: ", #w3)
+    print("Wiki response length: ", #wiki)
+end)
+```
+
 ## Default server/http.lua as content server
 
 Default `http.lua` comes preconfigured to serve files in `public_html` and if file name contains `.dyn.` (i.e. `index.dyn.html`), it also applies templating, which make dynamic content possible. Also if file name begins with `post.`/`delete.`/`put.`, it is used for handling `POST`/`DELETE`/`PUT` requests instead of default `GET`.
 
 ### Templating syntax
-To insert dynamic content to the file, wrap Lua code between either `<?lu ... ?>` for synchronous code or `<?lua ... ?>` asynchronous code. All asynchronous dynamic code blocks are executed in parallel, there is no guarantee of sequential code execution.
+To insert dynamic content to the file, wrap Lua code between either `<?lu ... ?>` for synchronous code or `<?lua ... ?>` asynchronous code. 
+
+All asynchronous dynamic code blocks are executed in parallel and in `aio:async` context, so `aio:await` is available for use. As for order of dynamic content blocks within file, there is no guarantee of sequential code execution.
 
 The code must use `write(text, ...)` to write dynamic content, which will be replaced back into original page and in case the call is asynchronous, finish the generation by calling `done()` that is available during the execution.
 
@@ -189,6 +207,7 @@ During code execution, several variables are set within context:
 - `body`: request body
 - `session`: session context
 - `status(http_status)`: write HTTP status
+- `await(promise)`: awaits a promise and returns its result
 - `header(header_name, header_value)`: write HTTP header
 - `write(text, ...)`: writer content, if ... is present, it is equal to `string.format(text, escape(x) for x in ...)`, otherwise just text
 - `escape(text)`: HTML escape the text

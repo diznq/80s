@@ -16,6 +16,10 @@ local function escape(text)
     return text:gsub("%&", "&amp;"):gsub("%\"", "&quot;"):gsub("%<", "&lt;"):gsub("%>", "&gt;")
 end
 
+local function await(callback)
+    return aio:await(callback)
+end
+
 
 --- Render a dynamic template file
 --- Syntax for dynamic content is:
@@ -37,40 +41,43 @@ function templates:render(session, headers, body, endpoint, query, mime, content
     local on_resolved, resolve_event = aio:prepare_promise()
 
     local new = content:gsub("<%?lu(a?)(.-)%?>", function (async, match)
-        local code = load("return function(session, headers, body, endpoint, query, write, escape, header, status, done)" .. match .. "end")()
+        local code = load("return function(session, headers, body, endpoint, query, write, escape, await, header, status, done)" .. match .. "end")()
         local data = ""
         table.insert(parts, 
         function(done)
-            code(
-                session,
-                headers,
-                body,
-                endpoint, 
-                query,
-                function(text, ...)
-                    local params = {...}
-                    if #params > 0 then
-                        for i, v in ipairs(params) do
-                            params[i] = escape(v)
+            aio:async(function()
+                code(
+                    session,
+                    headers,
+                    body,
+                    endpoint, 
+                    query,
+                    function(text, ...)
+                        local params = {...}
+                        if #params > 0 then
+                            for i, v in ipairs(params) do
+                                params[i] = escape(v)
+                            end
+                            data = data .. string.format(text, unpack(params))
+                        else
+                            data = data .. text
                         end
-                        data = data .. string.format(text, unpack(params))
-                    else
-                        data = data .. text
-                    end
-                end, 
-                escape,
-                function(name, value)
-                    writeHeaders[name] = value
-                end,
-                function(value)
-                    status = value
-                end,
-                function ()
+                    end, 
+                    escape,
+                    await,
+                    function(name, value)
+                        writeHeaders[name] = value
+                    end,
+                    function(value)
+                        status = value
+                    end,
+                    function ()
+                        done(data)
+                    end)
+                if #async == 0 then
                     done(data)
-                end)
-            if #async == 0 then
-                done(data)
-            end
+                end
+            end)
         end)
         return "<?l" .. tostring(#parts) .. "?>"
     end)

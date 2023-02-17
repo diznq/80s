@@ -26,21 +26,19 @@
         <?lua
             -- we expect CREATE TABLE posts(id int primary key auto_increment, author varchar(50), text varchar(255)) to exist
             
-            SQL:select("SELECT * FROM posts ORDER BY id DESC")
-            (function(posts, err)
-                if err then
-                    write("Failed to load posts: " .. err)
-                    return done()
-                end
-                write("There are " .. #posts .. " posts")
-                for i, post in ipairs(posts) do
-                    write([[<div class="post">
-                        <div class="author">%s</div>
-                        <div class="text">%s</div>    
-                    </div>]], post.author, post.text)
-                end
-                done()
-            end)
+            local posts, err = aio:await(SQL:select("SELECT * FROM posts ORDER BY id DESC"))
+            if err then
+                write("Failed to load posts: " .. err)
+                return done()
+            end
+            write("There are " .. #posts .. " posts")
+            for i, post in ipairs(posts) do
+                write([[<div class="post">
+                    <div class="author">%s</div>
+                    <div class="text">%s</div>    
+                </div>]], post.author, post.text)
+            end
+            done()
         ?>
     </div>
 </body>

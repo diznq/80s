@@ -19,9 +19,9 @@ WORKERID = WORKERID or nil
 
 --- Aliases to be defined here
 --- @alias aiostream fun() : any ... AIO input stream
---- @alias aiocor fun(stream: aiostream, resolve?: fun(value: any)): nil AIO coroutine
+--- @alias aiocor fun(stream: aiostream, resolve?: fun(value: any)|thread): nil AIO coroutine
 --- @alias aioresolve fun(result: any): nil AIO resolver
---- @alias aiothen fun(on_resolved: fun(...: any)) AIO then
+--- @alias aiothen fun(on_resolved: fun(...: any)|thread) AIO then
 --- @alias aiohttphandler fun(self: aiosocket, query: string, headers: {[string]: string}, body: string) AIO HTTP handler
 
 unpack = unpack or table.unpack
@@ -549,6 +549,31 @@ end
 ---@return thread coroutine
 function aio:cor0(callback)
     return coroutine.create(callback)
+end
+
+--- Execute code in async environment so await can be used
+---@param callback function to be ran
+---@return thread coroutine
+---@return boolean ok value
+function aio:async(callback)
+    local cor = aio:cor0(callback)
+    return cor, coroutine.resume(cor)
+end
+
+--- Await promise
+---@param promise aiothen|thread promise object
+---@return any ... response
+function aio:await(promise)
+    local self_cor = coroutine.running()
+
+    if type(promise) == "thread" then
+        return coroutine.resume(promise)
+    else
+        promise(function(...)
+            coroutine.resume(self_cor, ...)
+        end)
+    end
+    return coroutine.yield()
 end
 
 

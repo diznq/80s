@@ -18,10 +18,8 @@
     <pre><?lua
         header("X-Server-Time", os.time())
         if query.w3 then
-            HTTP:GET("www.w3.org", "/", "text/html")(function(response)
-                write(response)
-                done()
-            end)
+            write(await(HTTP:GET("www.w3.org", "/", "text/html")))
+            done()
         else
             write("w3 was not requested")
             done()

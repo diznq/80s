@@ -5,15 +5,13 @@
         write("Missing body: " .. body)
         return done()
     end
-    SQL:exec("INSERT INTO posts(author, text) VALUES('%s', '%s')", post.name, post.text)
-    (function(result)
-        if result.error then
-            status("500 Internal Server Error")
-            write("Failed to write post to database: %s", result.error)
-            return done()
-        end
-        status("302 Found")
-        header("Location", "/posts/?post=" .. result.last_insert_id)
-        done()
-    end)
+    local result = await(SQL:exec("INSERT INTO posts(author, text) VALUES('%s', '%s')", post.name, post.text))
+    if result.error then
+        status("500 Internal Server Error")
+        write("Failed to write post to database: %s", result.error)
+        return done()
+    end
+    status("302 Found")
+    header("Location", "/posts/?post=" .. result.last_insert_id)
+    done()
 ?>
