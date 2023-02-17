@@ -7,8 +7,9 @@ local http_client = require("server.http_client")
 SQL = nil
 HTTP = http_client
 
-local function create_endpoint(endpoint, mime, content, dynamic)
-    aio:http_get(endpoint, function (self, query, headers, body)
+local function create_endpoint(method, endpoint, mime, content, dynamic)
+    aio:http_any(method, endpoint, function (self, query, headers, body)
+        --for i, v in pairs(headers) do print(i, v) end
         if dynamic then
             -- process as dynamic template
             local session = {}
@@ -33,31 +34,49 @@ local function init_dir(base, prefix)
                 local content = f:read("*all")
                 f:close()
 
-                local mime = "text/html; charset=utf-8"
+                local mime = "text/plain; charset=utf-8"
                 local dynamic = false
+                local method = "GET"
 
                 --- if file contains .dyn., it will be ran through template engine in later stage
                 --- see process_dynamic for example
-                if file:match("%.dyn.*$") then
+                if file:match("%.dyn%..*$") then
                     dynamic = true
                 end
+                if file:match("^post%..*$") then
+                    method = "POST"
+                end
+                if file:match("^put%..*$") then
+                    method = "PUT"
+                end
+                if file:match("^delete%..*$") then
+                    method = "DELETE"
+                end
+                
                 if file:match("%.css$") then
                     mime = "text/css"
+                elseif file:match("%.html?$") then
+                    mime = "text/html"
                 elseif file:match("%.jpg$") then
                     mime = "image/jpeg"
                 elseif file:match("%.js$") then
-                    mime = "application/javascript"
+                    mime = "application/javascript; charset=utf-8"
+                elseif file:match("%.json$") then
+                    mime = "application/json; charset=utf-8"
                 end
 
                 -- omit .html from files so we get nice URLs
-                local endpoint = file:gsub("%.dyn", ""):gsub("%.html", "")
+                local endpoint = file
+                    :gsub("%.dyn", "")
+                    :gsub("^post%.", ""):gsub("^put%.", ""):gsub("^delete%.", "")
+                    :gsub("%.html", "")
 
                 -- /index.html can be simplified to /
                 if endpoint == "index" then
                     endpoint = ""
                 end
 
-                create_endpoint(prefix .. endpoint, mime, content, dynamic)
+                create_endpoint(method, prefix .. endpoint, mime, content, dynamic)
             end
         end
     end

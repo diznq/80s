@@ -1,0 +1,20 @@
+<?lua
+    local post = aio:parse_query(body)
+    if not post.submit or not post.name or not post.text or #post.name == 0 or #post.text == 0 then
+        status("400 Bad Request")
+        write("Missing body: " .. body)
+        return done()
+    end
+    SQL:exec("INSERT INTO posts(author, text) VALUES('%s', '%s')", post.name, post.text)
+    (function(seq, res)
+        local result = SQL:decode_packet(res)
+        if result.error then
+            status("500 Internal Server Error")
+            write("Failed to write post to database: %s", result.error)
+            return done()
+        end
+        status("302 Found")
+        header("Location", "/posts/?post=" .. result.last_insert_id)
+        done()
+    end)
+?>

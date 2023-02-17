@@ -165,15 +165,17 @@ function aio:handle_as_http(elfd, childfd, data, len)
             headerComplete = nil,
             bodyComplete = false, 
             bodyOverflow = false,
-            bodyLength = 0, 
+            bodyLength = 0,
             data = ""
         };
         for data in stream do
             -- check for header completion
+            local before = #req.data - 4
+            if before < 0 then before = 0 end
+            req.data = req.data .. data
             if req.headerComplete == nil then
-                req.headerComplete = data:find("\r\n\r\n", nil, true)
+                req.headerComplete = req.data:find("\r\n\r\n", before, true)
                 if req.headerComplete then
-                    req.headerComplete = req.headerComplete + #req.data
                     req.headerComplete = req.headerComplete + 3 -- offset by \r\n\r\n length
                     local length = req.data:match("[Cc]ontent%-[Ll]ength: (%d+)")
                     if length ~= nil then
@@ -181,8 +183,6 @@ function aio:handle_as_http(elfd, childfd, data, len)
                     end
                 end
             end
-
-            req.data = req.data .. data
 
             -- check for body completion
             if req.headerComplete and not req.bodyComplete then
@@ -270,6 +270,15 @@ end
 --- @param callback aiohttphandler handler
 function aio:http_post(url, callback)
     self.http.POST[url] = callback
+end
+
+--- Add HTTP any handler
+---@param method string HTTP method
+---@param url string URL
+---@param callback aiohttphandler handler
+function aio:http_any(method, url, callback)
+    self.http[method] = self.http[method] or {}
+    self.http[method][url] = callback
 end
 
 --- Create a new TCP socket to host:port
@@ -433,7 +442,7 @@ end
 --- @return aiothen
 function aio:cor2(target, event_handler, close_handler, callback)
     local data = nil
-    local cor = coroutine.create(callback)
+    local cor = self:cor0(callback)
     local on_resolved, resolve_event = self:prepare_promise()
 
     --- Resolver callable within coroutine
@@ -531,6 +540,14 @@ function aio:cor(target, callback)
 end
 
 
+--- Create a new coroutine
+---@param callback fun(...: any): any
+---@return thread coroutine
+function aio:cor0(callback)
+    return coroutine.create(callback)
+end
+
+
 --- Buffered reader of aio:cor. Allows to read data stream
 --- in buffered manner by calling coroutine.yield(n) to receive
 --- n bytes of data from network or if n is a string, coroutine
@@ -549,7 +566,7 @@ end
 ---@return aiothen 
 function aio:buffered_cor(target, reader)
     return self:cor(target, function (stream, resolve)
-        local reader = coroutine.create(reader)
+        local reader = self:cor0(reader)
         -- resume the coroutine the first time and receive initial
         -- requested number of bytes to be read
         local ok, requested = coroutine.resume(reader, resolve)
@@ -646,6 +663,10 @@ function aio:gather(...)
         if not ok then
             print("aio.gather: task " .. i .. " failed to execute", err)
         end
+    end
+
+    if #tasks == 0 then
+        on_resolved()
     end
 
     return resolve_event

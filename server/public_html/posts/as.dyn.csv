@@ -1,0 +1,14 @@
+<?lua
+    write("id,author,text\n")
+    SQL:select("SELECT * FROM posts ORDER BY id DESC")
+    (function(posts, err)
+        if err then
+            write("Failed to load posts: " .. err)
+            return done()
+        end
+        for i, post in ipairs(posts) do
+            write(string.format([[%s,%s,%s]] .. "\n", post.id, post.author, post.text))
+        end
+        done()
+    end)
+?>

@@ -8,6 +8,15 @@ local templates = {}
 --- @field status string response status
 --- @field content string rendered template
 
+--- HTML escape text
+---@param text string text
+---@return string text escaped text
+---@return integer matches
+local function escape(text)
+    return text:gsub("%&", "&amp;"):gsub("%\"", "&quot;"):gsub("%<", "&lt;"):gsub("%>", "&gt;")
+end
+
+
 --- Render a dynamic template file
 --- Syntax for dynamic content is:
 --- <?lu ... ?> for synchronous functions that don't have to use done() at the end
@@ -28,7 +37,7 @@ function templates:render(session, headers, body, endpoint, query, mime, content
     local on_resolved, resolve_event = aio:prepare_promise()
 
     local new = content:gsub("<%?lu(a?)(.-)%?>", function (async, match)
-        local code = load("return function(session, headers, body, endpoint, query, write, header, status, done)" .. match .. "end")()
+        local code = load("return function(session, headers, body, endpoint, query, write, escape, header, status, done)" .. match .. "end")()
         local data = ""
         table.insert(parts, 
         function(done)
@@ -37,13 +46,19 @@ function templates:render(session, headers, body, endpoint, query, mime, content
                 headers,
                 body,
                 endpoint, 
-                query, 
-                function(text, unsafe)
-                    if not unsafe then
-                        text = text:gsub("%&", "&amp;"):gsub("%\"", "&quot;"):gsub("%<", "&lt;"):gsub("%>", "&gt;") 
+                query,
+                function(text, ...)
+                    local params = {...}
+                    if #params > 0 then
+                        for i, v in ipairs(params) do
+                            params[i] = escape(v)
+                        end
+                        data = data .. string.format(text, unpack(params))
+                    else
+                        data = data .. text
                     end
-                    data = data .. text 
                 end, 
+                escape,
                 function(name, value)
                     writeHeaders[name] = value
                 end,

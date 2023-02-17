@@ -11,6 +11,9 @@
     <h1>Hello, <?lu write(query.name or "Nomad") ?></h1>
     <h2>Welcome to 80's HTTP server!</h2>
     <img src="/assets/srgen.jpg">
+
+    <p><a href="/posts/">Read posts</a></p>
+
     <p>w3.org response:</p>
     <pre><?lua
         header("X-Server-Time", os.time())
@@ -23,20 +26,6 @@
             write("w3 was not requested")
             done()
         end
-    ?></pre>
-
-    <h3>Users:</h3>
-    <pre><?lua
-        SQL:select("SELECT * FROM users")(function(users, err)
-            if err then
-                write("SQL error happened: " .. err)
-            else
-                for i, user in ipairs(users) do
-                    write("Name: " .. user.name .. "\n")
-                end
-            end
-            done()
-        end)
     ?></pre>
 </body>
 </html>

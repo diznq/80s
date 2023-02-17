@@ -349,16 +349,32 @@ function mysql:handshake()
     end
 end
 
---- Execute SQL query
+function mysql:escape(text)
+    return text
+        :gsub("\\", "\\\\")
+        :gsub("%'", "\\'")
+        :gsub("%\n", "\\n")
+        :gsub("%\r", "\\r")
+        :gsub("%\"", "\\\"")
+end
+
+--- Execute SQL query in raw mode
 ---@param query string query
 ---@param ... string arguments
 ---@return fun(on_resolved: fun(seq: integer, response: string)|thread) promise response promise
-function mysql:exec(query, ...)
+function mysql:raw_exec(query, ...)
     local params = {...}
     local on_resolved, resolve_event = aio:prepare_promise()
     local executor = function()
+        local command = query
+        if #params > 0 then
+            for i, param in ipairs(params) do
+                params[i] = self:escape(param)
+            end
+            command = string.format(query, unpack(params))
+        end
         table.insert(self.callbacks, on_resolved)
-        self:write_packet(0, string.char(3) .. query)
+        self:write_packet(0, string.char(3) .. command)
     end
     if not self.fd then
         self:connect(self.user, self.password, self.db)(function (ok, err)
@@ -375,6 +391,20 @@ function mysql:exec(query, ...)
     return resolve_event
 end
 
+
+--- Execute SQL query
+---@param query string query string or format
+---@param ... any query parameters that will be escaped
+---@return fun(on_resolved: fun(result: mysqlerror|mysqlok|mysqleof))
+function mysql:exec(query, ...)
+    local on_resolved, resolve_event = aio:prepare_promise()
+    self:raw_exec(query, ...)(function (_, response)
+        local response = self:decode_field(response)
+        on_resolved(response)
+    end)
+    return resolve_event
+end
+
 --- Execute SQL Select query and return results
 ---@param query string SQL query
 ---@param ... any query parameters
@@ -382,8 +412,8 @@ end
 function mysql:select(query, ...)
     local resolve, resolve_event = aio:prepare_promise()
 
-    self:exec(query, ...)(
-        coroutine.create(function (seq, res)
+    self:raw_exec(query, ...)(
+        aio:cor0(function (seq, res)
             if not seq then
                 resolve(nil, res)
                 return
