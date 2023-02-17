@@ -352,6 +352,7 @@ end
 function mysql:escape(text)
     return text
         :gsub("\\", "\\\\")
+        :gsub("\0", "\\0")
         :gsub("%'", "\\'")
         :gsub("%\n", "\\n")
         :gsub("%\r", "\\r")
