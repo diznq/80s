@@ -398,13 +398,17 @@ function mysql:handshake()
 end
 
 function mysql:escape(text)
-    return text
+    local res = text
         :gsub("\\", "\\\\")
-        :gsub("\0", "\\0")
         :gsub("%'", "\\'")
         :gsub("%\n", "\\n")
         :gsub("%\r", "\\r")
         :gsub("%\"", "\\\"")
+    -- LuaJIT has troubles with gsub on \0
+    if not jit then
+        return res:gsub("[\0]", "\\0")
+    end
+    return res
 end
 
 --- Execute SQL query in raw mode

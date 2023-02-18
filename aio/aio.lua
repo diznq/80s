@@ -171,55 +171,29 @@ function aio:handle_as_http(elfd, childfd, data, len)
     local fd = aiosocket:new(elfd, childfd)
     self.fds[childfd] = fd
 
-    self:cor(fd, function (stream)
-        local req = {
-            headerComplete = nil,
-            bodyComplete = false, 
-            bodyOverflow = false,
-            bodyLength = 0,
-            data = ""
-        };
-        for data in stream do
-            -- check for header completion
-            local before = #req.data - 4
-            if before < 0 then before = 0 end
-            req.data = req.data .. data
-            if req.headerComplete == nil then
-                req.headerComplete = req.data:find("\r\n\r\n", before, true)
-                if req.headerComplete then
-                    req.headerComplete = req.headerComplete + 3 -- offset by \r\n\r\n length
-                    local length = req.data:match("[Cc]ontent%-[Ll]ength: (%d+)")
-                    if length ~= nil then
-                        req.bodyLength = tonumber(length)
-                    end
+    self:buffered_cor(fd, function (resolve)
+        while true do
+            local header = coroutine.yield("\r\n\r\n")
+            if not header then
+                fd:close()
+                break
+            end
+            local length = header:match("[Cc]ontent%-[Ll]ength: (%d+)")
+            local body = ""
+            if length and length ~= "0" then
+                body = coroutine.yield(tonumber(length))
+                if not body then
+                    fd:close()
+                    break
                 end
             end
-
-            -- check for body completion
-            if req.headerComplete and not req.bodyComplete then
-                req.bodyComplete = #req.data - req.headerComplete >= req.bodyLength
+            local method, url, headers = aio:parse_http(header)
+            local close = (headers["connection"] or "close"):lower() == "close"
+            fd.ka = not close
+            aio:on_http(fd, method, url, headers, body)
+            if close then
+                break
             end
-
-            -- if body is not complete, we yield
-            if req.bodyComplete then
-                local pivot = req.headerComplete + req.bodyLength
-                local rest = req.data:sub(pivot + 1)
-                req.data = req.data:sub(1, pivot)
-
-                local method, url, headers, body = aio:parse_http(req.data)
-                local close = (headers["connection"] or "close"):lower() == "close"
-                fd.ka = not close
-
-                aio:on_http(fd, method, url, headers, body)
-
-                req.data = rest
-                if not close then
-                    req.headerComplete = nil
-                    req.bodyComplete = nil
-                    req.bodyLength = 0
-                end
-            end
-            coroutine.yield(true)
         end
     end)
 
@@ -233,16 +207,15 @@ end
 ---@return string method HTTP method
 ---@return string url request URL
 ---@return {[string]: string} headers headers table
----@return string request body
 function aio:parse_http(data)
     local headers = {}
-    local method, url, header, body = data:match("(.-) (.-) HTTP.-\r(.-)\n\r\n(.*)")
+    local method, url, header = data:match("(.-) (.-) HTTP.-\r(.*)")
 
     for key, value in header:gmatch("\n(.-):[ ]*(.-)\r") do
         headers[key:lower()] = value
     end
 
-    return method, url, headers, body
+    return method, url, headers
 end
 
 --- Parse HTTP query
@@ -630,6 +603,7 @@ function aio:buffered_cor(target, reader)
 
         -- iterate over bytes from network as we receive them
         for data in stream do
+            local prev = #read
             --- @type string
             read = read .. data
 
@@ -638,7 +612,9 @@ function aio:buffered_cor(target, reader)
                 local pivot = requested
                 local skip = 1
                 if req_delim then
-                    pivot = read:find(requested, 0, true)
+                    local off = prev - #requested
+                    if off < 0 then off = 0 end
+                    pivot = read:find(requested, off, true)
                     skip = #requested
                 end
                 if not pivot or pivot > #read then
