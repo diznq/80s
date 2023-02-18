@@ -6,6 +6,11 @@ require("aio.aio")
 --- @alias mysqlfielddef {catalog: string, schema: string, table: string, org_table: string, name: string, org_name: string, character_set: integer, column_length: integer, type: integer, flags: integer, decimals: integer}
 --- @alias mysqlresult string[] items
 
+--- @alias encode_le32 fun(number: integer): string encode number as 32-bit little endian
+--- @alias encode_le24 fun(number: integer): string encode number as 24-bit little endian
+--- @alias decode_leN fun(...: integer): integer decode little endian number from bytes
+--- @alias bxor fun(a: integer, b: integer): integer compute XOR of a and b
+
 --- @class mysql
 local mysql = {
     --- @type aiosocket
@@ -22,28 +27,67 @@ local mysql = {
     sequence_id = 0
 }
 
-local CLIENT_PROTOCOL_41 = 512
 local CLIENT_CONNECT_WITH_DB = 8
-local CLIENT_PLUGIN_AUTH = 1 << 19
-local CLIENT_CONNECT_ATTRS = 1 << 20
-local CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA = 1 << 24
-local CLIENT_QUERY_ATTRIBUTES = 1 << 27
+local CLIENT_PROTOCOL_41 = 512
+local CLIENT_PLUGIN_AUTH = 524288 -- 1 << 19
+local CLIENT_CONNECT_ATTRS = 1048576 -- 1 << 20
+local CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA = 16777216 -- 1 << 24
+local CLIENT_QUERY_ATTRIBUTES = 134217728 -- 1 << 27
 local CONN_FLAGS = 0x0FA68D
 
-local function encode_le32(number)
+-- to make this LuaJIT compatible as LuaJIT doesn't support bitwise ops
+local codecs = [[
+return function (number)
     local d = number & 255
     local c = (number >> 8) & 255
     local b = (number >> 16) & 255
     local a = (number >> 24) & 255
     return string.char(d, c, b, a)
-end
-
-local function encode_le24(number)
+end, function (number)
     local d = number & 255
     local c = (number >> 8) & 255
     local b = (number >> 16) & 255
     return string.char(d, c, b)
+end, function (...)
+    local bytes = {...}
+    local value = 0
+    for i=1,#bytes do
+        local byte = bytes[i]
+        value = value | (byte << ((i - 1) * 8))
+    end
+    return value
+end, function(a, b)
+    return a ~ b
 end
+]]
+
+if type(jit) == "table" then
+    codecs = [[
+return function (number)
+    local d = bit.band(number, 255)
+    local c = bit.band(bit.rshift(number, 8), 255)
+    local b = bit.band(bit.rshift(number, 16), 255)
+    local a = bit.band(bit.rshift(number, 24), 255)
+    return string.char(d, c, b, a)
+end, function (number)
+    local d = bit.band(number, 255)
+    local c = bit.band(bit.rshift(number, 8), 255)
+    local b = bit.band(bit.rshift(number, 16), 255)
+    return string.char(d, c, b)
+end, function (...)
+    local bytes = {...}
+    local value = 0
+    for i=1,#bytes do
+        local byte = bytes[i]
+        value = bit.bor(value, bit.lshift(byte, ((i - 1) * 8)))
+    end
+    return value
+end, function(a, b)
+    return bit.bxor(a, b)
+end
+    ]]
+end
+local encode_le32, encode_le24, decode_leN, bxor = load(codecs)()
 
 local function encode_varstr(str)
     return string.char(#str) .. str
@@ -105,12 +149,7 @@ end
 ---@param size integer number of bytes
 ---@return integer result
 function mysql_decoder:int(size)
-    local bytes = {self.data:byte(self.ptr, self.ptr + size - 1)}
-    local value = 0
-    for i=1,#bytes do
-        local byte = bytes[i]
-        value = value | (byte << ((i - 1) * 8))
-    end
+    local value = decode_leN(self.data:byte(self.ptr, self.ptr + size - 1))
     self.ptr = self.ptr + size
     return value
 end
@@ -153,6 +192,9 @@ function mysql:new()
 end
 
 function mysql:reset()
+    if self.fd ~= nil then
+        self.fd:close()
+    end
     self.fd = nil
     self.sequence_id = 0
     self.connected = false
@@ -194,8 +236,7 @@ function mysql:connect(user, password, db, host, port)
             if not ok then
                 self.connected = false
                 on_resolved(nil, err)
-                self.fd:close()
-                self.fd = nil
+                self:reset()
                 return
             else
                 self.connected = true
@@ -248,22 +289,23 @@ function mysql:debug_packet(header, packet)
 end
 
 --- Read MySQL server packet
----@return integer sequence sequence ID
+---@return integer|nil sequence sequence ID
 ---@return string packet payload
 function mysql:read_packet()
     local length = coroutine.yield(4)
     if length == nil then
         self:reset()
-        return 0, ""
+        return nil, ""
     end
-    local d, c, b, a = length:byte(1, 5)
-    length = (d) | (c << 16) | (b << 24)
+    local reader = mysql_decoder:new(length)
+    length = reader:int(3)
+    local seq = reader:int(1)
     local packet = coroutine.yield(length)
     if packet == nil then
         self:reset()
-        return 0, ""
+        return nil, ""
     end
-    return a, packet
+    return seq, packet
 end
 
 --- Write MySQL client packet
@@ -299,7 +341,7 @@ function mysql:native_password_hash(password, scramble)
     local b2 = {shJoin:byte(1, 20)}
     -- SHA1(password) XOR SHA1(scramble .. SHA1(SHA1(password)))
     for i=1, 20 do
-        b1[i] = b1[i] ~ b2[i]
+        b1[i] = bxor(b1[i], b2[i])
     end
     return string.char(unpack(b1))
 end
@@ -326,11 +368,14 @@ end
 ---@return string error error message if not ok
 function mysql:handshake()
     local seq, packet = self:read_packet()
+    if not seq then
+        return false, "connection dropped in first auth step"
+    end
     local method, scramble = self:decode_server_handshake(packet)
     self:write_packet(
         1,
         encode_le32(CONN_FLAGS) .. 
-        encode_le32(1 << 24) ..
+        encode_le32(0xFFFFFF) ..
         string.char(8) ..
         ("\0"):rep(23) ..
         encode_str(self.user) ..
@@ -339,6 +384,9 @@ function mysql:handshake()
         encode_str(method)
     )
     local seq, response = self:read_packet()
+    if not seq then
+        return false, "connection dropped in seccond auth step"
+    end
     local response_type = response:byte(1, 1)
     if response_type == 0 then
         return true, "ok"
