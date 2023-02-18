@@ -8,13 +8,17 @@ SQL = nil
 HTTP = http_client
 
 local function create_endpoint(method, endpoint, mime, content, dynamic)
+    local ctx = nil
+    if dynamic then
+        ctx = templates:prepare(content, mime)
+    end
     aio:http_any(method, endpoint, function (self, query, headers, body)
         --for i, v in pairs(headers) do print(i, v) end
         if dynamic then
             -- process as dynamic template
             local session = {}
             query = aio:parse_query(query)
-            templates:render(session, headers, body, endpoint, query, mime, content)(function (result)
+            templates:render(session, headers, body, endpoint, query, mime, ctx)(function (result)
                 self:http_response(result.status, result.headers, result.content)
             end)
         else

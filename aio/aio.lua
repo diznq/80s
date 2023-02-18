@@ -694,6 +694,19 @@ function aio:gather(...)
     return resolve_event
 end
 
+
+--- Array map
+---@param array table
+---@param fn function
+---@return table
+function aio:map(array, fn)
+    local new_array = {}
+    for i=1,#array do
+        new_array[i] = fn(array[i])
+    end
+    return new_array
+end
+
 --- Chain multiple AIO operations sequentially
 --- @param first aiothen
 --- @param ... fun(...: any): aiothen|any
