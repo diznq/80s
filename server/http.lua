@@ -7,10 +7,10 @@ local http_client = require("server.http_client")
 SQL = nil
 HTTP = http_client
 
-local function create_endpoint(method, endpoint, mime, content, dynamic)
+local function create_endpoint(base, method, endpoint, mime, content, dynamic)
     local ctx = nil
     if dynamic then
-        ctx = templates:prepare(content, mime)
+        ctx = templates:prepare(content, base)
     end
     aio:http_any(method, endpoint, function (self, query, headers, body)
         --for i, v in pairs(headers) do print(i, v) end
@@ -47,6 +47,10 @@ local function init_dir(base, prefix)
                 if file:match("%.dyn%..*$") then
                     dynamic = true
                 end
+                -- if file is inside /static/ folder, it should never be rendered as dynamic file
+                if base:match("/?static/") then
+                    dynamic = false
+                end
                 if file:match("^post%..*$") then
                     method = "POST"
                 end
@@ -80,7 +84,10 @@ local function init_dir(base, prefix)
                     endpoint = ""
                 end
 
-                create_endpoint(method, prefix .. endpoint, mime, content, dynamic)
+                -- exclude private files
+                if not file:match("%.priv%.") then
+                    create_endpoint(base, method, prefix .. endpoint, mime, content, dynamic)
+                end
             end
         end
     end

@@ -194,10 +194,21 @@ end)
 
 ## Default server/http.lua as content server
 
-Default `http.lua` comes preconfigured to serve files in `public_html` and if file name contains `.dyn.` (i.e. `index.dyn.html`), it also applies templating, which make dynamic content possible. Also if file name begins with `post.`/`delete.`/`put.`, it is used for handling `POST`/`DELETE`/`PUT` requests instead of default `GET`.
+Default `http.lua` comes preconfigured to serve files in `public_html`.
+The file rendering follows these rules:
+
+- If file name contains `.dyn.` (i.e. `index.dyn.html`), it is considered dynamic contain and therefore `<?lu ... ?>`, `<?lua ... ?>` and `<?include ... ?>` will be replaced with rendered content on page request
+- If path to the file contains directory called `static/`, even if name contains `.dyn.`, it is considered static content
+- If file name contains `.priv.`, it is not assigned to any handler, but can be used for including
+- If file starts with `post.`, it is assigned to `POST` handler
+- If file starts with `put.`, it is assigned to `PUT` handler
+- If file starts with `delete.`, it is assigned to `DELETE` handler
+
 
 ### Templating syntax
 To insert dynamic content to the file, wrap Lua code between either `<?lu ... ?>` for synchronous code or `<?lua ... ?>` asynchronous code. 
+
+To include another file into the current file, use `<?include ... ?>` with path relative to current file, i.e. `<?include ../header.priv.html ?>`.
 
 All asynchronous dynamic code blocks are executed in parallel and in `aio:async` context, so `aio:await` is available for use. As for order of dynamic content blocks within file, there is no guarantee of sequential code execution.
 

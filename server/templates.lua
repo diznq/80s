@@ -35,8 +35,25 @@ local function await(callback)
     return aio:await(callback)
 end
 
-function templates:prepare(content, mime)
+---comment
+---@param content string template file
+---@param base string directory that current file is located in
+---@return templatectx
+function templates:prepare(content, base)
     local context = { content = "", parts = {} }
+
+    content = content:gsub("<%?include[ ]*(.-)[ ]*%?>", function(path)
+        if not path:match("^/") then
+            path = base .. path
+        end
+        local f, err = io.open(path, "r")
+        if not f or err then
+            return "failed to include " .. path
+        end
+        local content = f:read("*all")
+        f:close()
+        return content
+    end)
 
     context.content = content:gsub("<%?lu(a?)(.-)%?>", function (async, match)
         local code = load("return function(session, headers, body, endpoint, query, write, escape, await, header, status, done)" .. match .. "end")()
