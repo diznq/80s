@@ -66,6 +66,7 @@ end
 ---@param response string response body
 ---@return boolean
 function aiosocket:http_response(status, headers, response)
+    if self.closed then return false end
     local str_headers = ""
     if type(headers) == "string" then
         str_headers = "Content-type: " .. headers .. "\r\n"

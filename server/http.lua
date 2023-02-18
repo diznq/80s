@@ -98,6 +98,12 @@ aio:http_post("/reload", function (self, query, headers, body)
     self:http_response("200 OK", "text/plain", tostring(WORKERID))
 end)
 
+aio:http_post("/gc", function (self, query, headers, body)
+    local before = collectgarbage("count")
+    local col = collectgarbage("collect")
+    self:http_response("200 OK", "text/plain", tostring(before - collectgarbage("count")))
+end)
+
 aio:http_get("/fds", function (self, query, headers, body)
     local n = 0
     for i, v in pairs(aio.fds) do
