@@ -24,6 +24,7 @@ You can also define following environment variables before running the build to 
 - `JIT=true`: use LuaJIT instead of Lua
 - `WORKERS=n`: specify number of workers
 - `NOCRYPTO=true`: disable cryptographic extensions for Lua (links OpenSSL library)
+- `IPV6=true`: run server on IPv6 address
 
 i.e. `JIT=true CRYPTO=true WORKERS=8 ./build.sh`
 

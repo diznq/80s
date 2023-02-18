@@ -21,7 +21,7 @@ local mysql = {
 
     user = "root",
     password = "toor",
-    host = "127.0.0.1",
+    host = "localhost",
     port = 3306,
     db = "",
     sequence_id = 0
@@ -181,7 +181,7 @@ function mysql:new()
     local instance = {
         user = "root",
         password = "toor",
-        host = "127.0.0.1",
+        host = "localhost",
         port = 3306,
         db = ""
     }
@@ -206,11 +206,11 @@ end
 ---@param user string user name
 ---@param password string user password
 ---@param db string db to connect to
----@param host? string hostname, defaults to 127.0.0.1
+---@param host? string hostname, defaults to localhost
 ---@param port? integer port, defaults to 3306
 ---@return aiothen promise true if success, error text otherwise
 function mysql:connect(user, password, db, host, port)
-    self.host = host or "127.0.0.1"
+    self.host = host or "localhost"
     self.port = port or 3306
     self.user = user
     self.db = db

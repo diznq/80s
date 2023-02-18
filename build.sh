@@ -18,7 +18,7 @@ if [[ "$NOCRYPTO" == "true" ]]; then
 fi
 
 if [[ "$IPV6" == "true" ]]; then
-    DEFINES="$DEFNES -DALLOW_IPV6=1"
+    DEFINES="$DEFINES -DALLOW_IPV6=1"
 fi
 
 if [[ "$DEBUG" == "true" ]]; then

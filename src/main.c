@@ -31,6 +31,12 @@
 #define BUFSIZE 16384
 #define MAX_EVENTS 4096
 
+#ifdef ALLOW_IPV6
+#define addr_type sockaddr_in6
+#else
+#define addr_type sockaddr_in
+#endif
+
 struct serve_params {
     int parentfd;
     int workerid;
@@ -95,7 +101,7 @@ static int serve(void* vparams) {
     int *epolls, elfd, parentfd, nfds, childfd, status, n, clientlen, readlen, workers, id;
     unsigned accepts;
     lua_State *L;
-    struct sockaddr_in clientaddr;
+    struct addr_type clientaddr;
     struct epoll_event ev, events[MAX_EVENTS];
     struct serve_params* params;
     char buf[BUFSIZE];
@@ -147,7 +153,7 @@ static int serve(void* vparams) {
             if (childfd == parentfd)
             {
                 // only parent socket (server) can receive accept
-                childfd = accept(parentfd, (struct sockaddr *)&clientaddr, &clientlen);
+                childfd = accept(parentfd, (struct sockaddr*)&clientaddr, &clientlen);
                 if (childfd < 0)
                 {
                     dbg("serve: error on server accept");
@@ -212,7 +218,7 @@ static int serve(void* vparams) {
 int main(int argc, char **argv)
 {
     int elfd, parentfd, optval, i, portno = 8080;
-    struct sockaddr_in serveraddr;
+    struct addr_type serveraddr;
     struct epoll_event ev;
     const char* entrypoint;
     struct serve_params params[WORKERS];
@@ -233,17 +239,29 @@ int main(int argc, char **argv)
         portno = atoi(argv[2]);
     }
 
-    parentfd = socket(AF_INET, SOCK_STREAM, 0);
+#ifdef ALLOW_IPV6
+    parentfd = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+#else
+    parentfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+#endif
+
     if (parentfd < 0)
         error("main: failed to create server socket");
 
     optval = 1;
     setsockopt(parentfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
     bzero((void *)&serveraddr, sizeof(serveraddr));
+
+#ifdef ALLOW_IPV6
+    serveraddr.sin6_family = AF_INET6;
+    serveraddr.sin6_port = htons((unsigned short)portno);
+#else
     serveraddr.sin_family = AF_INET;
     serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
     serveraddr.sin_port = htons((unsigned short)portno);
+#endif
 
+    
     if (bind(parentfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0)
         error("main: failed to bind server socket");
 
