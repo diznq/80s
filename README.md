@@ -25,6 +25,7 @@ You can also define following environment variables before running the build to 
 - `WORKERS=n`: specify number of workers
 - `NOCRYPTO=true`: disable cryptographic extensions for Lua (links OpenSSL library)
 - `IPV6=true`: run server on IPv6 address
+- `DEBUG=true`: compile in debug mode
 
 i.e. `JIT=true CRYPTO=true WORKERS=8 ./build.sh`
 

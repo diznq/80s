@@ -22,6 +22,7 @@ if [[ "$IPV6" == "true" ]]; then
 fi
 
 if [[ "$DEBUG" == "true" ]]; then
+    DEFINES="$DEFINES -DDEBUG=1"
     FLAGS="-O0 -g"
 fi
 

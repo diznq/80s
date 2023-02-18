@@ -57,6 +57,7 @@ end
 --- Close socket
 --- @return boolean
 function aiosocket:close()
+    if self.closed then return true end
     return net.close(self.elfd, self.childfd)
 end
 
@@ -93,7 +94,7 @@ end
 --- @param elfd lightuserdata epoll handle
 --- @param childfd lightuserdata socket handle
 function aiosocket:on_close(elfd, childfd)
-    self.closed = true
+
 end
 
 --- Data handler of socket, overridable
