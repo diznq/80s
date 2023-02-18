@@ -39,7 +39,9 @@ local aiosocket = {
     --- @type lightuserdata event loop file descriptor
     elfd = nil,
     --- @type boolean keep alive
-    ka = false
+    ka = false,
+    --- @type boolean closed
+    closed = false,
 }
 
 --- Write data to network
@@ -48,6 +50,7 @@ local aiosocket = {
 --- @param close boolean|nil asdf
 --- @return boolean
 function aiosocket:write(data, close)
+    if self.closed then return false end
     return net.write(self.elfd, self.childfd, data, close or false)
 end
 
@@ -89,7 +92,7 @@ end
 --- @param elfd lightuserdata epoll handle
 --- @param childfd lightuserdata socket handle
 function aiosocket:on_close(elfd, childfd)
-
+    self.closed = true
 end
 
 --- Data handler of socket, overridable
@@ -137,7 +140,8 @@ if not aio then
             GET={},
             --- @type {[string]: aiohttphandler}
             POST={}
-        }
+        },
+        cors = 0
     }
 end
 
@@ -312,6 +316,7 @@ function aio:on_close(elfd, childfd)
 
     -- notify with close event
     if fd ~= nil then
+        fd.closed = true
         fd:on_close(elfd, childfd)
     end
 end

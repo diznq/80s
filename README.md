@@ -22,9 +22,10 @@ To compile the project, simply run `./build.sh`.
 You can also define following environment variables before running the build to enable certain features:
 
 - `JIT=true`: use LuaJIT instead of Lua
-- `CRYPTO=true`: enable cryptographic extensions, so Lua has hashing functions
+- `WORKERS=n`: specify number of workers
+- `NOCRYPTO=true`: disable cryptographic extensions for Lua (links OpenSSL library)
 
-i.e. `JIT=true CRYPTO=true ./build.sh`
+i.e. `JIT=true CRYPTO=true WORKERS=8 ./build.sh`
 
 ## Running
 
@@ -216,9 +217,6 @@ During code execution, several variables are set within context:
 You can see examples in `server/public_html/` directory.
 
 ## MySQL module
-
-Prerequisites:
-- binary must be compiled with `CRYPTO=true` (or `-DCRYPTOGRAPHIC_EXTENSIONS=1`) as MySQL protocol relies on hashes for authetication.
 
 MySQL module allows simple interaction with MySQL server, such as connecting, automatic reconnecting and text queries.
 Following methods are available:

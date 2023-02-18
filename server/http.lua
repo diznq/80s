@@ -97,3 +97,11 @@ aio:http_post("/reload", function (self, query, headers, body)
     net.reload()
     self:http_response("200 OK", "text/plain", tostring(WORKERID))
 end)
+
+aio:http_get("/fds", function (self, query, headers, body)
+    local n = 0
+    for i, v in pairs(aio.fds) do
+        n = n + 1
+    end
+    self:http_response("200 OK", "text/plain", tostring(n) .. ", " .. aio.cors)
+end)

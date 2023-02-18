@@ -10,6 +10,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <signal.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -104,6 +105,8 @@ static int serve(void* vparams) {
     parentfd = params->parentfd;
     epolls = params->epolls;
     id = params->workerid;
+
+    signal(SIGPIPE, SIG_IGN);
 
     // create local epoll and assign it to context's array of epolls, so others can reach it
     elfd = epolls[id] = epoll_create1(0);
@@ -244,7 +247,7 @@ int main(int argc, char **argv)
     if (bind(parentfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0)
         error("main: failed to bind server socket");
 
-    if (listen(parentfd, 1000) < 0)
+    if (listen(parentfd, 20000) < 0)
         error("main: failed to listen on server socket");
 
     for (i = 0; i < WORKERS; i++) {

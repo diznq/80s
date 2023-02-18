@@ -38,7 +38,8 @@ static int l_net_write(lua_State *L)
 
     if (writelen < 0)
     {
-        printf("write error to %d: %s\n", childfd, strerror(errno));
+        //printf("write error to %d: %s\n", childfd, strerror(errno));
+        dbg("l_net_write: write failed");
         toclose = 1;
     }
 
@@ -90,9 +91,12 @@ static int l_net_connect(lua_State *L)
 {
     size_t len;
     struct epoll_event ev;
-    struct sockaddr_in serveraddr;
-    int status;
+    struct sockaddr_in ipv4addr;
+    struct sockaddr_in6 ipv6addr;
+    int status, i, found4 = 0, found6 = 0, usev6 = 0, found = 0;
     struct hostent *hp;
+    struct in_addr **ipv4;
+    struct in6_addr **ipv6;
 
     int elfd = (int)lua_touserdata(L, 1);
     const char *addr = (const char*)lua_tolstring(L, 2, &len);
@@ -105,16 +109,64 @@ static int l_net_connect(lua_State *L)
         return 2;
     }
 
-    bzero((void *)&serveraddr, sizeof(serveraddr));
-    serveraddr.sin_family = AF_INET;
-    serveraddr.sin_addr.s_addr = *((unsigned long *)hp->h_addr_list[0]);
-    serveraddr.sin_port = htons((unsigned short)portno);
+    bzero((void *)&ipv4addr, sizeof(ipv4addr));
+    bzero((void *)&ipv6addr, sizeof(ipv6addr));
+
+    ipv4addr.sin_family = AF_INET;
+    ipv4addr.sin_port = htons((unsigned short)portno);
+    ipv6addr.sin6_family = AF_INET6;
+    ipv6addr.sin6_port = htons((unsigned short)portno);
+
+    switch(hp->h_addrtype) {
+        case AF_INET:
+            ipv4 = (struct in_addr **)hp->h_addr_list;
+            for(i = 0; ipv4[i] != NULL; i++) {
+                ipv4addr.sin_addr.s_addr = ipv4[i]->s_addr;
+                found4 = 1;
+                break;
+            }
+            break;
+        case AF_INET6:
+            ipv6 = (struct in6_addr **)hp->h_addr_list;
+            for(i = 0; ipv6[i] != NULL; i++) {
+                ipv6addr.sin6_addr.__in6_u = ipv6[i]->__in6_u;
+                found6 = 1;
+                break;
+            }
+    }
 
     // create a non-blocking socket
     int childfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
 
-    status = connect(childfd, (const struct sockaddr *)&serveraddr, sizeof(serveraddr));
+    #ifdef ALLOW_IPV6
+    if(found6) {
+        found = 1;
+        usev6 = 1;
+    } else if(found4) {
+        found = 1;
+        usev6 = 0;
+    } else {
+        found = 0;
+    }
+    #else
+    if(found4) {
+        found = 1;
+        usev6 = 0;
+    }
+    #endif
+
+    if(!found) {
+        lua_pushnil(L);
+        lua_pushstring(L, "get host by name failed, couldn't find any usable address");
+        return 2;
+    }
+
+    if(usev6) {
+        status = connect(childfd, (const struct sockaddr *)&ipv6addr, sizeof(ipv6addr));
+    } else {
+        status = connect(childfd, (const struct sockaddr *)&ipv4addr, sizeof(ipv4addr));
+    }
     if(status == 0 || errno == EINPROGRESS) {
         ev.data.fd = childfd;
         ev.events = EPOLLIN | EPOLLOUT;
