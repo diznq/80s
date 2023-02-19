@@ -137,7 +137,11 @@ function templates:render(session, headers, body, endpoint, query, mime, ctx)
 
     -- if there is no dynamic content, resolve immediately
     if #ctx.parts == 0 then
-        on_resolved(ctx.content)
+        on_resolved({
+            status="200 OK",
+            headers={},
+            content=ctx.content
+        })
         return resolve_event
     end
 
