@@ -6,6 +6,7 @@ local templates = {}
 --- @class templateinput
 --- @field session table
 --- @field headers table
+--- @field locals table
 --- @field body string
 --- @field endpoint string
 --- @field query table
@@ -25,11 +26,15 @@ local templates = {}
 --- @field content string rendered template
 
 --- HTML escape text
----@param text string text
----@return string text escaped text
+---@param text any text
+---@return any text escaped text
 ---@return integer matches
 local function escape(text)
-    return text:gsub("%&", "&amp;"):gsub("%\"", "&quot;"):gsub("%<", "&lt;"):gsub("%>", "&gt;")
+    if type(text) == "string" then
+        return text:gsub("%&", "&amp;"):gsub("%\"", "&quot;"):gsub("%<", "&lt;"):gsub("%>", "&gt;")
+    else
+        return text, 0
+    end
 end
 
 local function await(callback)
@@ -67,13 +72,21 @@ function templates:prepare(content, base)
     end
 
     context.content = content:gsub("<%?lu(a?)(.-)%?>", function (async, match)
-        local code = load("return function(session, headers, body, endpoint, query, write, escape, await, header, status, done)" .. match .. "end")()
+        local compiled, err = load("return function(session, locals, headers, body, endpoint, query, write, escape, await, header, status, done)" .. match .. "end")
+        if not compiled then
+            table.insert(context.parts, function (input, output, done)
+                done(err)
+            end)
+            return "<?l" .. tostring(#context.parts) .. "?>"
+        end
+        local code = compiled()
         table.insert(context.parts, 
         function(input, output, done)
             aio:async(function()
                 local data = ""
                 code(
                     input.session,
+                    input.locals,
                     input.headers,
                     input.body,
                     input.endpoint, 
@@ -138,6 +151,7 @@ function templates:render(session, headers, body, endpoint, query, mime, ctx)
     local input = {
         session = session,
         headers = headers,
+        locals = {},
         body = body,
         endpoint = endpoint,
         query = query

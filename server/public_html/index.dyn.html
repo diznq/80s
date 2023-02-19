@@ -1,25 +1,27 @@
+#! parallel
 <?include header.priv.html ?>
     <h1>Hello, <?lu write(query.name or "Nomad") ?></h1>
     <h2>Welcome to 80's HTTP server!</h2>
     <img src="/assets/srgen.jpg">
 
-    <p><a href="/posts/">Read posts</a></p>
+    <?lua
+        locals.posts = await(SQL:select("SELECT COUNT(*) AS cnt FROM posts"))
+        done()
+    ?>
+
+    <p><a href="/posts/">Read posts <?lu write("(%d)", locals.posts[1].cnt) ?></a></p>
 
     <p>w3.org response:</p>
     <pre><?lua
         header("X-Server-Time", os.time())
+        locals.w3 = "None"
         if query.w3 then
-            write(await(HTTP:GET("www.w3.org", "/", "text/html")))
+            locals.w3 = await(HTTP:GET("www.w3.org", "/", "text/html"))
+            write(locals.w3)
             done()
         else
             write("w3 was not requested")
             done()
         end
     ?></pre>
-
-    <p>Posts: <?lua
-        local posts = await(SQL:select("SELECT COUNT(*) AS cnt FROM posts"))
-        write("Posts: " .. posts[1].cnt)
-        done()
-    ?></p>
 <?include footer.priv.html ?>

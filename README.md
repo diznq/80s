@@ -250,11 +250,12 @@ All asynchronous dynamic code blocks are executed in **sequential order** and in
 The code must use `write(text, ...)` to write dynamic content, which will be replaced back into original page and in case the call is asynchronous, finish the generation by calling `done()` that is available during the execution.
 
 During code execution, several variables are set within context:
+- `session`: session context
+- `locals`: a table where scripts can store intermediate data that they can share across them while entire page renders
 - `endpoint`: request URL without query part
 - `query`: table with query parameters
 - `headers`: table of request headers
 - `body`: request body
-- `session`: session context
 - `status(http_status)`: write HTTP status
 - `await(promise)`: awaits a promise and returns its result
 - `header(header_name, header_value)`: write HTTP header
