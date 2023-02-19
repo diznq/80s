@@ -43,7 +43,7 @@ By using `server/simple_http.lua` as basis for simple benchmarking, that is:
 
 Result of this "benchmark" were as follows:
 
-|    # |  FastAPI |     Node |      PHP |        80s + JIT |       80s |    C++ Beast |  Spring |  Golang |
+|    # |  FastAPI |     Node |      PHP |        80s + JIT |       80s |    C++ Beast |  Spring |      Go |
 |-----:|---------:|---------:|---------:|-----------------:|----------:|-------------:|--------:|--------:|
 |  1   | 2 270.82 | 11 181.6 | 15 319.3 |       **78 329** |    70 351 |     33 563.1 |  31 017 |  68 263 |
 |  2   | 3 750.01 | 20 542.3 | 25 414.5 |      **140 055** |   121 880 |     51 785.3 |  61 441 | 110 083 |
@@ -55,12 +55,18 @@ Result of this "benchmark" were as follows:
 |  128 | 7 764.70 | 34 766.8 | 34 281.1 |      **282 553** |   262 609 |     53 338.6 | 137 394 | 223 966 |
 |  256 | 7 554.97 | 34 406.2 | 35 200.1 |      **274 152** |   257 229 |     52 433.6 | 140 158 | 226 288 |
 |  512 | 7 431.89 | 34 126.9 | 32 067.4 |      **276 537** |   244 457 |     49 276.8 | 136 063 | 208 429 |
+| 10000| 6 194.70 |	33 774.3 |	    N/A |	   **180 599** |   145 858 |	 40 492.6 |	119 237 | 157 191 |
 
 \* # = number of parallel connections using `ab -c # -n 1000000 -k http://localhost:8080/haha?name=Abcde`
 
 \* bold cell = highest requests/s
 
+Also it is important to notice the difference in memory consumption between top performers on C10K beng:
 
+- 80s + JIT: 90,4MB RAM
+- Go: 253,3MB RAM
+- 80s: 73MB RAM
+- Spring: 681 MB RAM
 
 ## API
 C server exposes several APIs for Lua for both input and output.

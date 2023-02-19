@@ -1,5 +1,8 @@
-P="1;2;4;8;16;32;64;128;256;512"
-Bin="bin/80s server/http.lua;bin/80sJIT server/http.lua;bin/80s8 server/http.lua;bin/80s8JIT server/http.lua;bin/svgo;node private/server.js;java -jar bin/spring.jar;bin/beast 0.0.0.0 8080;uvicorn private.server:app --port 8080 --workers 4 --log-level critical;php"
+P="1;2;4;8;16;32;64;128;256;512;10000"
+Bin="bin/80s server/simple_http.lua;bin/80sJIT server/simple_http.lua;bin/80s8 server/simple_http.lua;bin/80s8JIT server/simple_http.lua"
+Bin="$Bin;bin/svgo;node private/server.js;bin/beast 0.0.0.0 8080;uvicorn private.server:app --port 8080 --workers 4 --log-level critical;php"
+Bin="$Bin;java -jar bin/spring.jar"
+#Bin="php"
 IFS=";"
 
 for b in $Bin; do
@@ -11,9 +14,10 @@ for b in $Bin; do
 
     for p in $P; do
 	echo "Executing $b, $p"
-        ab -c $p -n 1000000 -k "http://localhost:8080/haha?name=Abcde" > "results/$p,$id.txt"
-	    sleep 2
+        ab -c $p -n 1000000 -k "http://localhost:8080/haha?name=Abcde" > "private/ben/$p,$id.txt"
+	sleep 2
     done
 
     kill $pid
+    sleep 5
 done
