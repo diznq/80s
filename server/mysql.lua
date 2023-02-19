@@ -111,9 +111,11 @@ function mysql_decoder:new(data)
 end
 
 --- Read data
---- @param n any
---- @return string
+--- @param n integer|nil
+--- @return string|nil
 function mysql_decoder:read(n)
+    if n == nil then return nil end
+    if n == 0 then return "" end
     local chunk = self.data:sub(self.ptr, self.ptr + n - 1)
     self.ptr = self.ptr + n
     return chunk
@@ -132,7 +134,7 @@ function mysql_decoder:zero_terminated_string()
 end
 
 --- Read length encoded int variable length string
----@return string
+---@return string|nil
 function mysql_decoder:var_string()
     return self:read(self:lenint())
 end
@@ -155,15 +157,19 @@ function mysql_decoder:int(size)
 end
 
 --- Read length-encoded integer
----@return integer result
+---@return integer|nil result
 function mysql_decoder:lenint()
     local int = self:int(1)
-    if int >= 251 then
-        if int == 251 then
-            return self:int(2)
-        elseif int == 252 then
-            return self:int(3)
+    if int == 251 then
+        return nil
+    end
+    if int >= 252 then
+        if int == 252 then
+            local lol = self:int(2)
+            return lol
         elseif int == 253 then
+            return self:int(3)
+        elseif int == 254 then
             return self:int(8)
         else
             -- reserved
@@ -476,6 +482,10 @@ function mysql:select(query, ...)
             local n_fields = reader:lenint()
             if is_error then
                 resolve(nil, self:decode_packet(res).error)
+                return
+            end
+            if n_fields == nil then
+                resolve(nil, "n_fields is nil")
                 return
             end
             --- @type mysqlfielddef[]
