@@ -4,7 +4,7 @@
 void error(const char *msg);
 
 #ifdef DEBUG
-#  define dbg(message) puts(message)
+#  define dbg(message) printf("%s: %s\n", message, strerror(errno))
 #else
 #  define dbg(message)
 #endif
