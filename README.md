@@ -64,7 +64,7 @@ Result of this "benchmark" were as follows:
 Also it is important to notice the difference in memory consumption between top performers on C10K beng:
 
 - 80s + JIT: 70.6 MB RAM
-- Go: 253,3MB RAM
+- Go: 253.3MB RAM
 - 80s: 106.4 MB RAM
 - Spring: 681 MB RAM
 
