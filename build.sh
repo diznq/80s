@@ -1,6 +1,7 @@
 LUA_LIB="/usr/local/lib/liblua.a"
 LUA_INC="/usr/local/include/"
-FLAGS="-s -O3"
+FLAGS="-s -Ofast"
+OUT="${OUT:-bin/80s}"
 
 if [[ "${JIT}" == "true" ]]; then
     LUA_LIB="/usr/local/lib/libluajit-5.1.a"
@@ -38,4 +39,4 @@ gcc src/main.c src/lua.c "$LUA_LIB" \
     $LIBS \
     $FLAGS -march=native \
     -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast -Wno-stringop-overread \
-    -o bin/80s
+    -o "$OUT"

@@ -33,6 +33,34 @@ i.e. `JIT=true CRYPTO=true WORKERS=8 ./build.sh`
 
 To run the server, execute `bin/80s server/simple_http.lua`, optionally `bin/80s server/simple_http.lua 8080` to specify the port. After this, the server is running and can be reloaded by calling `net.reload()` from within Lua code.
 
+
+## Benchmark
+
+By using `server/simple_http.lua` as basis for simple benchmarking, that is:
+
+- request goes to `/haha?name=Abcde`
+- server responds with `Hi, Abcde!`
+
+Result of this "benchmark" were as follows:
+
+|  # |   Uvicorn FastAPI |    Node |     PHP |   80s + JIT |      80s |   C++ Boost ASIO |   Spring |   Golang |
+|---:|-------------------------:|--------:|--------:|------------:|---------:|-----------------:|---------:|---------:|
+|  1 |                  2270.82 | 11181.6 | 15319.3 |     **78329.7** |  70351.7 |          33563.1 |  31017.3 |  68263.2 |
+|  2 |                  3750.01 | 20542.3 | 25414.5 |    **140055**   | 121880   |          51785.3 |  61441.5 | 110083   |
+|  4 |                  5598.95 | 29734.2 | 32766.4 |    **208887**   | 191456   |          51172.2 |  93701.4 | 193670   |
+|  8 |                  6559.85 | 34952.2 | 36700.2 |    **276499**   | 259212   |          52010.9 | 108544   | 214954   |
+|  16 |                  6998.02 | 34783.7 | 38593.3 |    **274336**   | 257560   |          53727.8 | 126530   | 221350   |
+|  32 |                  7330.34 | 35172.2 | 35751.2 |    **303348**  | 257959   |          53842.5 | 132428   | 228555   |
+|  64 |                  7563.92 | 35189.6 | 35601.7 |    **280517**   | 256301   |          53386   | 133973   | 233014   |
+|  128 |                  7764.7  | 34766.8 | 34281.1 |    **282553**   | 262609   |          53338.6 | 137394   | 223966   |
+|  256 |                  7554.97 | 34406.2 | 35200.1 |    **274152**  | 257229   |          52433.6 | 140158   | 226288   |
+|  512 |                  7431.89 | 34126.9 | 32067.4 |    **276537**   | 244457   |          49276.8 | 136063   | 208429   |
+
+\* # = number of parallel connections using `ab -c # -n 1000000 -k http://localhost:8080/haha?name=Abcde`
+\* bold cell = highest requests/s
+
+
+
 ## API
 C server exposes several APIs for Lua for both input and output.
 
@@ -242,3 +270,4 @@ Following methods are available:
 - `mysql:raw_exec(query, ...)`: sends a query to database, returns a promise that takes either callback or coroutine, if coroutine is provided, it will be resumed on each additional command that arrives from MySQL server, used as backbone for `:select`, should not be used by developer if ever. The returned/yielded value is pair of `sequence ID` and `raw packet bytes`
 
 If connection socket disconnects while the server is still running, an attempt to reconnect will be made before executing incoming SQL queries. If that fails, it is returned as error to either :exec  or :select.
+
