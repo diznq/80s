@@ -2,6 +2,7 @@ LUA_LIB="/usr/local/lib/liblua.a"
 LUA_INC="/usr/local/include/"
 FLAGS="-s -Ofast"
 OUT="${OUT:-bin/80s}"
+CC="${CC:-gcc}"
 
 if [[ "${JIT}" == "true" ]]; then
     LUA_LIB="/usr/local/lib/libluajit-5.1.a"
@@ -33,7 +34,7 @@ echo "Flags: $FLAGS"
 echo "Lua include directory: $LUA_INC"
 echo "Lua library directory: $LUA_LIB"
 
-gcc src/main.c src/lua.c "$LUA_LIB" \
+$CC src/main.c src/lua.c "$LUA_LIB" \
     $DEFINES \
     "-I$LUA_INC" \
     $LIBS \
