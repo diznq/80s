@@ -17,6 +17,7 @@ local templates = {}
 --- @class templatectx
 --- @field content string
 --- @field parts fun(input: templateinput, output: templateoutput, done: aiothen)[]
+--- @field parallel boolean
 
 --- @class render_result
 --- @field headers {[string]: string} headers table
@@ -40,20 +41,30 @@ end
 ---@param base string directory that current file is located in
 ---@return templatectx
 function templates:prepare(content, base)
-    local context = { content = "", parts = {} }
+    local context = { content = "", parts = {}, parallel = false }
+    local depth, max_depth, matches = 0, 32, 1
 
-    content = content:gsub("<%?include[ ]*(.-)[ ]*%?>", function(path)
-        if not path:match("^/") then
-            path = base .. path
-        end
-        local f, err = io.open(path, "r")
-        if not f or err then
-            return "failed to include " .. path
-        end
-        local content = f:read("*all")
-        f:close()
-        return content
-    end)
+    while depth < max_depth and matches > 0 do
+        content = content:gsub("^#!%s*parallel%s-\n", function ()
+            context.parallel = true;
+            return "";
+        end)
+
+        content, matches = content:gsub("<%?%s*include%s+%\"?(.-)\"?%s*%?>", function(path)
+            if not path:match("^/") then
+                path = base .. path
+            end
+            local f, err = io.open(path, "r")
+            if not f or err then
+                return "failed to include " .. path
+            end
+            local content = f:read("*all")
+            f:close()
+            return content
+        end)
+
+        depth = depth + 1
+    end
 
     context.content = content:gsub("<%?lu(a?)(.-)%?>", function (async, match)
         local code = load("return function(session, headers, body, endpoint, query, write, escape, await, header, status, done)" .. match .. "end")()
@@ -110,6 +121,13 @@ end
 ---@return fun(on_resolved: fun(result: render_result)) promise
 function templates:render(session, headers, body, endpoint, query, mime, ctx)
     local on_resolved, resolve_event = aio:prepare_promise()
+
+    -- if there is no dynamic content, resolve immediately
+    if #ctx.parts == 0 then
+        on_resolved(ctx.content)
+        return resolve_event
+    end
+
     local output = {
         headers = {
             ["Content-type"] = mime
@@ -125,25 +143,43 @@ function templates:render(session, headers, body, endpoint, query, mime, ctx)
         query = query
     }
 
-    aio:gather(
-        unpack(
-            aio:map(ctx.parts, function(fn)
-                return function(...)
-                    return fn(input, output, ...)
-                end
+    local mapper = function(fn)
+        return function(...)
+            return fn(input, output, ...)
+        end
+    end
+
+    if ctx.parallel then
+        aio:gather(unpack(aio:map(ctx.parts, mapper)))(function (...)
+            local responses = {...}
+            local response = ctx.content:gsub("<%?l([0-9]+)%?>", function(match)
+                return tostring(responses[tonumber(match, 10)])
             end)
-        )
-    )(function (...)
-        local responses = {...}
-        local response = ctx.content:gsub("<%?l([0-9]+)%?>", function(match)
-            return tostring(responses[tonumber(match, 10)])
+            on_resolved({
+                status=output.status,
+                headers=output.headers,
+                content=response
+            })
         end)
-        on_resolved({
-            status=output.status,
-            headers=output.headers,
-            content=response
-        })
-    end)
+    else
+        local responses = {}
+        aio:chain(mapper(ctx.parts[1]), unpack(aio:map(ctx.parts, function(fn)
+            return function(res)
+                table.insert(responses, res)
+                return mapper(fn)
+            end
+        end), 2))(function (res)
+            table.insert(responses, res)
+            local response = ctx.content:gsub("<%?l([0-9]+)%?>", function(match)
+                return tostring(responses[tonumber(match, 10)])
+            end)
+            on_resolved({
+                status=output.status,
+                headers=output.headers,
+                content=response
+            })
+        end)
+    end
     return resolve_event
 end
 

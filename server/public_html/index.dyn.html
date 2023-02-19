@@ -16,4 +16,10 @@
             done()
         end
     ?></pre>
+
+    <p>Posts: <?lua
+        local posts = await(SQL:select("SELECT COUNT(*) AS cnt FROM posts"))
+        write("Posts: " .. posts[1].cnt)
+        done()
+    ?></p>
 <?include footer.priv.html ?>

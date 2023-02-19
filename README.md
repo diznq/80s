@@ -243,9 +243,9 @@ The file rendering follows these rules:
 ### Templating syntax
 To insert dynamic content to the file, wrap Lua code between either `<?lu ... ?>` for synchronous code or `<?lua ... ?>` asynchronous code. 
 
-To include another file into the current file, use `<?include ... ?>` with path relative to current file, i.e. `<?include ../header.priv.html ?>`.
+To include another file into the current file, use `<?include ... ?>` with path relative to current file, i.e. `<?include ../header.priv.html ?>`. Maximum inclusion depth is up to 64 files.
 
-All asynchronous dynamic code blocks are executed in parallel and in `aio:async` context, so `aio:await` is available for use. As for order of dynamic content blocks within file, there is no guarantee of sequential code execution.
+All asynchronous dynamic code blocks are executed in **sequential order** and in `aio:async` context, so `aio:await` is available for use. In case that file begins with `#! parallel` (either before or after resolving all includes), execution becomes parallel and there is no guaranteed order of execution of each block.
 
 The code must use `write(text, ...)` to write dynamic content, which will be replaced back into original page and in case the call is asynchronous, finish the generation by calling `done()` that is available during the execution.
 
