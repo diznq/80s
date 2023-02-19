@@ -57,6 +57,7 @@ Result of this "benchmark" were as follows:
 |  512 |                  7431.89 | 34126.9 | 32067.4 |    **276537**   | 244457   |          49276.8 | 136063   | 208429   |
 
 \* # = number of parallel connections using `ab -c # -n 1000000 -k http://localhost:8080/haha?name=Abcde`
+
 \* bold cell = highest requests/s
 
 
