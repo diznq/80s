@@ -93,7 +93,7 @@ local function init_dir(base, prefix)
     end
 end
 
-init_dir("server/public_html/")
+init_dir(os.getenv("PUBLIC_HTML") or "server/public_html/")
 
 function aio:on_init()
     SQL = mysql:new()
