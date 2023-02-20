@@ -381,7 +381,7 @@ function mysql:handshake()
         1,
         encode_le32(CONN_FLAGS) .. 
         encode_le32(0xFFFFFF) ..
-        string.char(8) ..
+        string.char(45) ..
         ("\0"):rep(23) ..
         encode_str(self.user) ..
         encode_varstr(self:native_password_hash(self.password, scramble)) ..
