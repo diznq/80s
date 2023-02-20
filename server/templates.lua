@@ -87,14 +87,14 @@ function templates:prepare(content, base)
                     return "%" .. format_type
                 end)
                 if #args == 0 then
-                    return " write([[" .. match .. "]])\n"
+                    return " write([[" .. match .. "]])"
                 else
-                    return " write([[" .. match .. "]], " .. table.concat(args, ", ") .. ")\n"
+                    return " write([[" .. match .. "]], " .. table.concat(args, ", ") .. ")"
                 end
             end)
             table.insert(lines, line)
         end
-        match = table.concat(lines, "\n")
+        match = table.concat(lines, "\n") .. "\n"
         local compiled, err = load("return function(session, locals, headers, body, endpoint, query, write, escape, await, header, status, done)" .. match .. "end")
         if not compiled then
             table.insert(context.parts, function (input, output, done)
