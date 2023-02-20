@@ -165,8 +165,7 @@ function mysql_decoder:lenint()
     end
     if int >= 252 then
         if int == 252 then
-            local lol = self:int(2)
-            return lol
+            return self:int(2)
         elseif int == 253 then
             return self:int(3)
         elseif int == 254 then

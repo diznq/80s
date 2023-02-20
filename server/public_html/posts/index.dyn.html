@@ -19,15 +19,15 @@
             
             local posts, err = await(SQL:select("SELECT * FROM posts ORDER BY id DESC"))
             if err then
-                write("Failed to load posts: " .. err)
+                | Failed to load posts: #{err}
                 return done()
             end
-            write("There are " .. #posts .. " posts")
+            | <p>There are #{#posts:d} posts</p>
             for i, post in ipairs(posts) do
-                write([[<div class="post">
-                    <div class="author">%s</div>
-                    <div class="text">%s</div>    
-                </div>]], post.author, post.text)
+                | <div class="post">
+                |    <div class="author">#{post.author}</div>
+                |    <div class="text">#{post.text}</div>    
+                | </div>
             end
             done()
         ?>

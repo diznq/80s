@@ -547,7 +547,11 @@ end
 ---@return boolean ok value
 function aio:async(callback)
     local cor = aio:cor0(callback)
-    return cor, coroutine.resume(cor)
+    local ok, result = coroutine.resume(cor)
+    if not ok then
+        print("aio.async failed: ", result)
+    end
+    return cor, ok
 end
 
 --- Await promise
@@ -557,10 +561,17 @@ function aio:await(promise)
     local self_cor = coroutine.running()
 
     if type(promise) == "thread" then
-        return coroutine.resume(promise)
+        local result = {coroutine.resume(promise)}
+        if not result[1] then
+            print("aio.await coroutine failed: ", result[2])
+        end
+        return unpack(result, 2)
     else
         promise(function(...)
-            coroutine.resume(self_cor, ...)
+            local ok, result = coroutine.resume(self_cor, ...)
+            if not ok then
+                print("aio.await failed: ", result)
+            end
         end)
     end
     return coroutine.yield()

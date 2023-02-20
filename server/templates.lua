@@ -72,6 +72,29 @@ function templates:prepare(content, base)
     end
 
     context.content = content:gsub("<%?lu(a?)(.-)%?>", function (async, match)
+        local lines = {}
+        for line in match:gmatch("[^\r\n]+") do
+            line = line:gsub("^%s*%|%s+(.+)$", function(match)
+                local args = {}
+                match = match:gsub("%#%{(.-)%}", function(format_item)
+                    local format_type = "s"
+                    local item, maybe_type = format_item:match("(.-):(.-)")
+                    if item and maybe_type then
+                        format_item = maybe_type
+                        format_item = item
+                    end
+                    table.insert(args, format_item)
+                    return "%" .. format_type
+                end)
+                if #args == 0 then
+                    return " write([[" .. match .. "]])\n"
+                else
+                    return " write([[" .. match .. "]], " .. table.concat(args, ", ") .. ")\n"
+                end
+            end)
+            table.insert(lines, line)
+        end
+        match = table.concat(lines, "\n")
         local compiled, err = load("return function(session, locals, headers, body, endpoint, query, write, escape, await, header, status, done)" .. match .. "end")
         if not compiled then
             table.insert(context.parts, function (input, output, done)

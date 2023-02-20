@@ -249,6 +249,24 @@ All asynchronous dynamic code blocks are executed in **sequential order** and in
 
 The code must use `write(text, ...)` to write dynamic content, which will be replaced back into original page and in case the call is asynchronous, finish the generation by calling `done()` that is available during the execution.
 
+There is also sugar syntax for write in form of line that begins with `| ` (the space **must follow** `|`), where `| Text` will be transformed to `write([[Text]])` and if text contains `#{Argument}` or `#{Argument:Format}`, it will be appended to list of otherwise arguments for write. If no format is provided, it is evaluated as `s` that translates to `%s`.
+
+Example:
+
+```html
+| <div class="message">
+|   Hello there, #{name}. Random number of today is: #{math.random():.3f}
+| </div>
+```
+
+That translates to
+
+```lua
+write([[<div class="message">]])
+write([[Hello there, %s. Random number of today is: %.3f]], name, math.random())
+write([[</div>]])
+```
+
 During code execution, several variables are set within context:
 - `session`: session context
 - `locals`: a table where scripts can store intermediate data that they can share across them while entire page renders

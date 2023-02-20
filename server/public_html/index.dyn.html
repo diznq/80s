@@ -8,7 +8,7 @@
         done()
     ?>
 
-    <p><a href="/posts/">Read posts <?lu write("(%d)", locals.posts[1].cnt) ?></a></p>
+    <p><a href="/posts/">Read posts <?lu | #{tonumber(locals.posts[1].cnt, 10):d} ?></a></p>
 
     <p>w3.org response:</p>
     <pre><?lua
@@ -16,10 +16,10 @@
         locals.w3 = "None"
         if query.w3 then
             locals.w3 = await(HTTP:GET("www.w3.org", "/", "text/html"))
-            write(locals.w3)
+            | #{locals.w3}
             done()
         else
-            write("w3 was not requested")
+            | w3 was not requested
             done()
         end
     ?></pre>
