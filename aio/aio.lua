@@ -38,8 +38,8 @@ local aiosocket = {
     childfd = nil,
     --- @type lightuserdata event loop file descriptor
     elfd = nil,
-    --- @type boolean keep alive
-    ka = false,
+    --- @type boolean true if Connection: close is sent by client
+    http_close = false,
     --- @type boolean closed
     closed = false,
 }
@@ -81,11 +81,11 @@ function aiosocket:http_response(status, headers, response)
         self.childfd, 
         string.format("HTTP/1.1 %s\r\nConnection: %s\r\n%sContent-length: %d\r\n\r\n%s",
             status,
-            self.ka and "keep-alive" or "close",
+            self.http_close and "close" or "keep-alive",
             str_headers,
             #response, response
         ), 
-        not self.ka
+        self.http_close
     )
 end
 
@@ -191,7 +191,7 @@ function aio:handle_as_http(elfd, childfd, data, len)
             end
             local method, url, headers = aio:parse_http(header)
             local close = (headers["connection"] or "close"):lower() == "close"
-            fd.ka = not close
+            fd.http_close = close
             aio:on_http(fd, method, url, headers, body)
             if close then
                 break
