@@ -32,7 +32,16 @@ local function init_dir(base, prefix)
     for _, file in pairs(net.listdir(base)) do
         if file:match("/$") then
             init_dir(base .. file, prefix .. file)
-        else
+        elseif prefix == "/" and file == "main.lua" then
+            -- Only main.lua in root folder will be loaded
+            local main, err = loadfile(base .. file)
+            if not main then
+                print("http.init_dir: failed to load main.lua, error: " .. err)
+            else
+                main()
+            end
+        elseif not file:match("%.lua$") then
+            -- Lua files are forbidden
             local f, err = io.open(base .. file, "r")
             if f then
                 local content = f:read("*all")
@@ -88,6 +97,8 @@ local function init_dir(base, prefix)
                 if not file:match("%.priv%.") then
                     create_endpoint(base, method, prefix .. endpoint, mime, content, dynamic)
                 end
+            else
+                print("http.init_dir: failed to load file " .. base .. file .. ", error: " .. err)
             end
         end
     end

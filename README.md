@@ -279,6 +279,7 @@ During code execution, several variables are set within context:
 - `header(header_name, header_value)`: write HTTP header
 - `write(text, ...)`: writer content, if ... is present, it is equal to `string.format(text, escape(x) for x in ...)`, otherwise just text
 - `escape(text)`: HTML escape the text
+- `post_render(handler)`: add callback `fun(rendered_page: string): string new_page` that will be called after page is rendered and can alter the page content
 - `done()`: done signalizer
 
 You can see examples in `server/public_html/` directory.

@@ -14,6 +14,7 @@ local templates = {}
 --- @class templateoutput
 --- @field headers table
 --- @field status string
+--- @field post_render (fun(response: string): string)[]
 
 --- @class templatectx
 --- @field content string
@@ -95,7 +96,7 @@ function templates:prepare(content, base)
             table.insert(lines, line)
         end
         match = table.concat(lines, "\n") .. "\n"
-        local compiled, err = load("return function(session, locals, headers, body, endpoint, query, write, escape, await, header, status, done)" .. match .. "end")
+        local compiled, err = load("return function(session, locals, headers, body, endpoint, query, write, escape, post_render, await, header, status, done)" .. match .. "end")
         if not compiled then
             table.insert(context.parts, function (input, output, done)
                 done(err)
@@ -126,6 +127,9 @@ function templates:prepare(content, base)
                         end
                     end, 
                     escape,
+                    function(handler)
+                        table.insert(output.post_render, handler)
+                    end,
                     await,
                     function(name, value) output.headers[name] = value end,
                     function(value) output.status = value end,
@@ -172,7 +176,8 @@ function templates:render(session, headers, body, endpoint, query, mime, ctx)
         headers = {
             ["Content-type"] = mime
         },
-        status = "200 OK"
+        status = "200 OK",
+        post_render = {}
     }
 
     local input = {
@@ -196,6 +201,11 @@ function templates:render(session, headers, body, endpoint, query, mime, ctx)
             local response = ctx.content:gsub("<%?l([0-9]+)%?>", function(match)
                 return tostring(responses[tonumber(match, 10)])
             end)
+            if #output.post_render > 0 then
+                for _, handler in ipairs(output.post_render) do
+                    response = handler(response)
+                end
+            end
             on_resolved({
                 status=output.status,
                 headers=output.headers,
@@ -214,6 +224,13 @@ function templates:render(session, headers, body, endpoint, query, mime, ctx)
             local response = ctx.content:gsub("<%?l([0-9]+)%?>", function(match)
                 return tostring(responses[tonumber(match, 10)])
             end)
+
+            if #output.post_render > 0 then
+                for _, handler in ipairs(output.post_render) do
+                    response = handler(response)
+                end
+            end
+
             on_resolved({
                 status=output.status,
                 headers=output.headers,
