@@ -106,7 +106,7 @@ function templates:prepare(content, base)
         table.insert(context.parts, 
         function(input, output, done)
             aio:async(function()
-                local data = ""
+                local data = {}
                 code(
                     input.session,
                     input.locals,
@@ -120,19 +120,19 @@ function templates:prepare(content, base)
                             for i, v in ipairs(params) do
                                 params[i] = escape(v)
                             end
-                            data = data .. string.format(text, unpack(params))
+                            table.insert(data, string.format(text, unpack(params)))
                         else
-                            data = data .. text
+                            table.insert(data, text)
                         end
                     end, 
                     escape,
                     await,
                     function(name, value) output.headers[name] = value end,
                     function(value) output.status = value end,
-                    function() done(data) end
+                    function() done(table.concat(data)) end
                 )
                 if #async == 0 then
-                    done(data)
+                    done(table.concat(data))
                 end
             end)
         end)
