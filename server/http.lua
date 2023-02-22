@@ -9,8 +9,20 @@ HTTP = http_client
 
 local function create_endpoint(base, method, endpoint, mime, content, dynamic)
     local ctx = nil
+    --- @type table|nil
+    local resp_headers = nil
     if dynamic then
         ctx = templates:prepare(content, base)
+    else
+        resp_headers = {}
+        resp_headers["Content-type"] = mime
+        if endpoint:match("/static/") then
+            resp_headers["Cache-Control"] = "public, max-age=604800, immutable"
+        end
+        if endpoint:match("%.gz$") then
+            endpoint = endpoint:gsub("%.gz$", "")
+            resp_headers["Content-encoding"] = "gzip"
+        end
     end
     aio:http_any(method, endpoint, function (self, query, headers, body)
         --for i, v in pairs(headers) do print(i, v) end
@@ -22,7 +34,7 @@ local function create_endpoint(base, method, endpoint, mime, content, dynamic)
                 self:http_response(result.status, result.headers, result.content)
             end)
         else
-            self:http_response("200 OK", mime, content)
+            self:http_response("200 OK", resp_headers or mime, content)
         end
     end)
 end
@@ -69,16 +81,18 @@ local function init_dir(base, prefix)
                 if file:match("^delete%..*$") then
                     method = "DELETE"
                 end
+
+                local file_sanitized = file:gsub("%.gz$", "")
                 
-                if file:match("%.css$") then
+                if file_sanitized:match("%.css$") then
                     mime = "text/css"
-                elseif file:match("%.html?$") then
+                elseif file_sanitized:match("%.html?$") then
                     mime = "text/html"
-                elseif file:match("%.jpg$") then
+                elseif file_sanitized:match("%.jpg$") then
                     mime = "image/jpeg"
-                elseif file:match("%.js$") then
+                elseif file_sanitized:match("%.js$") then
                     mime = "application/javascript; charset=utf-8"
-                elseif file:match("%.json$") then
+                elseif file_sanitized:match("%.json$") then
                     mime = "application/json; charset=utf-8"
                 end
 
