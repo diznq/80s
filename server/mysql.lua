@@ -403,6 +403,9 @@ function mysql:handshake()
 end
 
 function mysql:escape(text)
+    if type(text) ~= "string" then
+        return text
+    end
     local res = text
         :gsub("\\", "\\\\")
         :gsub("%'", "\\'")
