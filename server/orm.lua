@@ -34,13 +34,13 @@ local ormtypes = {
 }
 
 
-local repository = {}
+local orm = {}
 
 --- Create repository
 ---@param sql mysql
 ---@param repo {source: string, entity:ormentity, [string]: any}
 ---@return {[string]: fun(...: any): fun(callback: fun(result: table|table[]|nil, error: string|nil))}
-function repository:create(sql, repo)
+function orm:create(sql, repo)
     --- @type string
     local source = repo.source
     --- @type ormentity
@@ -151,7 +151,7 @@ function aio:on_init()
     local sql = mysql:new()
     
     sql:connect("80s", "password", "db80")(function (...)
-        local repo = repository:create(sql, {
+        local repo = orm:create(sql, {
             source = "posts",
             --- @type ormentity
             entity = {
@@ -169,3 +169,5 @@ function aio:on_init()
         end)
     end)
 end
+
+return orm
