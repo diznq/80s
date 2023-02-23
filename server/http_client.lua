@@ -33,15 +33,4 @@ function http_client:GET(host, script, accept)
     end
 end
 
-function aio:on_init(elfd, parentfd)
-    aio:async(function()
-        local w3, wiki = aio:await(aio:gather(
-            http_client:GET("w3.org", "/", "text/html"), 
-            http_client:GET("en.wikipedia.org", "/", "text/html")
-        ))
-        print("W3: ", #w3)
-        print("Wiki: ", #wiki)
-    end)
-end
-
 return http_client

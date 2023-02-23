@@ -466,7 +466,7 @@ end
 --- Execute SQL Select query and return results
 ---@param query string SQL query
 ---@param ... any query parameters
----@return fun(on_resolved: fun(rows: table[]|nil, error: string|nil)) promise
+---@return fun(on_resolved: fun(rows: table[]|nil, errorOrColumns: string|{[string]: mysqlfielddef}|nil)) promise
 function mysql:select(query, ...)
     local resolve, resolve_event = aio:prepare_promise()
 
@@ -489,11 +489,15 @@ function mysql:select(query, ...)
             end
             --- @type mysqlfielddef[]
             local fields = {}
+            --- @type {[string]: mysqlfielddef}
+            local by_name = {}
             local rows = {}
             for i=1, n_fields do
                 local seq, field_res = coroutine.yield()
                 if seq == nil then resolve(nil, "network error while fetching fields") return end
-                table.insert(fields, self:decode_field(field_res))
+                local field = self:decode_field(field_res)
+                table.insert(fields, field)
+                by_name[field.name] = field
             end
             local _, eof = coroutine.yield()
             if eof:byte(1, 1) ~= 254 then
@@ -511,7 +515,7 @@ function mysql:select(query, ...)
                 end
                 table.insert(rows, row)
             end
-            resolve(rows)
+            resolve(rows, by_name)
         end)
     )
 
@@ -560,25 +564,6 @@ function mysql:decode_field(packet)
         flags = reader:int(2),
         decimals = reader:int(1)
     }
-end
-
-function aio:on_init()
-    local sql = mysql:new()
-
-    sql:connect("80s", "password", "db80")(function (ok, err)
-        print("Connected: ", ok)
-        local result = sql:select("SELECT * FROM users")
-        
-        result(function (rows, err)
-            if rows == nil and err ~= nil then
-                print("failed to select users: ", err)
-            elseif rows ~= nil then
-                for i, user in ipairs(rows) do
-                    print("id: ", user.id, "name: ", user.name)
-                end
-            end
-        end)
-    end)
 end
 
 return mysql
