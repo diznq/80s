@@ -230,6 +230,7 @@ end)
 ## Default server/http.lua as content server
 
 Default `http.lua` comes preconfigured to serve files in `public_html`.
+In case there is `main.lua` in `public_html` folder, it is loaded on server start-up.
 The file rendering follows these rules:
 
 - If file name contains `.dyn.` (i.e. `index.dyn.html`), it is considered dynamic contain and therefore `<?lu ... ?>`, `<?lua ... ?>` and `<?include ... ?>` will be replaced with rendered content on page request
@@ -298,3 +299,43 @@ Following methods are available:
 
 If connection socket disconnects while the server is still running, an attempt to reconnect will be made before executing incoming SQL queries. If that fails, it is returned as error to either :exec  or :select.
 
+## ORM module
+
+ORM module allows to build upon MySQL module to simplify working with database and provide simple `repository` implementation.
+
+To create a Java JPA-like repository, `orm:create` can be used:
+
+```lua
+local repo = orm:create(SQL, {
+    source = "posts",
+    --- @type ormentity
+    entity = {
+        id = { field = "id", type = orm.t.int },
+        author = { field = "author", type = orm.t.str },
+        text = { field = "text", type = orm.t.str },
+    },
+    findById = true,
+    findBy = true
+})
+```
+
+The following code will create repository with following methods:
+
+```lua
+-- SELECT * FROM posts WHERE id = ?
+repo.all:byId(id: int): Posts[]?, error?
+-- SELECT * FROM posts
+repo.all.by(): Posts[]?, error?
+-- SELECT * FROM posts WHERE id = ? LIMIT 1
+repo.one:byId(id: int): Post?, error?
+-- SELECT * FROM posts LIMIT 1
+repo.one:by(id: int): Post?, error?
+-- SELECT COUNT(*) FROM posts WHERE id = ? LIMT 1
+repo.count:byId(id: int): int?, error?
+-- SELECT COUNT(*) FROM posts WHERE id = ?
+repo.count:by(): int?, error?
+```
+
+Optionally `{orderBy: string, limit: string}` can be passed to all select methods, i.e. `repo.all:by({orderBy = "author", limit = 2})`. **Keep in mind that `orderBy` and `limit` aren't escaped in any way**.
+
+Method names always use keys specified in `entity` object using during creation and not `.field` that maps to raw database. Same goes for `repo:save(object)`. All generated queries use `AND` to filter for the result, i.e. `findByIpAndPort` would be `WHERE ip = ? AND port = ?`.
