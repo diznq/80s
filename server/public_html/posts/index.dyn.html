@@ -17,7 +17,7 @@
         <?lua
             -- we expect CREATE TABLE posts(id int primary key auto_increment, author varchar(50), text varchar(255)) to exist
             
-            local posts, err = await(SQL:select("SELECT * FROM posts ORDER BY id DESC"))
+            local posts, err = await(Posts.all:by({orderBy="id DESC"}))
             if err then
                 | Failed to load posts: #{err}
                 return done()

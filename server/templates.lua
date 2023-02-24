@@ -72,10 +72,10 @@ function templates:prepare(content, base)
         depth = depth + 1
     end
 
-    context.content = content:gsub("<%?lu(a?)(.-)%?>", function (async, match)
+    context.content = content:gsub("<%?lu(a?)%s+(.-)%s*%?>", function (async, match)
         local lines = {}
         for line in match:gmatch("[^\r\n]+") do
-            line = line:gsub("^%s*%|%s+(.+)$", function(match)
+            line = line:gsub("^%s*%|%s+(.+)%s*$", function(match)
                 local args = {}
                 match = match:gsub("%#%{(.-)%}", function(format_item)
                     local format_type = "s"

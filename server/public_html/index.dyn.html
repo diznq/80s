@@ -4,11 +4,11 @@
     <img src="/assets/srgen.jpg">
 
     <?lua
-        locals.posts = await(SQL:select("SELECT COUNT(*) AS cnt FROM posts"))
+        locals.posts_count = await(Posts.count:by())
         done()
     ?>
 
-    <p><a href="/posts/">Read posts <?lu | #{tonumber(locals.posts[1].cnt, 10):d} ?></a></p>
+    <p><a href="/posts/">Read posts (<?lu | #{locals.posts_count:d} ?>)</a></p>
 
     <p>w3.org response:</p>
     <pre><?lua

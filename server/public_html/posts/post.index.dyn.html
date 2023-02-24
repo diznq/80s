@@ -5,7 +5,7 @@
         write("Missing body: " .. body)
         return done()
     end
-    local result = await(SQL:exec("INSERT INTO posts(author, text) VALUES('%s', '%s')", post.name, post.text))
+    local result = await(Posts:save({author=post.name, text=post.text}))
     if result.error then
         status("500 Internal Server Error")
         write("Failed to write post to database: %s", result.error)

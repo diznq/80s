@@ -3,8 +3,6 @@ local mysql = require("server.mysql")
 local templates = require("server.templates")
 local http_client = require("server.http_client")
 
---- @class mysql
-SQL = nil
 HTTP = http_client
 
 local function create_endpoint(base, method, endpoint, mime, content, dynamic)
@@ -119,16 +117,6 @@ local function init_dir(base, prefix)
 end
 
 init_dir(os.getenv("PUBLIC_HTML") or "server/public_html/")
-
-function aio:on_init()
-    SQL = mysql:new()
-    local user, password, db = os.getenv("DB_USER") or "80s", os.getenv("DB_PASSWORD") or "password", os.getenv("DB_NAME") or "db80"
-    SQL:connect(user, password, db)(function (ok, err)
-        if not ok then
-            print("Failed to connect to SQL: ", err)
-        end
-    end)
-end
 
 aio:http_post("/reload", function (self, query, headers, body)
     net.reload()
