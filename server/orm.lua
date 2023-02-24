@@ -42,6 +42,22 @@ local ormtypes = {
         fromstring = function(text) return tonumber(text) end,
         toformat = function(value) return tonumber(value) end
     },
+    boolbit = {
+        format = function() return "%c" end,
+        fromstring = function(text) return text:byte(1, 1) ~= 0 end,
+        toformat = function(value) return string.char(value and 1 or 0) end
+    },
+    ---@diagnostic disable-next-line: assign-type-mismatch
+    varchar = function(size)
+        return {
+            format = function() return "%s" end,
+            fromstring = function(text) return text end,
+            toformat = function(text)
+                if #text > size then return text:sub(1, size) end
+                return text
+            end
+        }
+    end,
     datetime = {
         format = function() return "%s" end,
         fromstring = function(text)
