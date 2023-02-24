@@ -1,7 +1,7 @@
 <?lua
     write("id,author,text\n")
     local posts, err = await(SQL:select("SELECT * FROM posts ORDER BY id DESC"))
-    if err then
+    if not posts then
         write("Failed to load posts: " .. err)
         return done()
     end
