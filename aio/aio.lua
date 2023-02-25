@@ -145,13 +145,13 @@ end
 --- @param childfd lightuserdata socket handle
 function aiosocket:on_write(elfd, childfd)
     -- on connect is called only once
+    self.wr = true
     if not self.co then
         self.co = true
         self:on_connect(elfd, childfd)
     end
     if self.closed then return end
     -- keep in mind that on_write is only triggered when socket previously failed to write part of data
-    self.wr = true
     -- if there is any data remaining to be sent, try to send it
     if #self.buf > 0 then
         local to_write = #self.buf
