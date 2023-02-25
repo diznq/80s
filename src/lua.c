@@ -33,32 +33,30 @@ static int l_net_write(lua_State *L)
     int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
     const char *data = lua_tolstring(L, 3, &len);
-    int toclose = lua_toboolean(L, 4);
-    int writelen = write(childfd, data, len);
+    ssize_t writelen = write(childfd, data, len);
 
-    if (writelen < 0)
+    if (writelen < 0 && errno != EWOULDBLOCK)
     {
-        //printf("write error to %d: %s\n", childfd, strerror(errno));
         dbg("l_net_write: write failed");
-        toclose = 1;
+        lua_pushboolean(L, 0);
+        lua_pushinteger(L, errno);
+    } else {
+        if(writelen < len) {
+            ev.events = EPOLLIN | EPOLLOUT;
+            ev.data.fd = childfd;
+            if (epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev) < 0)
+            {
+                dbg("l_net_write: failed to add socket to out poll");
+                lua_pushboolean(L, 0);
+                lua_pushinteger(L, errno);
+                return 2;
+            }
+        }
+        lua_pushboolean(L, 1);
+        lua_pushinteger(L, (lua_Integer)writelen);
     }
 
-    if (toclose)
-    {
-        ev.events = EPOLLIN;
-        ev.data.fd = childfd;
-        if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0)
-        {
-            dbg("l_net_write: failed to remove child from epoll");
-        }
-        if (close(childfd) < 0)
-        {
-            dbg("l_net_write: failed to close childfd");
-        }
-        on_close(L, elfd, childfd);
-    }
-    lua_pushboolean(L, writelen >= 0);
-    return 1;
+    return 2;
 }
 
 static int l_net_close(lua_State *L)

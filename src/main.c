@@ -75,14 +75,14 @@ void on_close(lua_State *L, int elfd, int childfd)
     }
 }
 
-void on_connect(lua_State *L, int elfd, int childfd)
+void on_write(lua_State *L, int elfd, int childfd)
 {
-    lua_getglobal(L, "on_connect");
+    lua_getglobal(L, "on_write");
     lua_pushlightuserdata(L, (void *)elfd);
     lua_pushlightuserdata(L, (void *)childfd);
     if (lua_pcall(L, 2, 0, 0) != 0)
     {
-        printf("on_connect: error running on_data: %s\n", lua_tostring(L, -1));
+        printf("on_write: error running on_data: %s\n", lua_tostring(L, -1));
     }
 }
 
@@ -196,7 +196,7 @@ static int serve(void* vparams) {
                         on_receive(L, elfd, childfd, buf, readlen);
                     }
                 } else if((events[n].events & EPOLLOUT) == EPOLLOUT) {
-                    // we should receive this only after connect, after that we remove it from EPOLLOUT queue
+                    // we should receive this only after socket is writeable, after that we remove it from EPOLLOUT queue
                     ev.events = EPOLLIN;
                     ev.data.fd = childfd;
                     if (epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev) < 0)
@@ -204,7 +204,7 @@ static int serve(void* vparams) {
                         dbg("serve: failed to move child socket from out to in");
                         continue;
                     }
-                    on_connect(L, elfd, childfd);
+                    on_write(L, elfd, childfd);
                 }
             }
         }

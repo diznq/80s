@@ -1,5 +1,5 @@
 --- @class net
---- @field write fun(elfd: lightuserdata, childfd: lightuserdata, data: string, close: boolean): boolean write tdata o file descriptor
+--- @field write fun(elfd: lightuserdata, childfd: lightuserdata, data: string): boolean write data to file descriptor
 --- @field close fun(elfd: lightuserdata, childfd: lightuserdata): boolean close a file descriptor
 --- @field connect fun(elfd: lightuserdata, host: string, port: integer): fd: lightuserdata|nil, err: string|nil open a new network connection
 --- @field reload fun() reload server
@@ -38,8 +38,14 @@ local aiosocket = {
     childfd = nil,
     --- @type lightuserdata event loop file descriptor
     elfd = nil,
-    --- @type boolean true if Connection: close is sent by client
-    hc = false,
+    --- @type boolean true if close after write
+    cw = false,
+    --- @type boolean true if socket is connected
+    co = false,
+    --- @type boolean true if socket is writeable
+    wr = false,
+    --- @type string buffer
+    buf = "",
     --- @type boolean closed
     closed = false,
 }
@@ -47,11 +53,28 @@ local aiosocket = {
 --- Write data to network
 ---
 --- @param data string data to write
---- @param close boolean|nil asdf
 --- @return boolean
-function aiosocket:write(data, close)
+function aiosocket:write(data)
     if self.closed then return false end
-    return net.write(self.elfd, self.childfd, data, close or false)
+    if not self.wr then 
+        self.buf = self.buf .. data
+        return true
+    end
+    local to_write = #data
+    local ok, written = net.write(self.elfd, self.childfd, data)
+    if not ok then
+        self:close()
+        return false
+    elseif written < to_write then
+        self.wr = false
+        self.buf = self.buf .. data:sub(1 + written)
+        return true
+    elseif self.cw then
+        self:close()
+        return true
+    else
+        return true
+    end
 end
 
 --- Close socket
@@ -76,16 +99,13 @@ function aiosocket:http_response(status, headers, response)
             str_headers = str_headers .. string.format("%s: %s\r\n", k, v)
         end
     end
-    return net.write(
-        self.elfd, 
-        self.childfd, 
+    return self:write(
         string.format("HTTP/1.1 %s\r\nConnection: %s\r\n%sContent-length: %d\r\n\r\n%s",
             status,
-            self.hc and "close" or "keep-alive",
+            self.cw and "close" or "keep-alive",
             str_headers,
             #response, response
-        ), 
-        self.hc
+        )
     )
 end
 
@@ -115,13 +135,47 @@ function aiosocket:on_connect(elfd, childfd)
 
 end
 
+--- Writeable handler of socket, overridable
+---
+--- @param elfd lightuserdata epoll handle
+--- @param childfd lightuserdata socket handle
+function aiosocket:on_write(elfd, childfd)
+    -- on connect is called only once
+    if not self.co then
+        self.co = true
+        self:on_connect(elfd, childfd)
+    end
+    if self.closed then return end
+    -- keep in mind that on_write is only triggered when socket previously failed to write part of data
+    self.wr = true
+    -- if there is any data remaining to be sent, try to send it
+    if #self.buf > 0 then
+        local to_write = #self.buf
+        local ok, written = net.write(elfd, childfd, self.buf)
+        if ok and written == to_write then
+            return
+        elseif not ok then
+            -- if sending failed completly, i.e. socket was closed, end
+            self:close()
+        elseif written < to_write then
+            -- if we were able to send only part of data due to full buffer, equeue it for later
+            self.wr = false
+            self.buf = self.buf:sub(1 + written)
+        elseif self.cw then
+            -- if we sent everything and require close after write, close the socket
+            self:close()
+        end
+    end
+end
+
 --- Create new socket instance
 ---
 --- @param elfd lightuserdata
 --- @param childfd lightuserdata
+--- @param connected boolean
 --- @return aiosocket
-function aiosocket:new(elfd, childfd)
-    local socket = { elfd = elfd, childfd = childfd, ka = false }
+function aiosocket:new(elfd, childfd, connected)
+    local socket = { elfd = elfd, childfd = childfd, cw = false, co = connected or false, wr = connected or false }
     setmetatable(socket, self)
     self.__index = self
     return socket
@@ -170,7 +224,7 @@ end
 --- @param data string incoming stream data
 --- @param len integer length of data
 function aio:handle_as_http(elfd, childfd, data, len)
-    local fd = aiosocket:new(elfd, childfd)
+    local fd = aiosocket:new(elfd, childfd, true)
     self.fds[childfd] = fd
 
     self:buffered_cor(fd, function (resolve)
@@ -191,7 +245,7 @@ function aio:handle_as_http(elfd, childfd, data, len)
             end
             local method, url, headers = aio:parse_http(header)
             local close = (headers["connection"] or "close"):lower() == "close"
-            fd.hc = close
+            fd.cw = close
             aio:on_http(fd, method, url, headers, body)
             if close then
                 break
@@ -278,7 +332,7 @@ function aio:connect(elfd, host, port)
     if sock == nil then
         return nil, err
     end
-    self.fds[sock] = aiosocket:new(elfd, sock)
+    self.fds[sock] = aiosocket:new(elfd, sock, false)
     return self.fds[sock], nil
 end
 
@@ -289,22 +343,22 @@ function aio:on_close(elfd, childfd)
     local fd = self.fds[childfd]
     self.fds[childfd] = nil
 
-    -- notify with close event
-    if fd ~= nil then
+    -- notify with close event, only once
+    if fd ~= nil and not fd.closed then
         fd.closed = true
         fd:on_close(elfd, childfd)
     end
 end
 
---- Handler called when socket connects
+--- Handler called when socket is writeable
 --- @param elfd lightuserdata epoll handle
 --- @param childfd lightuserdata socket handle
-function aio:on_connect(elfd, childfd)
+function aio:on_write(elfd, childfd)
     local fd = self.fds[childfd]
 
     -- notify with connect event
     if fd ~= nil then
-        fd:on_connect(elfd, childfd)
+        fd:on_write(elfd, childfd)
     end
 end
 
@@ -335,11 +389,11 @@ function aio:start()
         aio:on_close(elfd, childfd)
     end
     
-    --- Connect handler
+    --- Writeable handler
     --- @param elfd lightuserdata
     --- @param childfd lightuserdata
-    _G.on_connect = function(elfd, childfd)
-        aio:on_connect(elfd, childfd)
+    _G.on_write = function(elfd, childfd)
+        aio:on_write(elfd, childfd)
     end
 end
 

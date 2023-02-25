@@ -80,12 +80,12 @@ Naming conventions:
 ### Input APIs
 - `_G.on_data(elfd, childfd, data, length)`: called on each incoming packet of data
 - `_G.on_close(elfd, childfd)`: called when socket is closed
-- `_G.on_connect(elfd, childfd)`: called when socket successfuly connects
+- `_G.on_write(elfd, childfd)`: called when socket sbecomes writeable (also on connect)
 - `_G.on_init(elfd, parentfd)`: called when epoll is initialized
 
 ### Lua APIs
 - `net.connect(elfd, hostName, port)`: create new TCP socket, returns `socket, error`
-- `net.write(elfd, childfd, data, close?)`: write data on socket, if close is true, close the connection after write
+- `net.write(elfd, childfd, data)`: write data on socket
 - `net.close(elfd, childfd)`: close a socket
 - `net.reload()`: reload entrypoint Lua
 - `net.listdir(dir)`: list files in a directory, directories will end with `/` in returned result
