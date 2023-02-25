@@ -70,9 +70,11 @@ function aiosocket:write(data)
         self.buf = self.buf .. data:sub(1 + written)
         return true
     elseif self.cw then
+        self.buf = ""
         self:close()
         return true
     else
+        self.buf = ""
         return true
     end
 end
@@ -152,9 +154,7 @@ function aiosocket:on_write(elfd, childfd)
     if #self.buf > 0 then
         local to_write = #self.buf
         local ok, written = net.write(elfd, childfd, self.buf)
-        if ok and written == to_write then
-            return
-        elseif not ok then
+        if not ok then
             -- if sending failed completly, i.e. socket was closed, end
             self:close()
         elseif written < to_write then
