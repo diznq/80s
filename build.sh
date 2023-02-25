@@ -1,12 +1,32 @@
-LUA_LIB="/usr/local/lib/liblua.a"
-LUA_INC="/usr/local/include/"
+if [[ -z "${LUA_LIB_PATH}" ]]; then
+  LUA_LIB="/usr/local/lib/liblua.a"
+else
+  LUA_LIB="${LUA_LIB_PATH}"
+fi
+
+if [[ -z "${LUA_INC_PATH}" ]]; then
+  LUA_INC="/usr/local/include/"
+else
+  LUA_INC="${LUA_INC_PATH}"
+fi
+
 FLAGS="-s -Ofast"
 OUT="${OUT:-bin/80s}"
 CC="${CC:-gcc}"
 
 if [[ "${JIT}" == "true" ]]; then
-    LUA_LIB="/usr/local/lib/libluajit-5.1.a"
-    LUA_INC="/usr/local/include/luajit-2.0/"
+
+    if [[ -z "${LUA_JIT_LIB_PATH}" ]]; then
+      LUA_LIB="/usr/local/lib/libluajit-5.1.a"
+    else
+      LUA_LIB="${LUA_JIT_LIB_PATH}"
+    fi
+
+    if [[ -z "${LUA_JIT_INC_PATH}" ]]; then
+      LUA_INC="/usr/local/include/luajit-2.0/"
+    else
+      LUA_INC="${LUA_JIT_INC_PATH}"
+    fi
 fi
 
 mkdir -p bin

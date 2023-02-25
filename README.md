@@ -12,6 +12,8 @@ Over time I already grew tired of insane software complexity of modern software 
 
 ## Compiling
 
+### Using local system dependencies
+
 Prerequisites:
 - installed Lua librares (lualib.a and Lua headers possibly in /usr/local/include)
 - installed OpenSSL libraries if cryptograpic extensions are enabled
@@ -28,6 +30,10 @@ You can also define following environment variables before running the build to 
 - `DEBUG=true`: compile in debug mode
 
 i.e. `JIT=true CRYPTO=true WORKERS=8 ./build.sh`
+
+### Using VSCode devcontainer
+
+Open VSCode and run command _Reopen in Container_
 
 ## Running
 
