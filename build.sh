@@ -1,13 +1,13 @@
 if [[ -z "${LUA_LIB_PATH}" ]]; then
   LUA_LIB="/usr/local/lib/liblua.a"
 else
-  LUA_LIB="${LUA_LIB_PATH}" # DEFAULT
+  LUA_LIB="${LUA_LIB_PATH}"
 fi
 
 if [[ -z "${LUA_INC_PATH}" ]]; then
   LUA_INC="/usr/local/include/"
 else
-  LUA_INC="${LUA_INC_PATH}" # DEFAULT
+  LUA_INC="${LUA_INC_PATH}"
 fi
 
 FLAGS="-s -Ofast"
@@ -19,13 +19,13 @@ if [[ "${JIT}" == "true" ]]; then
     if [[ -z "${LUA_JIT_LIB_PATH}" ]]; then
       LUA_LIB="/usr/local/lib/libluajit-5.1.a"
     else
-      LUA_LIB="${LUA_JIT_LIB_PATH}" # DEFAULT
+      LUA_LIB="${LUA_JIT_LIB_PATH}"
     fi
 
     if [[ -z "${LUA_JIT_INC_PATH}" ]]; then
       LUA_INC="/usr/local/include/luajit-2.0/"
     else
-      LUA_INC="${LUA_JIT_INC_PATH}" # DEFAULT
+      LUA_INC="${LUA_JIT_INC_PATH}"
     fi
 fi
 
