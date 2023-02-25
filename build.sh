@@ -15,8 +15,18 @@ OUT="${OUT:-bin/80s}"
 CC="${CC:-gcc}"
 
 if [[ "${JIT}" == "true" ]]; then
-    LUA_LIB="/usr/local/lib/libluajit-5.1.a"
-    LUA_INC="/usr/local/include/luajit-2.0/"
+
+    if [[ -z "${LUA_JIT_LIB_PATH}" ]]; then
+      LUA_LIB="/usr/local/lib/libluajit-5.1.a"
+    else
+      LUA_LIB="${LUA_JIT_LIB_PATH}" # DEFAULT
+    fi
+
+    if [[ -z "${LUA_JIT_INC_PATH}" ]]; then
+      LUA_INC="/usr/local/include/luajit-2.0/"
+    else
+      LUA_INC="${LUA_JIT_INC_PATH}" # DEFAULT
+    fi
 fi
 
 mkdir -p bin
