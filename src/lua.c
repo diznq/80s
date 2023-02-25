@@ -67,7 +67,7 @@ static int l_net_close(lua_State *L)
 
     int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
-    ev.events = EPOLLIN;
+    ev.events = EPOLLIN | EPOLLOUT;
     ev.data.fd = childfd;
     if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0)
     {
