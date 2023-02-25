@@ -82,7 +82,7 @@ void on_write(lua_State *L, int elfd, int childfd)
     lua_pushlightuserdata(L, (void *)childfd);
     if (lua_pcall(L, 2, 0, 0) != 0)
     {
-        printf("on_write: error running on_data: %s\n", lua_tostring(L, -1));
+        printf("on_write: error running on_write: %s\n", lua_tostring(L, -1));
     }
 }
 
@@ -172,6 +172,17 @@ static int serve(void* vparams) {
             } else {
                 // only this very thread is able to poll given childfd as it was assigned only to
                 // this thread and other event loops don't have it
+                if((events[n].events & EPOLLOUT) == EPOLLOUT) {
+                    // we should receive this only after socket is writeable, after that we remove it from EPOLLOUT queue
+                    ev.events = EPOLLIN;
+                    ev.data.fd = childfd;
+                    if (epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev) < 0)
+                    {
+                        dbg("serve: failed to move child socket from out to in");
+                        continue;
+                    }
+                    on_write(L, elfd, childfd);
+                }
                 if((events[n].events & EPOLLIN) == EPOLLIN) {
                     buf[0] = 0;
                     readlen = read(childfd, buf, BUFSIZE);
@@ -196,16 +207,6 @@ static int serve(void* vparams) {
                     {
                         on_receive(L, elfd, childfd, buf, readlen);
                     }
-                } else if((events[n].events & EPOLLOUT) == EPOLLOUT) {
-                    // we should receive this only after socket is writeable, after that we remove it from EPOLLOUT queue
-                    ev.events = EPOLLIN;
-                    ev.data.fd = childfd;
-                    if (epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev) < 0)
-                    {
-                        dbg("serve: failed to move child socket from out to in");
-                        continue;
-                    }
-                    on_write(L, elfd, childfd);
                 }
             }
         }

@@ -85,6 +85,7 @@ end
 --- @return boolean
 function aiosocket:close()
     if self.closed then return true end
+    self.buf = ""
     return net.close(self.elfd, self.childfd)
 end
 
@@ -342,12 +343,14 @@ end
 --- @param elfd lightuserdata epoll handle
 --- @param childfd lightuserdata socket handle
 function aio:on_close(elfd, childfd)
+    --- @type aiosocket
     local fd = self.fds[childfd]
     self.fds[childfd] = nil
 
     -- notify with close event, only once
     if fd ~= nil and not fd.closed then
         fd.closed = true
+        fd.buf = ""
         fd:on_close(elfd, childfd)
     end
 end
