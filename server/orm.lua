@@ -27,7 +27,7 @@ local ormtype = {
 
 --- @type {[string]: ormtype}
 local ormtypes = {
-    str = {
+    text = {
         format = function() return "%s" end,
         fromstring = function(text) return text end,
         toformat = function(value) return tostring(value) end

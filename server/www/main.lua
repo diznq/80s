@@ -15,8 +15,8 @@ SQL:connect(user, password, db)(function (ok, err)
             --- @type ormentity
             entity = {
                 id = { field = "id", type = orm.t.int },
-                author = { field = "author", type = orm.t.str },
-                text = { field = "text", type = orm.t.str },
+                author = { field = "author", type = orm.t.text },
+                text = { field = "text", type = orm.t.text },
             },
             findById = true,
             findBy = true
