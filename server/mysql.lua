@@ -235,46 +235,48 @@ function mysql:connect(user, password, db, host, port)
         on_resolved(nil, "failed to create socket: " .. tostring(err))
     else
         self.fd = sock
-        aio:buffered_cor(self.fd, function (resolve)
-            local ok, err = self:handshake()
-            
-            if not ok then
-                self.connected = false
-                on_resolved(nil, err)
-                self:reset()
-                return
-            else
-                self.connected = true
-                on_resolved(ok, nil)
-            end
-
-            while true do
-                local seq, command = self:read_packet()
-                if seq == nil then
-                    print("mysql.on_data: seq returned empty response")
+        sock.on_connect = function ()
+            aio:buffered_cor(self.fd, function (resolve)
+                local ok, err = self:handshake()
+                
+                if not ok then
+                    self.connected = false
+                    on_resolved(nil, err)
+                    self:reset()
+                    return
+                else
+                    self.connected = true
+                    on_resolved(ok, nil)
                 end
 
-                -- responses from MySQL arrive sequentially, so we can call on_resolved callbacks in that fashion too
-                if #self.callbacks > 0 and seq == 1 then
-                    local first = self.callbacks[1]
-                    self.active_callback = first
-                    table.remove(self.callbacks, 1)
-                    local invoke = type(first) == "thread" and coroutine.resume or pcall
-                    -- use protected call, so it doesn't break our loop
-                    local ok, res = invoke(first, seq, command)
-                    if not ok then
-                        print("mysql.on_data: first call failed: ", res)
+                while true do
+                    local seq, command = self:read_packet()
+                    if seq == nil then
+                        print("mysql.on_data: seq returned empty response")
                     end
-                elseif self.active_callback ~= nil and seq > 1 then
-                    -- use protected call, so it doesn't break our loop
-                    local invoke = type(self.active_callback) == "thread" and coroutine.resume or pcall
-                    local ok, res =  invoke(self.active_callback, seq, command)
-                    if not ok then
-                        print("mysql.on_data: next call failed: ", res)
+
+                    -- responses from MySQL arrive sequentially, so we can call on_resolved callbacks in that fashion too
+                    if #self.callbacks > 0 and seq == 1 then
+                        local first = self.callbacks[1]
+                        self.active_callback = first
+                        table.remove(self.callbacks, 1)
+                        local invoke = type(first) == "thread" and coroutine.resume or pcall
+                        -- use protected call, so it doesn't break our loop
+                        local ok, res = invoke(first, seq, command)
+                        if not ok then
+                            print("mysql.on_data: first call failed: ", res)
+                        end
+                    elseif self.active_callback ~= nil and seq > 1 then
+                        -- use protected call, so it doesn't break our loop
+                        local invoke = type(self.active_callback) == "thread" and coroutine.resume or pcall
+                        local ok, res =  invoke(self.active_callback, seq, command)
+                        if not ok then
+                            print("mysql.on_data: next call failed: ", res)
+                        end
                     end
                 end
-            end
-        end)
+            end)
+        end
     end
 
     return resolve_event
