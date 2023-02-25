@@ -53,9 +53,11 @@ local aiosocket = {
 --- Write data to network
 ---
 --- @param data string data to write
+--- @param close boolean|nil close after write
 --- @return boolean
-function aiosocket:write(data)
+function aiosocket:write(data, close)
     if self.closed then return false end
+    if close ~= nil then self.cw = close end
     if not self.wr then 
         self.buf = self.buf .. data
         return true

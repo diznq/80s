@@ -39,5 +39,5 @@ $CC src/main.c src/lua.c "$LUA_LIB" \
     "-I$LUA_INC" \
     $LIBS \
     $FLAGS -march=native \
-    -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast -Wno-stringop-overread \
+    -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast \
     -o "$OUT"

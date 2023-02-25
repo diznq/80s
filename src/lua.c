@@ -237,19 +237,19 @@ static int l_net_listdir(lua_State* L) {
 #ifdef CRYPTOGRAPHIC_EXTENSIONS
 static int l_net_sha1(lua_State* L) {
     size_t len;
-    char buffer[20];
-    const char *data = (const char*)lua_tolstring(L, 1, &len);
+    unsigned char buffer[20];
+    const unsigned char *data = (const unsigned char*)lua_tolstring(L, 1, &len);
     SHA1(data, len, buffer);
-    lua_pushlstring(L, buffer, 20);
+    lua_pushlstring(L, (const char*)buffer, 20);
     return 1;
 }
 
 static int l_net_sha256(lua_State* L) {
     size_t len;
-    char buffer[32];
-    const char *data = (const char*)lua_tolstring(L, 1, &len);
+    unsigned char buffer[32];
+    const unsigned char *data = (const unsigned char*)lua_tolstring(L, 1, &len);
     SHA256(data, len, buffer);
-    lua_pushlstring(L, buffer, 32);
+    lua_pushlstring(L, (const char*)buffer, 32);
     return 1;
 }
 #endif

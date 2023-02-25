@@ -98,7 +98,8 @@ void on_init(lua_State *L, int elfd, int parentfd)
 }
 
 static int serve(void* vparams) {
-    int *epolls, elfd, parentfd, nfds, childfd, status, n, clientlen, readlen, workers, id;
+    int *epolls, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id;
+    socklen_t clientlen;
     unsigned accepts;
     lua_State *L;
     struct addr_type clientaddr;
