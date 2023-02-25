@@ -1,0 +1,7 @@
+services:
+  server:
+    build:
+      context: .
+    environment:
+      - LUA_LIB_PATH=/usr/lua5.4/lib/liblua.a
+      - LUA_INC_PATH=/usr/lua5.4/include

@@ -1,5 +1,15 @@
-LUA_LIB="/usr/local/lib/liblua.a"
-LUA_INC="/usr/local/include/"
+if [[ -z "${LUA_LIB_PATH}" ]]; then
+  LUA_LIB="/usr/local/lib/liblua.a"
+else
+  LUA_LIB="${LUA_LIB_PATH}" # DEFAULT
+fi
+
+if [[ -z "${LUA_INC_PATH}" ]]; then
+  LUA_INC="/usr/local/include/"
+else
+  LUA_INC="${LUA_INC_PATH}" # DEFAULT
+fi
+
 FLAGS="-s -Ofast"
 OUT="${OUT:-bin/80s}"
 CC="${CC:-gcc}"
