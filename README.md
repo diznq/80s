@@ -230,7 +230,7 @@ end)
 ## Default server/http.lua as content server
 
 Default `http.lua` comes preconfigured to serve files in `public_html`.
-In case there is `main.lua` in `public_html` folder, it is loaded on server start-up.
+In case there is `main.lua` in parent folder of `public_html`, it is loaded on server start-up.
 The file rendering follows these rules:
 
 - If file name contains `.dyn.` (i.e. `index.dyn.html`), it is considered dynamic contain and therefore `<?lu ... ?>`, `<?lua ... ?>` and `<?include ... ?>` will be replaced with rendered content on page request
