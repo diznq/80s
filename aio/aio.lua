@@ -1,5 +1,5 @@
 --- @class net
---- @field write fun(elfd: lightuserdata, childfd: lightuserdata, data: string): boolean write data to file descriptor
+--- @field write fun(elfd: lightuserdata, childfd: lightuserdata, data: string, offset: integer): boolean write data to file descriptor
 --- @field close fun(elfd: lightuserdata, childfd: lightuserdata): boolean close a file descriptor
 --- @field connect fun(elfd: lightuserdata, host: string, port: integer): fd: lightuserdata|nil, err: string|nil open a new network connection
 --- @field reload fun() reload server
@@ -27,6 +27,8 @@ WORKERID = WORKERID or nil
 --- @alias aiothen fun(on_resolved: fun(...: any)|thread) AIO then
 --- @alias aiohttphandler fun(self: aiosocket, query: string, headers: {[string]: string}, body: string) AIO HTTP handler
 
+--- @alias aiowritebuf {d: string, o: integer}
+
 unpack = unpack or table.unpack
 
 --- AIOsocket class
@@ -44,8 +46,8 @@ local aiosocket = {
     co = false,
     --- @type boolean true if socket is writeable
     wr = false,
-    --- @type string buffer
-    buf = "",
+    --- @type aiowritebuf[] buffer
+    buf = {},
     --- @type boolean closed
     closed = false,
 }
@@ -59,24 +61,24 @@ function aiosocket:write(data, close)
     if self.closed then return false end
     if close ~= nil then self.cw = close end
     if not self.wr then 
-        self.buf = self.buf .. data
+        table.insert(self.buf, {d=data, o=0})
         return true
     end
     local to_write = #data
-    local ok, written = net.write(self.elfd, self.childfd, data)
+    local ok, written = net.write(self.elfd, self.childfd, data, 0)
     if not ok then
         self:close()
         return false
     elseif written < to_write then
         self.wr = false
-        self.buf = self.buf .. data:sub(1 + written)
+        table.insert(self.buf, {d=data, o=written})
         return true
     elseif self.cw then
-        self.buf = ""
+        self.buf = {}
         self:close()
         return true
     else
-        self.buf = ""
+        self.buf = {}
         return true
     end
 end
@@ -85,7 +87,7 @@ end
 --- @return boolean
 function aiosocket:close()
     if self.closed then return true end
-    self.buf = ""
+    self.buf = {}
     return net.close(self.elfd, self.childfd)
 end
 
@@ -154,19 +156,24 @@ function aiosocket:on_write(elfd, childfd)
     if self.closed then return end
     -- keep in mind that on_write is only triggered when socket previously failed to write part of data
     -- if there is any data remaining to be sent, try to send it
-    if #self.buf > 0 then
-        local to_write = #self.buf
-        local ok, written = net.write(elfd, childfd, self.buf)
+    while #self.buf > 0 do
+        local item = self.buf[1]
+        local to_write = #item.d - item.o
+        local ok, written = net.write(elfd, childfd, item.d, item.o)
         if not ok then
             -- if sending failed completly, i.e. socket was closed, end
             self:close()
         elseif written < to_write then
             -- if we were able to send only part of data due to full buffer, equeue it for later
             self.wr = false
-            self.buf = self.buf:sub(1 + written)
+            item.o = item.o + written
+            break
         elseif self.cw then
             -- if we sent everything and require close after write, close the socket
             self:close()
+            break
+        else
+            table.remove(self.buf, 1)
         end
     end
 end
@@ -350,7 +357,7 @@ function aio:on_close(elfd, childfd)
     -- notify with close event, only once
     if fd ~= nil and not fd.closed then
         fd.closed = true
-        fd.buf = ""
+        fd.buf = {}
         fd:on_close(elfd, childfd)
     end
 end

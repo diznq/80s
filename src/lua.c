@@ -33,7 +33,8 @@ static int l_net_write(lua_State *L)
     int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
     const char *data = lua_tolstring(L, 3, &len);
-    ssize_t writelen = write(childfd, data, len);
+    ssize_t offset = (ssize_t)lua_tointeger(L, 4);
+    ssize_t writelen = write(childfd, data + offset, len - offset);
 
     if (writelen < 0 && errno != EWOULDBLOCK)
     {
@@ -127,7 +128,7 @@ static int l_net_connect(lua_State *L)
         case AF_INET6:
             ipv6 = (struct in6_addr **)hp->h_addr_list;
             for(i = 0; ipv6[i] != NULL; i++) {
-                ipv6addr.sin6_addr.__in6_u = ipv6[i]->__in6_u;
+                ipv6addr.sin6_addr = ipv6[i][0];
                 found6 = 1;
                 break;
             }
