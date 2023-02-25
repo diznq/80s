@@ -414,7 +414,19 @@ function mysql:escape(text)
         :gsub("%\"", "\\\"")
     -- LuaJIT has troubles with gsub on \0
     if not jit then
-        return res:gsub("[\0]", "\\0")
+        res = res:gsub("[\0]", "\\0")
+    else
+        if res:find("\0", 1, true) then
+            local chars = {}
+            for i, byte in ipairs({res:byte(1, #res)}) do
+                if byte == 0 then
+                    table.insert(chars, "\\0")
+                else
+                    table.insert(chars, string.char(byte))
+                end
+            end
+            res = table.concat(chars)
+        end
     end
     return res
 end
