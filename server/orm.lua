@@ -208,6 +208,8 @@ function orm:create_method(sql, query, types, decoders, single, count, parent)
     return function(...)
         local treated = {}
         local extras = {}
+        local real_i = 1
+        local has_limit = false
         local on_resolved, resolver = aio:prepare_promise()
         for i, v in pairs({...}) do
             -- do this so if it is called as :method, it still works
@@ -218,13 +220,18 @@ function orm:create_method(sql, query, types, decoders, single, count, parent)
             end
             if type(v) == "table" and v.limit then
                 table.insert(extras, "LIMIT " .. v.limit)
+                has_limit = true
                 special = true
             end
             if not special then
                 if i ~= 1 or v ~= parent then
-                    table.insert(treated, types[i].toformat(v))
+                    table.insert(treated, types[real_i].toformat(v))
+                    real_i = real_i + 1
                 end
             end
+        end
+        if single and not has_limit then
+            table.insert(extras, "LIMIT 1")
         end
         local final_query = string.format("%s %s", query, table.concat(extras, " "))
         sql:select(final_query, unpack(treated))(function (rows, errorOrColumns)
