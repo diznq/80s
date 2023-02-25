@@ -37,11 +37,16 @@ local function create_endpoint(base, method, endpoint, mime, content, dynamic)
     end)
 end
 
-local function init_dir(base, prefix)
+local function init_dir(root, base, prefix)
     prefix = prefix or "/"
     for _, file in pairs(net.listdir(base)) do
         if file:match("/$") then
-            init_dir(base .. file, prefix .. file)
+            -- treat files in public_html/ as in root /
+            if prefix == "/" and file == "public_html/" then
+                init_dir(root, base .. file, prefix)
+            else
+                init_dir(root, base .. file, prefix .. file)
+            end
         elseif prefix == "/" and file == "main.lua" then
             -- Only main.lua in root folder will be loaded
             local main, err = loadfile(base .. file)
@@ -50,8 +55,8 @@ local function init_dir(base, prefix)
             else
                 main()
             end
-        elseif not file:match("%.lua$") then
-            -- Lua files are forbidden
+        elseif not file:match("%.lua$") and base:sub(1, #root + 12) == root .. "public_html/" then
+            -- only parse files that are at least in public_html and are not .lua
             local f, err = io.open(base .. file, "r")
             if f then
                 local content = f:read("*all")
@@ -116,7 +121,8 @@ local function init_dir(base, prefix)
     end
 end
 
-init_dir(os.getenv("PUBLIC_HTML") or "server/public_html/")
+local root = os.getenv("PUBLIC_HTML") or "server/www/"
+init_dir(root, root)
 
 aio:http_post("/reload", function (self, query, headers, body)
     net.reload()
