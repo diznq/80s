@@ -1,4 +1,3 @@
-#include "lua.h"
 #include "80s.h"
 
 #ifdef CRYPTOGRAPHIC_EXTENSIONS
@@ -13,8 +12,9 @@
 #include <errno.h>
 
 #include <unistd.h>
-#include <dirent.h>
+#include <strings.h>
 #include <fcntl.h>
+#include <dirent.h>
 #include <netdb.h>
 
 #include <arpa/inet.h>
@@ -22,13 +22,12 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/epoll.h>
-
 
 static int l_net_write(lua_State *L)
 {
     size_t len;
-    struct epoll_event ev;
+    struct event_t ev;
+    int result;
 
     int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
@@ -43,9 +42,17 @@ static int l_net_write(lua_State *L)
         lua_pushinteger(L, errno);
     } else {
         if(writelen < len) {
+
+            #ifdef USE_EPOLL
             ev.events = EPOLLIN | EPOLLOUT;
             ev.data.fd = childfd;
-            if (epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev) < 0)
+            result = epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev);
+            #elif defined(USE_KQUEUE)
+            EV_SET(&ev, childfd, EVFILT_WRITE, EV_ADD, 0, 0, NULL);
+            result = kevent(elfd, &ev, 1, NULL, 0, NULL);
+            #endif
+
+            if (result < 0)
             {
                 dbg("l_net_write: failed to add socket to out poll");
                 lua_pushboolean(L, 0);
@@ -63,14 +70,22 @@ static int l_net_write(lua_State *L)
 static int l_net_close(lua_State *L)
 {
     size_t len;
-    struct epoll_event ev;
+    struct event_t ev;
     int status;
 
     int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
+
+    #ifdef USE_EPOLL
     ev.events = EPOLLIN | EPOLLOUT;
     ev.data.fd = childfd;
-    if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0)
+    status = epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev);
+    #elif defined(USE_KQUEUE)
+    EV_SET(&ev, childfd, EVFILT_READ | EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+    status = kevent(elfd, &ev, 1, NULL, 0, NULL);
+    #endif
+
+    if (status < 0)
     {
         dbg("l_net_close: failed to remove child from epoll");
         lua_pushboolean(L, 0);
@@ -89,7 +104,7 @@ static int l_net_close(lua_State *L)
 static int l_net_connect(lua_State *L)
 {
     size_t len;
-    struct epoll_event ev;
+    struct event_t ev;
     struct sockaddr_in ipv4addr;
     struct sockaddr_in6 ipv6addr;
     int status, i, found4 = 0, found6 = 0, usev6 = 0, found = 0;
@@ -167,9 +182,17 @@ static int l_net_connect(lua_State *L)
         status = connect(childfd, (const struct sockaddr *)&ipv4addr, sizeof(ipv4addr));
     }
     if(status == 0 || errno == EINPROGRESS) {
-        ev.data.fd = childfd;
+
+        #ifdef USE_EPOLL
         ev.events = EPOLLIN | EPOLLOUT;
-        if (epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, &ev) < 0)
+        ev.data.fd = childfd;
+        status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, &ev);
+        #elif defined(USE_KQUEUE)
+        EV_SET(&ev, childfd, EVFILT_READ | EVFILT_WRITE, EV_ADD, 0, 0, NULL);
+        status = kevent(elfd, &ev, 1, NULL, 0, NULL);
+        #endif
+
+        if (status < 0)
         {
             dbg("l_net_connect: failed to add child to epoll");
             lua_pushnil(L);
