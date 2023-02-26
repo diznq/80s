@@ -70,20 +70,22 @@ static int l_net_write(lua_State *L)
 static int l_net_close(lua_State *L)
 {
     size_t len;
-    struct event_t ev[2];
+    struct event_t ev;
     int status;
 
     int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
 
     #ifdef USE_EPOLL
-    ev[0].events = EPOLLIN | EPOLLOUT;
-    ev[0].data.fd = childfd;
-    status = epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, ev);
+    ev.events = EPOLLIN | EPOLLOUT;
+    ev.data.fd = childfd;
+    status = epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev);
     #elif defined(USE_KQUEUE)
-    EV_SET(ev, childfd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
-    EV_SET(ev + 1, childfd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
-    status = kevent(elfd, ev, 2, NULL, 0, NULL);
+    EV_SET(&ev, childfd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+    // ignore this as socket might be in write mode, we don't care if it was not
+    status = kevent(elfd, &ev, 1, NULL, 0, NULL); 
+    EV_SET(&ev, childfd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+    status = kevent(elfd, &ev, 1, NULL, 0, NULL);
     #endif
 
     if (status < 0)

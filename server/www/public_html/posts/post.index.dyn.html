@@ -5,10 +5,10 @@
         write("Missing body: " .. body)
         return done()
     end
-    local result = await(Posts:save({author=post.name, text=post.text}))
-    if result.error then
+    local result, err = await(Posts:save({author=post.name, text=post.text}))
+    if not result or result.error then
         status("500 Internal Server Error")
-        write("Failed to write post to database: %s", result.error)
+        write("Failed to write post to database: %s", result and result.error or "failed to connect to DB")
         return done()
     end
     status("302 Found")

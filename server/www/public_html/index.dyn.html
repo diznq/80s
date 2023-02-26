@@ -3,12 +3,7 @@
     <h2>Welcome to 80's HTTP server!</h2>
     <img src="/assets/srgen.jpg">
 
-    <?lua
-        locals.posts_count = await(Posts.count:by())
-        done()
-    ?>
-
-    <p><a href="/posts/">Read posts (<?lu | #{locals.posts_count:d} ?>)</a></p>
+    <p><a href="/posts/">Read posts</a></p>
 
     <p>w3.org response:</p>
     <pre><?lua
