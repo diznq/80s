@@ -3,7 +3,7 @@
 
 #include "lua.h"
 
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) || defined(__APPLE__)
 #   define USE_KQUEUE
 #   include <sys/event.h>
 #   define event_t kevent
