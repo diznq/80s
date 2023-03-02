@@ -1,3 +1,7 @@
+#! /bin/bash
+NUM_HCPU="$(nproc)"
+NUM_CPU="$(($NUM_HCPU / 2))"
+
 if [[ -z "${LUA_LIB_PATH}" ]]; then
   LUA_LIB="/usr/local/lib/liblua.a"
 else
@@ -10,6 +14,7 @@ else
   LUA_INC="${LUA_INC_PATH}"
 fi
 
+WORKERS="${WORKERS:-$NUM_CPU}"
 FLAGS="-s -Ofast"
 OUT="${OUT:-bin/80s}"
 CC="${CC:-gcc}"
@@ -23,15 +28,24 @@ if [[ "${JIT}" == "true" ]]; then
     fi
 
     if [[ -z "${LUA_JIT_INC_PATH}" ]]; then
-      LUA_INC="/usr/local/include/luajit-2.0/"
+      LUA_INC="/usr/local/include/luajit-2.1/"
     else
       LUA_INC="${LUA_JIT_INC_PATH}"
     fi
 fi
 
+if [ ! -f "$LUA_INC/lua.h" ]; then
+  LUA_INC="/run/host$LUA_INC"
+  LUA_LIB="/run/host$LUA_LIB"
+  if [ ! -f "$LUA_INC/lua.h" ]; then
+    echo "failed to locate lua.h in $LUA_INC"
+    exit 1
+  fi
+fi
+
 mkdir -p bin
 
-DEFINES="-DWORKERS=${WORKERS:-4} -DCRYPTOGRAPHIC_EXTENSIONS=1"
+DEFINES="-DWORKERS=$WORKERS -DCRYPTOGRAPHIC_EXTENSIONS=true"
 LIBS="-lm -ldl -lpthread -lcrypto"
 
 if [[ "$NOCRYPTO" == "true" ]]; then
