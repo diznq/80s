@@ -217,7 +217,8 @@ end)(function(server_name, rest)
 end)
 ```
 
-### Awaiting promises
+### Awaiting promises
+
 Coroutinization also allows for awaiting promises, using `aio:async` and `aio:await`. `aio:await` must always be ran from within `aio:async` context.
 
 Example with previous `aio:gather` use case:
