@@ -11,6 +11,10 @@ net = net or {}
 --- @field sha256 fun(data: string): string perform sha256(data), returns bytestring with raw data
 crext = crext or {}
 
+--- @class codec
+--- @field json_encode fun(obj: table): string JSON encode object or an array
+codec = codec or {}
+
 --- @class jit
 jit = jit or nil
 
