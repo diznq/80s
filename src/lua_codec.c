@@ -8,6 +8,9 @@
 #endif
 
 static void encode_string(char* out, const char* value, size_t str_cap, size_t *offset, size_t value_len) {
+    if(*offset >= str_cap) {
+        return;
+    }
     out[(*offset)++] = '"';
     while(*offset < str_cap && value_len--) {
         switch(*value) {
@@ -19,6 +22,10 @@ static void encode_string(char* out, const char* value, size_t str_cap, size_t *
                 out[(*offset)++] = '\\';
                 out[(*offset)++] = 'n';
                 break;
+            case '"':
+                out[(*offset)++] = '\\';
+                out[(*offset)++] = '"';
+                break;
             case '\0':
                 out[(*offset)++] = '\\';
                 out[(*offset)++] = '0';
@@ -28,6 +35,9 @@ static void encode_string(char* out, const char* value, size_t str_cap, size_t *
                 break;
         }
         value++;
+    }
+    if(*offset >= str_cap) {
+        return;
     }
     out[(*offset)++] = '"';
 }
@@ -58,8 +68,9 @@ void json_encode(lua_State *L, char* out, size_t size, size_t* offset, int idx)
                 out[(*offset)++] = ':';
             }
         }
-        if(*offset >= size) {
-            break;
+        if(*offset >= str_cap) {
+            lua_pop(L, 1);
+            continue;
         }
         switch (type)
         {
@@ -67,7 +78,7 @@ void json_encode(lua_State *L, char* out, size_t size, size_t* offset, int idx)
                 json_encode(L, out, size, offset, lua_gettop(L));
                 break;
             case LUA_TNUMBER:
-                *offset += snprintf(out + *offset, size - *offset, "%f", lua_tonumber(L, -1));
+                *offset += snprintf(out + *offset, size - *offset, "%g", lua_tonumber(L, -1));
                 break;
             case LUA_TSTRING:
                 value = lua_tolstring(L, -1, &value_len);
@@ -81,7 +92,9 @@ void json_encode(lua_State *L, char* out, size_t size, size_t* offset, int idx)
                 break;
         }
         lua_pop(L, 1);
-        *offset += snprintf(out + *offset, size - *offset, ",");
+        if(*offset < size) {
+            *offset += snprintf(out + *offset, size - *offset, ",");
+        }
     }
 
     out[*offset - 1] = is_array ? ']' : '}';
@@ -92,7 +105,7 @@ static int l_codec_json_encode(lua_State* L) {
     char buffer[MAX_JSON_SIZE];
     size_t offset = 0;
     buffer[0] = 0;
-    json_encode(L, buffer, sizeof(buffer), &offset, 1);
+    json_encode(L, buffer, sizeof(buffer) - 1, &offset, 1);
     lua_pushlstring(L, buffer, offset);
     return 1;
 }
