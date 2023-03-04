@@ -1,4 +1,5 @@
 #include "80s.h"
+#include "lua_codec.h"
 
 #ifdef CRYPTOGRAPHIC_EXTENSIONS
 #include <openssl/sha.h>
@@ -330,8 +331,11 @@ lua_State* create_lua(int elfd, int id, const char* entrypoint) {
     #if LUA_VERSION_NUM > 501
     luaL_requiref(L, "net", luaopen_net, 1);
     lua_pop(L, 1);
+    luaL_requiref(L, "codec", luaopen_codec, 1);
+    lua_pop(L, 1);
     #else
     luaopen_net(L);
+    luaopen_codec(L);
     #endif
 
     #ifdef CRYPTOGRAPHIC_EXTENSIONS

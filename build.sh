@@ -1,6 +1,7 @@
 #! /bin/bash
 NUM_HCPU="$(nproc)"
 NUM_CPU="$(($NUM_HCPU / 2))"
+MAX_JSON_SIZE="${MAX_JSON_SIZE:-65536}"
 
 if [[ -z "${LUA_LIB_PATH}" ]]; then
   LUA_LIB="/usr/local/lib/liblua.a"
@@ -45,7 +46,7 @@ fi
 
 mkdir -p bin
 
-DEFINES="-DWORKERS=$WORKERS -DCRYPTOGRAPHIC_EXTENSIONS=true"
+DEFINES="-DWORKERS=$WORKERS -DCRYPTOGRAPHIC_EXTENSIONS=true -DMAX_JSON_SIZE=$MAX_JSON_SIZE"
 LIBS="-lm -ldl -lpthread -lcrypto"
 
 if [[ "$NOCRYPTO" == "true" ]]; then
@@ -68,7 +69,7 @@ echo "Flags: $FLAGS"
 echo "Lua include directory: $LUA_INC"
 echo "Lua library directory: $LUA_LIB"
 
-$CC src/main.c src/lua.c src/serve.epoll.c src/serve.kqueue.c "$LUA_LIB" \
+$CC src/main.c src/lua.c src/lua_codec.c src/serve.epoll.c src/serve.kqueue.c "$LUA_LIB" \
     $DEFINES \
     "-I$LUA_INC" \
     $LIBS \
