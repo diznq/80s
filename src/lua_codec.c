@@ -30,7 +30,7 @@ static void encode_string(struct dynstr* out, const char* value, size_t value_le
     dynstr_putc(out, '"');
 }
 
-void json_encode(lua_State *L, int idx, struct dynstr* out)
+static void json_encode(lua_State *L, int idx, struct dynstr* out)
 {
     int type;
     int x;
@@ -78,14 +78,19 @@ void json_encode(lua_State *L, int idx, struct dynstr* out)
             case LUA_TNIL:
                 dynstr_puts(out, "null", 4);
                 break;
+            default:
+                break;
         }
-        lua_pop(L, 1);
         dynstr_putc(out, ',');
+        lua_pop(L, 1);
     }
 
     out->ptr[out->length - 1] = is_array ? ']' : '}';
-
+    #if LUA_VERSION_NUM > 501
     lua_pop(L, 1);
+    #else
+    lua_pop(L, is_array ? 1 : 0);
+    #endif
 }
 
 static int l_codec_json_encode(lua_State* L) {
