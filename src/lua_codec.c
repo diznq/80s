@@ -51,10 +51,10 @@ void json_encode(lua_State *L, char* out, size_t size, size_t* offset, int idx)
 
     #if LUA_VERSION_NUM > 501
     lua_len(L, idx);
-    #else
-    lua_objlen(L, idx);
-    #endif
     is_array = lua_tointeger(L, idx + 1);
+    #else
+    is_array = lua_objlen(L, idx);
+    #endif
 
     lua_pushnil(L);
     *offset += snprintf(out + *offset, size - *offset, is_array? "[" : "{");
@@ -98,6 +98,7 @@ void json_encode(lua_State *L, char* out, size_t size, size_t* offset, int idx)
     }
 
     out[*offset - 1] = is_array ? ']' : '}';
+
     lua_pop(L, 1);
 }
 
