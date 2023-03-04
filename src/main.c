@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <locale.h>
 
 #include <pthread.h>
 #include <unistd.h>
@@ -80,6 +81,8 @@ int main(int argc, char **argv)
     struct serve_params params[WORKERS];
     pthread_t handles[WORKERS];
     int els[WORKERS];
+
+    setlocale(LC_ALL, "en_US.UTF-8");
 
     if (argc < 2)
     {
