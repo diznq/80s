@@ -1,5 +1,4 @@
 require("aio.aio")
-local mysql = require("server.mysql")
 local templates = require("server.templates")
 local http_client = require("server.http_client")
 
@@ -41,11 +40,15 @@ local function init_dir(root, base, prefix)
     prefix = prefix or "/"
     for _, file in pairs(net.listdir(base)) do
         if file:match("/$") then
-            -- treat files in public_html/ as in root /
-            if prefix == "/" and file == "public_html/" then
-                init_dir(root, base .. file, prefix)
-            else
-                init_dir(root, base .. file, prefix .. file)
+            -- all folders that begin with i. will be ignored, i.e. they might contain large files
+            local ignore = file:match("i%.")
+                if not ignore then
+                -- treat files in public_html/ as in root /
+                if prefix == "/" and file == "public_html/" then
+                    init_dir(root, base .. file, prefix)
+                else
+                    init_dir(root, base .. file, prefix .. file)
+                end
             end
         elseif prefix == "/" and file == "main.lua" then
             -- Only main.lua in root folder will be loaded

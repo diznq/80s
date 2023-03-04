@@ -237,7 +237,7 @@ end)
 ## Default server/http.lua as content server
 
 Default `http.lua` comes preconfigured to serve files in `public_html`.
-In case there is `main.lua` in parent folder of `public_html`, it is loaded on server start-up.
+In case there is `main.lua` in parent directory of `public_html`, it is loaded on server start-up.
 The file rendering follows these rules:
 
 - If file name contains `.dyn.` (i.e. `index.dyn.html`), it is considered dynamic contain and therefore `<?lu ... ?>`, `<?lua ... ?>` and `<?include ... ?>` will be replaced with rendered content on page request
@@ -246,6 +246,7 @@ The file rendering follows these rules:
 - If file starts with `post.`, it is assigned to `POST` handler
 - If file starts with `put.`, it is assigned to `PUT` handler
 - If file starts with `delete.`, it is assigned to `DELETE` handler
+- If directory name begins with `i.`, it is ignored
 
 
 ### Templating syntax
