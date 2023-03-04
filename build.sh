@@ -1,7 +1,6 @@
 #! /bin/bash
 NUM_HCPU="$(nproc)"
 NUM_CPU="$(($NUM_HCPU / 2))"
-MAX_JSON_SIZE="${MAX_JSON_SIZE:-65536}"
 
 if [[ -z "${LUA_LIB_PATH}" ]]; then
   LUA_LIB="/usr/local/lib/liblua.a"
@@ -46,7 +45,7 @@ fi
 
 mkdir -p bin
 
-DEFINES="-DWORKERS=$WORKERS -DCRYPTOGRAPHIC_EXTENSIONS=true -DMAX_JSON_SIZE=$MAX_JSON_SIZE"
+DEFINES="-DWORKERS=$WORKERS -DCRYPTOGRAPHIC_EXTENSIONS=true"
 LIBS="-lm -ldl -lpthread -lcrypto"
 
 if [[ "$NOCRYPTO" == "true" ]]; then

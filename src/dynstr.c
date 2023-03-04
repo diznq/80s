@@ -6,7 +6,7 @@ int dynstr_check(struct dynstr* self, size_t space) {
     size_t new_size;
     char* arr;
     if(self->length + space >= self->size) {
-        new_size = self->size + 65536 + space;
+        new_size = self->size + space + (self->size >> 1) + 65536;
         if(self->on_stack) {
             arr = malloc(new_size);
             if(!arr) {
@@ -55,9 +55,9 @@ int dynstr_putg(struct dynstr* self, double num) {
 void dynstr_init(struct dynstr* self, char* stkData, size_t size) {
     self->ptr = stkData;
     self->length = 0;
-    self->size = size;
+    self->size = stkData != 0 ? size : 0;
     self->ok = 1;
-    self->on_stack = 1;
+    self->on_stack = stkData != 0;
 }
 
 void dynstr_release(struct dynstr* self) {
