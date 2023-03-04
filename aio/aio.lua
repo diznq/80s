@@ -98,11 +98,14 @@ end
 --- Write HTTP respose
 ---@param status string status code
 ---@param headers {[string]: any}|string headers or content-type
----@param response string response body
+---@param response string|table response body
 ---@return boolean
 function aiosocket:http_response(status, headers, response)
     if self.closed then return false end
     local str_headers = ""
+    if type(response) == "table" then
+        response = codec.json_encode(response)
+    end
     if type(headers) == "string" then
         str_headers = "content-type: " .. headers .. "\r\n"
     else
@@ -111,7 +114,7 @@ function aiosocket:http_response(status, headers, response)
         end
     end
     return self:write(
-        string.format("HTTP/1.1 %s\r\nConnection: %s\r\n%sContent-length: %d\r\n\r\n%s",
+        string.format("HTTP/1.1 %s\r\nconnection: %s\r\n%scontent-length: %d\r\n\r\n%s",
             status,
             self.cw and "close" or "keep-alive",
             str_headers,

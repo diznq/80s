@@ -124,6 +124,10 @@ function templates:prepare(content, base)
                             end
                             table.insert(data, string.format(text, unpack(params)))
                         else
+                            -- in case we receive table, assume we want to output JSON instead
+                            if type(text) == "table" then
+                                text = codec.json_encode(text)
+                            end
                             table.insert(data, text)
                         end
                     end, 
