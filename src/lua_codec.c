@@ -46,7 +46,7 @@ void json_encode(lua_State *L, int idx, struct dynstr* out)
     #endif
 
     lua_pushnil(L);
-    dynstr_putc(out, is_array? '[' : ']');
+    dynstr_putc(out, is_array? '[' : '{');
     while (lua_next(L, idx) != 0)
     {
         type = lua_type(L, -1);
