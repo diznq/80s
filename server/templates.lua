@@ -77,9 +77,10 @@ function templates:prepare(content, base)
         for line in match:gmatch("[^\r\n]+") do
             line = line:gsub("^%s*%|%s+(.+)%s*$", function(match)
                 local args = {}
+                match = match:gsub("[%%]", "%%%%")
                 match = match:gsub("%#%{(.-)%}", function(format_item)
                     local format_type = "s"
-                    local item, maybe_type = format_item:match("(.-):(.-)")
+                    local item, maybe_type = format_item:match("(.+):(.-)")
                     if item and maybe_type then
                         format_item = maybe_type
                         format_item = item
