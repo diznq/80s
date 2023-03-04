@@ -9,9 +9,9 @@ local mysql = require("server.mysql")
 --- @alias ormcount fun(...): fun(on_resolved: fun(result: integer|nil, error: string|nil))
 --- @alias ormone fun(...): fun(on_resolved: fun(result: table|nil, error: string|nil))
 --- @alias ormall fun(...): fun(on_resolved: fun(result: table[]|nil, error: string|nil))
---- @alias ormsave fun(...): fun(on_resolved: fun(result: mysqlerror|mysqlok|mysqleof))
---- @alias ormrepo {all: {[string]: ormall}, one: {[string]: ormone}, count: {[string]: ormcount}, entity: ormentity, source: string, save: ormsave}
-
+--- @alias orminsert fun(...): fun(on_resolved: fun(result: mysqlerror|mysqlok|mysqleof))
+--- @alias ormrepo {all: {[string]: ormall}, one: {[string]: ormone}, count: {[string]: ormcount}, entity: ormentity, source: string, insert: orminsert, update: ormupdate}
+--- @alias ormupdate fun(self, entity: {[string]: any}, update: {[string]: any}): fun(on_resolved: fun(result: mysqlerror|mysqlok|mysqleof))
 --- @class ormtype
 local ormtype = {
     format = function()
@@ -93,15 +93,21 @@ local orm = {
 
 --- Create repository
 ---@param sql mysql
----@param repo {source: string, entity:ormentity, [string]: any}
+---@param repo {source: string, index: string[]|string, entity:ormentity, [string]: any}
 ---@return ormrepo
 function orm:create(sql, repo)
     --- @type string
     local source = repo.source
     --- @type ormentity
     local entity = repo.entity
+    --- @type string[]
+    local index = repo.index or "id"
     local insert_fields = {}
     local insert_order = {}
+
+    if type(index) == "string" then
+        index = {index}
+    end
 
     -- construct lookup table for entity decoders
     --- @type {[string]: {dest: string, decode: fun(string): any}}
@@ -115,6 +121,7 @@ function orm:create(sql, repo)
     end
 
     local insert_base_query = string.format("INSERT INTO %s (%s) VALUES ", source, table.concat(insert_fields, ","))
+    local update_base_query = string.format("UPDATE %s SET %%s WHERE %%s LIMIT 1",source)
     
     repo.sql = sql
     repo.one = {}
@@ -142,6 +149,22 @@ function orm:create(sql, repo)
         end
         local final_query = string.format("%s %s", insert_base_query, table.concat(tuples, ","))
         return sql:exec(final_query)
+    end
+
+    repo.update = function(self, object, update)
+        local sets = {}
+        local where = {}
+        local params = {}
+        for k, v in pairs(update) do
+            table.insert(sets, entity[k].field .."='%s'")
+            table.insert(params, entity[k].type.toformat(v))
+        end
+        for _, key in ipairs(index) do
+            table.insert(where, entity[key].field .. "='%s'")
+            table.insert(params, entity[key])
+        end
+        local final_query = string.format(update_base_query, table.concat(sets, ","), table.concat(where, " AND "))
+        return sql:exec(final_query, unpack(params))
     end
 
     for method, params in pairs(repo) do
