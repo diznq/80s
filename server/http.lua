@@ -12,13 +12,13 @@ local function create_endpoint(base, method, endpoint, mime, content, dynamic)
         ctx = templates:prepare(content, base)
     else
         resp_headers = {}
-        resp_headers["Content-type"] = mime
+        resp_headers["content-type"] = mime
         if endpoint:match("/static/") then
-            resp_headers["Cache-Control"] = "public, max-age=604800, immutable"
+            resp_headers["cache-control"] = "public, max-age=604800, immutable"
         end
         if endpoint:match("%.gz$") then
             endpoint = endpoint:gsub("%.gz$", "")
-            resp_headers["Content-encoding"] = "gzip"
+            resp_headers["content-encoding"] = "gzip"
         end
     end
     aio:http_any(method, endpoint, function (self, query, headers, body)

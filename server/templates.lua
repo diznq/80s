@@ -132,7 +132,7 @@ function templates:prepare(content, base)
                         table.insert(output.post_render, handler)
                     end,
                     await,
-                    function(name, value) output.headers[name] = value end,
+                    function(name, value) output.headers[name:lower()] = value end,
                     function(value) output.status = value end,
                     function() done(table.concat(data)) end
                 )
@@ -175,7 +175,7 @@ function templates:render(session, headers, body, endpoint, query, mime, ctx)
 
     local output = {
         headers = {
-            ["Content-type"] = mime
+            ["content-type"] = mime
         },
         status = "200 OK",
         post_render = {}

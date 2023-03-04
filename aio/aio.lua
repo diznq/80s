@@ -100,7 +100,7 @@ function aiosocket:http_response(status, headers, response)
     if self.closed then return false end
     local str_headers = ""
     if type(headers) == "string" then
-        str_headers = "Content-type: " .. headers .. "\r\n"
+        str_headers = "content-type: " .. headers .. "\r\n"
     else
         for k, v in pairs(headers) do
             str_headers = str_headers .. string.format("%s: %s\r\n", k, v)
