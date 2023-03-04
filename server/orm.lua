@@ -37,12 +37,12 @@ local ormtypes = {
         fromstring = function(text) return tonumber(text) end,
         toformat = function(value) return tonumber(value) end
     },
-    float = {
+    double = {
         format = function() return "%f" end,
         fromstring = function(text) return tonumber(text) end,
         toformat = function(value) return tonumber(value) end
     },
-    boolbit = {
+    bit = {
         format = function() return "%c" end,
         fromstring = function(text) return text:byte(1, 1) ~= 0 end,
         toformat = function(value) return string.char(value and 1 or 0) end
