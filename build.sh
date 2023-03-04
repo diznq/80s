@@ -69,7 +69,7 @@ echo "Flags: $FLAGS"
 echo "Lua include directory: $LUA_INC"
 echo "Lua library directory: $LUA_LIB"
 
-$CC src/main.c src/lua.c src/lua_codec.c src/serve.epoll.c src/serve.kqueue.c "$LUA_LIB" \
+$CC src/main.c src/lua.c src/lua_codec.c src/dynstr.c src/serve.epoll.c src/serve.kqueue.c "$LUA_LIB" \
     $DEFINES \
     "-I$LUA_INC" \
     $LIBS \

@@ -1,51 +1,40 @@
 #include "lua_codec.h"
 #include <lauxlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include "dynstr.h"
 
-#ifndef MAX_JSON_SIZE
-#define MAX_JSON_SIZE 65536
-#endif
-
-static void encode_string(char* out, const char* value, size_t str_cap, size_t *offset, size_t value_len) {
-    if(*offset >= str_cap) {
-        return;
-    }
-    out[(*offset)++] = '"';
-    while(*offset < str_cap && value_len--) {
+static void encode_string(struct dynstr* out, const char* value, size_t value_len) {
+    dynstr_putc(out, '"');
+    while(value_len--) {
         switch(*value) {
             case '\r':
-                out[(*offset)++] = '\\';
-                out[(*offset)++] = 'r';
+                dynstr_puts(out, "\\r", 2);
                 break;
             case '\n':
-                out[(*offset)++] = '\\';
-                out[(*offset)++] = 'n';
+                dynstr_puts(out, "\\n", 2);
                 break;
             case '"':
-                out[(*offset)++] = '\\';
-                out[(*offset)++] = '"';
+                dynstr_puts(out, "\\\"", 2);
                 break;
             case '\0':
-                out[(*offset)++] = '\\';
-                out[(*offset)++] = '0';
+                dynstr_puts(out, "\\0", 2);
                 break;
             default:
-                out[(*offset)++] = *value;
+                dynstr_putc(out, *value);
                 break;
         }
         value++;
     }
-    if(*offset >= str_cap) {
-        return;
-    }
-    out[(*offset)++] = '"';
+    dynstr_putc(out, '"');
 }
 
-void json_encode(lua_State *L, char* out, size_t size, size_t* offset, int idx)
+void json_encode(lua_State *L, int idx, struct dynstr* out)
 {
     int type;
-    size_t value_len, str_cap = size - 4;
+    int x;
+    size_t value_len;
     const char* key, *value;
     int is_array;
 
@@ -57,57 +46,57 @@ void json_encode(lua_State *L, char* out, size_t size, size_t* offset, int idx)
     #endif
 
     lua_pushnil(L);
-    *offset += snprintf(out + *offset, size - *offset, is_array? "[" : "{");
+    dynstr_putc(out, is_array? '[' : ']');
     while (lua_next(L, idx) != 0)
     {
         type = lua_type(L, -1);
         if(!is_array) {
             key = lua_tolstring(L, -2, &value_len);
-            encode_string(out, key, str_cap, offset, value_len);
-            if(*offset < size) {
-                out[(*offset)++] = ':';
-            }
+            encode_string(out, key, value_len);
+            dynstr_putc(out, ':');
         }
-        if(*offset >= str_cap) {
+        if(!out->ok) {
             lua_pop(L, 1);
             continue;
         }
         switch (type)
         {
             case LUA_TTABLE:
-                json_encode(L, out, size, offset, lua_gettop(L));
+                json_encode(L, lua_gettop(L), out);
                 break;
             case LUA_TNUMBER:
-                *offset += snprintf(out + *offset, size - *offset, "%g", lua_tonumber(L, -1));
+                dynstr_putg(out, lua_tonumber(L, -1));
                 break;
             case LUA_TSTRING:
                 value = lua_tolstring(L, -1, &value_len);
-                encode_string(out, value, str_cap, offset, value_len);
+                encode_string(out, value, value_len);
                 break;
             case LUA_TBOOLEAN:
-                *offset += snprintf(out + *offset, size - *offset, "%s", lua_toboolean(L, -1) ? "true" : "false");
+                x = lua_toboolean(L, -1);
+                dynstr_puts(out, x ? "true" : "false", x ? 4 : 5);
                 break;
             case LUA_TNIL:
-                *offset += snprintf(out + *offset, size - *offset, "%s", "null");
+                dynstr_puts(out, "null", 4);
                 break;
         }
         lua_pop(L, 1);
-        if(*offset < size) {
-            *offset += snprintf(out + *offset, size - *offset, ",");
-        }
+        dynstr_putc(out, ',');
     }
 
-    out[*offset - 1] = is_array ? ']' : '}';
+    out->ptr[out->length - 1] = is_array ? ']' : '}';
 
     lua_pop(L, 1);
 }
 
 static int l_codec_json_encode(lua_State* L) {
-    char buffer[MAX_JSON_SIZE];
+    char buffer[65536];
     size_t offset = 0;
+    struct dynstr str;
     buffer[0] = 0;
-    json_encode(L, buffer, sizeof(buffer) - 1, &offset, 1);
-    lua_pushlstring(L, buffer, offset);
+    dynstr_init(&str, buffer, sizeof(buffer));
+    json_encode(L, 1, &str);
+    lua_pushlstring(L, str.ptr, str.length);
+    dynstr_release(&str);
     return 1;
 }
 
