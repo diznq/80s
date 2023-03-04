@@ -332,7 +332,7 @@ The following code will create repository with following methods:
 -- SELECT * FROM posts WHERE id = ?
 repo.all:byId(id: int): Posts[]?, error?
 -- SELECT * FROM posts
-repo.all.by(): Posts[]?, error?
+repo.all:by(): Posts[]?, error?
 -- SELECT * FROM posts WHERE id = ? LIMIT 1
 repo.one:byId(id: int): Post?, error?
 -- SELECT * FROM posts LIMIT 1

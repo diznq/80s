@@ -121,7 +121,7 @@ function orm:create(sql, repo)
     repo.all = {}
     repo.count = {}
 
-    repo.save = function(self, ...)
+    repo.insert = function(self, ...)
         local tuples = {}
         for i, item in ipairs({...}) do
             local values = {}
