@@ -73,28 +73,65 @@ void on_init(lua_State *L, int elfd, int parentfd)
     }
 }
 
-int main(int argc, char **argv)
+int get_arg(const char* arg, int default_value, int argc, const char **argv)
 {
-    int elfd, parentfd, optval, i, portno = 8080;
+    int i;
+    for(i=1; i < argc - 1; i++) {
+        if(!strcmp(argv[i], arg)) {
+            return atoi(argv[i + 1]);
+        }
+    }
+    return default_value;
+}
+
+int get_cpus(int argc, const char **argv) {
+    FILE* fr;
+    char buf[1024];
+    int n_cpus = get_arg("-c", 0, argc, argv);
+    // if cpu count was specified, use it
+    if(n_cpus > 0) {
+        return n_cpus;
+    }
+    fr = fopen("/proc/cpuinfo", "r");
+    // if there is no cpuinfo, fallback with 1 CPU
+    if(!fr) {
+        return 1;
+    }
+    // read entire cpuinfo, count how many processors we find
+    while(fgets(buf, sizeof(buf), fr)) {
+        if(strstr(buf, "processor") == buf) {
+            n_cpus++;
+        }
+    }
+    // there cannot be less than 1 workers
+    if(n_cpus <= 0)
+    {
+        return 1;
+    }
+    return n_cpus;
+}
+
+int main(int argc, const char **argv)
+{
+    const int workers = get_cpus(argc, argv);
+    int elfd, parentfd, optval, i, portno = get_arg("-p", 8080, argc, argv);
     struct addr_type serveraddr;
     const char* entrypoint;
-    struct serve_params params[WORKERS];
-    pthread_t handles[WORKERS];
-    int els[WORKERS];
+    struct serve_params params[workers];
+    pthread_t handles[workers];
+    int els[workers];
 
     setlocale(LC_ALL, "en_US.UTF-8");
 
     if (argc < 2)
     {
-        fprintf(stderr, "usage: %s <lua entrypoint> [port: 8080]\n", argv[0]);
+        fprintf(stderr, "usage: %s <lua entrypoint> [-p <port> -c <cpus>]\n", argv[0]);
         exit(1);
     }
 
     entrypoint = argv[1];
 
-    if (argc >= 3) {
-        portno = atoi(argv[2]);
-    }
+    printf("port: %d, cpus: %d\n", portno, workers);
 
 #ifdef ALLOW_IPV6
     parentfd = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
@@ -125,10 +162,11 @@ int main(int argc, char **argv)
     if (listen(parentfd, 20000) < 0)
         error("main: failed to listen on server socket");
 
-    for (i = 0; i < WORKERS; i++) {
+    for (i = 0; i < workers; i++) {
         params[i].parentfd = parentfd;
         params[i].workerid = i;
         params[i].els = els;
+        params[i].workers = workers;
         params[i].entrypoint = entrypoint;
 
         if(i > 0) {
@@ -140,6 +178,6 @@ int main(int argc, char **argv)
 
     serve((void*)&params[0]);
 
-    for (i = 1; i < WORKERS; i++)
+    for (i = 1; i < workers; i++)
         pthread_join(handles[i], NULL);
 }

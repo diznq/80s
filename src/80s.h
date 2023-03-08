@@ -18,6 +18,7 @@
 struct serve_params {
     int parentfd;
     int workerid;
+    int workers;
     int* els;
     const char* entrypoint;
 };
@@ -36,17 +37,8 @@ void on_init(lua_State *L, int elfd, int parentfd);
 #  define dbg(message)
 #endif
 
-#ifndef WORKERS
-#define WORKERS 4
-#endif
-
-#if (WORKERS & (WORKERS - 1)) != 0
-#   error number of workers must be a power of 2
-#endif
-
-#define WORKERS_MASK (WORKERS - 1)
 #define BUFSIZE 16384
-#define MAX_EVENTS 32
+#define MAX_EVENTS 4096
 
 #ifdef ALLOW_IPV6
 #   define addr_type sockaddr_in6

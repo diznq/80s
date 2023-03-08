@@ -14,7 +14,6 @@ else
   LUA_INC="${LUA_INC_PATH}"
 fi
 
-WORKERS="${WORKERS:-$NUM_CPU}"
 FLAGS="-s -Ofast"
 OUT="${OUT:-bin/80s}"
 CC="${CC:-gcc}"
@@ -45,7 +44,7 @@ fi
 
 mkdir -p bin
 
-DEFINES="-DWORKERS=$WORKERS -DCRYPTOGRAPHIC_EXTENSIONS=true"
+DEFINES="-DCRYPTOGRAPHIC_EXTENSIONS=true"
 LIBS="-lm -ldl -lpthread -lcrypto"
 
 if [[ "$NOCRYPTO" == "true" ]]; then

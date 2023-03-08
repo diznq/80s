@@ -37,7 +37,7 @@ Open VSCode and run command _Reopen in Container_
 
 ## Running
 
-To run the server, execute `bin/80s server/simple_http.lua`, optionally `bin/80s server/simple_http.lua 8080` to specify the port. After this, the server is running and can be reloaded by calling `net.reload()` from within Lua code.
+To run the server, execute `bin/80s server/simple_http.lua`, optionally `bin/80s server/simple_http.lua -p 8080 -c 4` to specify the port and number of CPUs (workers). After this, the server is running and can be reloaded by calling `net.reload()` from within Lua code.
 
 
 ## Benchmark

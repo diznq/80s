@@ -33,6 +33,7 @@ void* serve(void* vparams) {
     parentfd = params->parentfd;
     els = params->els;
     id = params->workerid;
+    workers = params->workers;
 
     signal(SIGPIPE, SIG_IGN);
 
@@ -42,7 +43,7 @@ void* serve(void* vparams) {
         error("serve: failed to create epoll");
 
     // only one thread can poll on server socket and accept others!
-    if((parentfd & WORKERS_MASK) == id) {
+    if(id == 0) {
         ev.events = EPOLLIN;
         ev.data.fd = parentfd;
         if (epoll_ctl(elfd, EPOLL_CTL_ADD, parentfd, &ev) == -1)
@@ -86,9 +87,13 @@ void* serve(void* vparams) {
                 ev.data.fd = childfd;
                 // add the child socket to the event loop it belongs to based on modulo
                 // with number of workers, to balance the load to other threads
-                if (epoll_ctl(els[(accepts++) & WORKERS_MASK], EPOLL_CTL_ADD, childfd, &ev) < 0)
+                if (epoll_ctl(els[accepts++], EPOLL_CTL_ADD, childfd, &ev) < 0)
                 {
                     dbg("serve: on add child socket to epoll");
+                }
+                if(accepts == workers)
+                {
+                    accepts = 0;
                 }
             } else {
                 // only this very thread is able to poll given childfd as it was assigned only to
