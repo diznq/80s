@@ -46,11 +46,12 @@ void on_close(lua_State *L, int elfd, int childfd) {
     }
 }
 
-void on_write(lua_State *L, int elfd, int childfd) {
+void on_write(lua_State *L, int elfd, int childfd, int written) {
     lua_getglobal(L, "on_write");
     lua_pushlightuserdata(L, (void *)elfd);
     lua_pushlightuserdata(L, (void *)childfd);
-    if (lua_pcall(L, 2, 0, 0) != 0) {
+    lua_pushinteger(L, written);
+    if (lua_pcall(L, 3, 0, 0) != 0) {
         printf("on_write: error running on_write: %s\n", lua_tostring(L, -1));
     }
 }

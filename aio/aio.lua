@@ -153,7 +153,8 @@ end
 ---
 --- @param elfd lightuserdata epoll handle
 --- @param childfd lightuserdata socket handle
-function aiosocket:on_write(elfd, childfd)
+--- @param n_written integer bytes written (used for IOCP only)
+function aiosocket:on_write(elfd, childfd, n_written)
     -- on connect is called only once
     self.wr = true
     if not self.co then
@@ -166,7 +167,24 @@ function aiosocket:on_write(elfd, childfd)
     while #self.buf > 0 do
         local item = self.buf[1]
         local to_write = #item.d - item.o
-        local ok, written = net.write(elfd, childfd, item.d, item.o)
+        local ok, written = true, 0
+        -- if we use IOCP, we receive writes are done asynhronously
+        -- in that case, we recompute the correct offset and skip
+        -- to next item if we exceeded current item length
+        if n_written > 0 then
+            if n_written >= to_write then
+                n_written = n_written - to_write
+                written = 0
+                to_write = 0
+            else
+                item.o = item.o + n_written
+                to_write = to_write - n_written
+            end
+        end
+        -- only write if there actually is something to write
+        if to_write > 0 then
+            ok, written = net.write(elfd, childfd, item.d, item.o)
+        end
         if not ok then
             -- if sending failed completly, i.e. socket was closed, end
             self:close()
@@ -372,12 +390,12 @@ end
 --- Handler called when socket is writeable
 --- @param elfd lightuserdata epoll handle
 --- @param childfd lightuserdata socket handle
-function aio:on_write(elfd, childfd)
+function aio:on_write(elfd, childfd, written)
     local fd = self.fds[childfd]
 
     -- notify with connect event
     if fd ~= nil then
-        fd:on_write(elfd, childfd)
+        fd:on_write(elfd, childfd, written)
     end
 end
 
@@ -411,8 +429,8 @@ function aio:start()
     --- Writeable handler
     --- @param elfd lightuserdata
     --- @param childfd lightuserdata
-    _G.on_write = function(elfd, childfd)
-        aio:on_write(elfd, childfd)
+    _G.on_write = function(elfd, childfd, written)
+        aio:on_write(elfd, childfd, written)
     end
 end
 

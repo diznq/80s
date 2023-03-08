@@ -98,7 +98,7 @@ void *serve(void *vparams) {
                         dbg("serve: failed to move child socket from out to in");
                         continue;
                     }
-                    on_write(L, elfd, childfd);
+                    on_write(L, elfd, childfd, 0);
                 }
                 if ((events[n].events & EPOLLIN) == EPOLLIN) {
                     buf[0] = 0;
