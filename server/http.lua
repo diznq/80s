@@ -36,18 +36,28 @@ local function create_endpoint(base, method, endpoint, mime, content, dynamic)
     end)
 end
 
+--- Initialize directory
+---@param root string root directory
+---@param base string current base directory
+---@param prefix string api endpoint prefix
+---@return string[]
 local function init_dir(root, base, prefix)
     prefix = prefix or "/"
+    local dirs = {base}
     for _, file in pairs(net.listdir(base)) do
         if file:match("/$") then
             -- all folders that begin with i. will be ignored, i.e. they might contain large files
             local ignore = file:match("i%.")
-                if not ignore then
+            if not ignore then
                 -- treat files in public_html/ as in root /
+                local found_dirs = {}
                 if prefix == "/" and file == "public_html/" then
-                    init_dir(root, base .. file, prefix)
+                    found_dirs = init_dir(root, base .. file, prefix)
                 else
-                    init_dir(root, base .. file, prefix .. file)
+                    found_dirs = init_dir(root, base .. file, prefix .. file)
+                end
+                for _, dir in ipairs(found_dirs) do
+                    table.insert(dirs, dir)
                 end
             end
         elseif prefix == "/" and file == "main.lua" then
@@ -122,10 +132,11 @@ local function init_dir(root, base, prefix)
             end
         end
     end
+    return dirs
 end
 
 local root = os.getenv("PUBLIC_HTML") or "server/www/"
-init_dir(root, root)
+local dirs = init_dir(root, root, "/")
 
 aio:http_post("/reload", function (self, query, headers, body)
     net.reload()
@@ -149,13 +160,22 @@ end)
 if (os.getenv("RELOAD") or "false") == "true" then
     LAST_LIVE_RELOAD = LAST_LIVE_RELOAD or 0
     if not LIVE_RELOAD_ACTIVE then
-        LIVE_RELOAD_ACTIVE = aio:watch(ELFD, {root}, function (events)
+        for _, dir in ipairs(dirs) do
+            print("Watching ", dir)
+        end
+        LIVE_RELOAD_ACTIVE = aio:watch(ELFD, dirs, function (events)
             if #events > 0 then
                 local now = events[1].clock
                 if now - LAST_LIVE_RELOAD > 0.2 then
                     print("Reloading server, time delta: ", now - LAST_LIVE_RELOAD)
                     net.reload()
                     LAST_LIVE_RELOAD = now
+                end
+                for _, evt in ipairs(events) do
+                    if evt.create and evt.dir and LIVE_RELOAD_ACTIVE ~= nil then
+                        net.inotify_add(ELFD, LIVE_RELOAD_ACTIVE.childfd, evt.name)
+                        print("Added ", evt.name, " to watch list")
+                    end
                 end
             end
         end)

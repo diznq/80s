@@ -1,5 +1,6 @@
 --- @class inotify_event
 --- @field name string file name
+--- @field wd lightuserdata watch descriptor
 --- @field dir boolean true if file is a directory
 --- @field modify boolean true if file was modified
 --- @field create boolean true if file as created
@@ -12,9 +13,10 @@
 --- @field connect fun(elfd: lightuserdata, host: string, port: integer): fd: lightuserdata|nil, err: string|nil open a new network connection
 --- @field reload fun() reload server
 --- @field listdir fun(dir: string): string[] list files in directory
---- @field inotify_init fun(elfd: lightuserdata): fd: lightuserdata|nil, error: string|nil
---- @field inotify_add fun(elfd: lightuserdata, childfd: lightuserdata, target: string): lightuserdata
---- @field inotify_read fun(data: string): inotify_event[]
+--- @field inotify_init fun(elfd: lightuserdata): fd: lightuserdata|nil, error: string|nil initialize inotify
+--- @field inotify_add fun(elfd: lightuserdata, childfd: lightuserdata, target: string): wd: lightuserdata add file to watchlist of inotify, returns watch descriptor
+--- @field inotify_remove fun(elfd: lightuserdata, childfd: lightuserdata, wd: lightuserdata): boolean, string|nil remove watch decriptor from watchlist
+--- @field inotify_read fun(data: string): inotify_event[] parse inotify events to Lua table
 net = net or {}
 
 --- @class crext
@@ -392,14 +394,28 @@ function aio:watch(elfd, targets, on_change)
     local fd, err = net.inotify_init(elfd)
     if fd ~= nil then
         local sock = aiosocket:new(elfd, fd, true)
+        sock.watching = {}
         sock.on_data = function (self, elfd, childfd, data, length)
-            on_change(net.inotify_read(data))
+            local events = net.inotify_read(data)
+            for _, event in ipairs(events) do
+                local wd = event.wd
+                if sock.watching[wd] ~= nil then
+                    local base = sock.watching[wd]
+                    event.name = base .. event.name
+                    if event.delete then
+                        sock.watching[wd] = nil
+                        net.inotify_remove(elfd, fd, wd)
+                    end
+                end
+            end
+            on_change(events)
         end
-        local watching = {}
         self.fds[fd] = sock
-        sock.watcihng = watching
         for _, target in ipairs(targets) do
-            table.insert(watching, net.inotify_add(elfd, fd, target))
+            local wd = net.inotify_add(elfd, fd, target)
+            if wd ~= nil then
+                sock.watching[wd] = target
+            end
         end
         return sock
     else

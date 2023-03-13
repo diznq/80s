@@ -265,8 +265,28 @@ static int l_net_inotify_add(lua_State* L) {
     childfd = (int)lua_touserdata(L, 2);
     target = lua_tostring(L, 3);
     wd = inotify_add_watch(childfd, target, IN_MODIFY | IN_CREATE | IN_DELETE);
-    
     lua_pushlightuserdata(L, (void*)wd);
+    return 1;
+    #else
+    return 0;
+    #endif
+}
+
+static int l_net_inotify_remove(lua_State* L) {
+    #ifdef USE_EPOLL
+    int result, elfd, childfd, wd;
+
+    elfd = (int)lua_touserdata(L, 1);
+    childfd = (int)lua_touserdata(L, 2);
+    wd = (int)lua_touserdata(L, 3);
+
+    result = inotify_rm_watch(childfd, wd);
+    if(result < 0) {
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, strerror(errno));
+        return 2;
+    }
+    lua_pushboolean(L, 1);
     return 1;
     #else
     return 0;
@@ -292,6 +312,10 @@ static int l_net_inotify_read(lua_State* L) {
 
             lua_pushstring(L, "name");
             lua_pushstring(L, evt->name);
+            lua_settable(L, -3);
+
+            lua_pushstring(L, "wd");
+            lua_pushlightuserdata(L, (void*)evt->wd);
             lua_settable(L, -3);
 
             lua_pushstring(L, "dir");
@@ -385,6 +409,7 @@ LUALIB_API int luaopen_net(lua_State *L) {
         {"listdir", l_net_listdir},
         {"inotify_init", l_net_inotify_init},
         {"inotify_add", l_net_inotify_add},
+        {"inotify_remoev", l_net_inotify_remove},
         {"inotify_read", l_net_inotify_read},
         {NULL, NULL}
     };
