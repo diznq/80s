@@ -148,14 +148,16 @@ end)
 
 if (os.getenv("RELOAD") or "false") == "true" then
     LAST_LIVE_RELOAD = LAST_LIVE_RELOAD or 0
-    aio:watch(ELFD, {root}, function (events)
-        if #events > 0 then
-            local now = events[1].clock
-            if now - LAST_LIVE_RELOAD > 0.2 then
-                print("Reloading server, time delta: ", now - LAST_LIVE_RELOAD)
-                net.reload()
-                LAST_LIVE_RELOAD = now
+    if not LIVE_RELOAD_ACTIVE then
+        LIVE_RELOAD_ACTIVE = aio:watch(ELFD, {root}, function (events)
+            if #events > 0 then
+                local now = events[1].clock
+                if now - LAST_LIVE_RELOAD > 0.2 then
+                    print("Reloading server, time delta: ", now - LAST_LIVE_RELOAD)
+                    net.reload()
+                    LAST_LIVE_RELOAD = now
+                end
             end
-        end
-    end)
+        end)
+    end
 end
