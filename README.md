@@ -248,6 +248,8 @@ The file rendering follows these rules:
 - If file starts with `delete.`, it is assigned to `DELETE` handler
 - If directory name begins with `i.`, it is ignored
 
+Live reloading can be enabled by setting `RELOAD=true` environmet variable. For now that works only on systems that support inotify API.
+
 
 ### Templating syntax
 To insert dynamic content to the file, wrap Lua code between either `<?lu ... ?>` for synchronous code or `<?lua ... ?>` asynchronous code. 
