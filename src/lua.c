@@ -24,7 +24,9 @@
 
 #include <sys/socket.h>
 #include <sys/types.h>
+#ifdef USE_EPOLL
 #include <sys/inotify.h>
+#endif
 
 static int l_net_write(lua_State *L) {
     size_t len;
