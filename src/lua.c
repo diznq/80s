@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -23,6 +24,7 @@
 
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/inotify.h>
 
 static int l_net_write(lua_State *L) {
     size_t len;
@@ -224,6 +226,102 @@ static int l_net_reload(lua_State *L) {
     return 1;
 }
 
+static int l_net_inotify_init(lua_State* L) {
+    #ifdef USE_EPOLL
+    int result, elfd, childfd;
+    struct event_t ev;
+
+    elfd = (int)lua_touserdata(L, 1);
+    childfd = inotify_init();
+
+    ev.events = EPOLLIN;
+    ev.data.fd = childfd;
+    result = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, &ev);
+
+    if (result < 0) {
+        dbg("l_net_write: failed to add socket to out poll");
+        lua_pushnil(L);
+        lua_pushstring(L, strerror(errno));
+        return 2;
+    }
+
+    lua_pushlightuserdata(L, (void*)childfd);
+    return 1;
+    #else
+    return 0;
+    #endif
+}
+
+
+static int l_net_inotify_add(lua_State* L) {
+    #ifdef USE_EPOLL
+    int result, elfd, childfd, wd;
+    const char* target;
+    struct event_t ev;
+
+    elfd = (int)lua_touserdata(L, 1);
+    childfd = (int)lua_touserdata(L, 2);
+    target = lua_tostring(L, 3);
+    wd = inotify_add_watch(childfd, target, IN_MODIFY | IN_CREATE | IN_DELETE);
+    
+    lua_pushlightuserdata(L, (void*)wd);
+    return 1;
+    #else
+    return 0;
+    #endif
+}
+
+static int l_net_inotify_read(lua_State* L) {
+    #ifdef USE_EPOLL
+    const char* data;
+    size_t i, length;
+    struct timespec tp;
+    int c = 1;
+    double t;
+    data = lua_tolstring(L, 1, &length);
+
+    clock_gettime(CLOCK_MONOTONIC, &tp);
+    t = tp.tv_sec + tp.tv_nsec / 1000000000.0;
+    lua_newtable(L);
+    while(i < length) {
+        struct inotify_event* evt = (struct inotify_event*)(data + i);
+        if(evt->len) {
+            lua_createtable(L, 6, 0);
+
+            lua_pushstring(L, "name");
+            lua_pushstring(L, evt->name);
+            lua_settable(L, -3);
+
+            lua_pushstring(L, "dir");
+            lua_pushboolean(L, (evt->mask & IN_ISDIR) != 0);
+            lua_settable(L, -3);
+
+            lua_pushstring(L, "modify");
+            lua_pushboolean(L, (evt->mask & IN_MODIFY) != 0);
+            lua_settable(L, -3);
+
+            lua_pushstring(L, "delete");
+            lua_pushboolean(L, (evt->mask & IN_DELETE) != 0);
+            lua_settable(L, -3);
+
+            lua_pushstring(L, "create");
+            lua_pushboolean(L, (evt->mask & IN_CREATE) != 0);
+            lua_settable(L, -3);
+
+            lua_pushstring(L, "clock");
+            lua_pushnumber(L, t);
+            lua_settable(L, -3);
+
+            lua_rawseti(L, -2, c++);
+        }
+        i += (sizeof(struct inotify_event)) + evt->len;
+    }
+    return 1;
+    #else
+    return 0;
+    #endif
+}
+
 static int l_net_listdir(lua_State *L) {
     struct dirent **eps = NULL;
     int n, i;
@@ -283,7 +381,11 @@ LUALIB_API int luaopen_net(lua_State *L) {
         {"connect", l_net_connect},
         {"reload", l_net_reload},
         {"listdir", l_net_listdir},
-        {NULL, NULL}};
+        {"inotify_init", l_net_inotify_init},
+        {"inotify_add", l_net_inotify_add},
+        {"inotify_read", l_net_inotify_read},
+        {NULL, NULL}
+    };
 #if LUA_VERSION_NUM > 501
     luaL_newlib(L, netlib);
 #else

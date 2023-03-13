@@ -1,9 +1,20 @@
+--- @class inotify_event
+--- @field name string file name
+--- @field dir boolean true if file is a directory
+--- @field modify boolean true if file was modified
+--- @field create boolean true if file as created
+--- @field delete boolean true if file was deleted
+--- @field clock number time since start of program
+
 --- @class net
 --- @field write fun(elfd: lightuserdata, childfd: lightuserdata, data: string, offset: integer): boolean write data to file descriptor
 --- @field close fun(elfd: lightuserdata, childfd: lightuserdata): boolean close a file descriptor
 --- @field connect fun(elfd: lightuserdata, host: string, port: integer): fd: lightuserdata|nil, err: string|nil open a new network connection
 --- @field reload fun() reload server
 --- @field listdir fun(dir: string): string[] list files in directory
+--- @field inotify_init fun(elfd: lightuserdata): fd: lightuserdata|nil, error: string|nil
+--- @field inotify_add fun(elfd: lightuserdata, childfd: lightuserdata, target: string): lightuserdata
+--- @field inotify_read fun(data: string): inotify_event[]
 net = net or {}
 
 --- @class crext
@@ -369,6 +380,32 @@ function aio:connect(elfd, host, port)
     end
     self.fds[sock] = aiosocket:new(elfd, sock, false)
     return self.fds[sock], nil
+end
+
+
+--- Watch for changes in file or directory
+---@param elfd lightuserdata epoll handle
+---@param targets string[] list of files to watch
+---@param on_change fun(events: inotify_event[]) callback with changes
+---@return aiosocket|nil
+function aio:watch(elfd, targets, on_change)
+    local fd, err = net.inotify_init(elfd)
+    if fd ~= nil then
+        local sock = aiosocket:new(elfd, fd, true)
+        sock.on_data = function (self, elfd, childfd, data, length)
+            on_change(net.inotify_read(data))
+        end
+        local watching = {}
+        self.fds[fd] = sock
+        sock.watcihng = watching
+        for _, target in ipairs(targets) do
+            table.insert(watching, net.inotify_add(elfd, fd, target))
+        end
+        return sock
+    else
+        print(err)
+    end
+    return nil
 end
 
 --- Handler called when socket is closed
