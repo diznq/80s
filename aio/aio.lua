@@ -703,7 +703,7 @@ end
 ---@return any ... response
 function aio:await(promise)
     local self_cor = coroutine.running()
-
+    local premature, yielded = nil, false
     if type(promise) == "thread" then
         local result = {coroutine.resume(promise)}
         if not result[1] then
@@ -712,12 +712,23 @@ function aio:await(promise)
         return unpack(result, 2)
     else
         promise(function(...)
+            -- in case we receive response sooner than we actually yield
+            -- consider it a premature resolve and treat it differently
+            if not yielded then
+                premature = {...}
+                return
+            end
             local ok, result = coroutine.resume(self_cor, ...)
             if not ok then
                 print("aio.await failed: ", result)
             end
         end)
     end
+    -- in case of premature resolve, return result right away
+    if premature then
+        return unpack(premature)
+    end
+    yielded = true
     return coroutine.yield()
 end
 
