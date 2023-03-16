@@ -179,7 +179,7 @@ function orm:create(sql, repo)
             token = token:gsub("^find", "")
 
             -- then check for any WHERE filters, assume they are all AND
-            if token:match("^By") then
+            if type(params) ~= "string" and token:match("^By") then
                 local attempts = 0
                 -- try for 10x to match any of possible fields defined in ormentity as the
                 -- starting substring of current token
@@ -204,6 +204,8 @@ function orm:create(sql, repo)
                 if #args > 0 then
                     query = query .. " WHERE " .. table.concat(args, " AND ")
                 end
+            elseif type(params) == "string" then
+                query = params
             end
 
             -- finally create the method for repository
