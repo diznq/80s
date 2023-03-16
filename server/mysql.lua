@@ -248,11 +248,22 @@ function mysql:connect(user, password, db, host, port)
                 on_resolved(ok, nil)
             end
 
+            local off, prev = 0, 1
             while true do
                 local seq, command = self:read_packet()
                 if seq == nil then
                     print("mysql.on_data: seq returned empty response")
                 end
+
+                -- in case it overflows, seq becomes zero, in that case
+                -- seq >= 256
+                if seq == 1 and prev ~= 0 then
+                    off = 0
+                elseif seq == 0 and prev == 255 then
+                    off = off + 256
+                end
+                if seq ~= nil then prev = seq end
+                seq = seq + off
 
                 -- responses from MySQL arrive sequentially, so we can call on_resolved callbacks in that fashion too
                 if #self.callbacks > 0 and seq == 1 then
