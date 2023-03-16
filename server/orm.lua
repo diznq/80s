@@ -208,7 +208,7 @@ function orm:create(sql, repo)
                 if params:lower():match("^select") then
                     query = params
                 else
-                    query = query .. " WHERE " .. params
+                    query = query .. " " .. params
                 end
             end
 
@@ -254,8 +254,13 @@ function orm:create_method(sql, query, types, decoders, single, count, parent)
             end
             if not special then
                 if i ~= 1 or v ~= parent then
-                    table.insert(treated, types[real_i].toformat(v))
-                    real_i = real_i + 1
+                    local type_def = types[real_i]
+                    if type_def ~= nil then
+                        table.insert(treated, type_def.toformat(v))
+                        real_i = real_i + 1
+                    else
+                        table.insert(treated, v)
+                    end
                 end
             end
         end
