@@ -403,6 +403,17 @@ function mysql:handshake()
 end
 
 function mysql:escape(text)
+    if type(text) == "table" then
+        if #text == 0 then
+            return "(NULL)"
+        else
+            local results = {}
+            for _, v in ipairs(text) do
+                table.insert(results, string.format("'%s'", self:escape(v)))
+            end
+            return string.format("(%s)", table.concat(results, ","))
+        end
+    end
     if type(text) ~= "string" then
         return text
     end

@@ -205,7 +205,11 @@ function orm:create(sql, repo)
                     query = query .. " WHERE " .. table.concat(args, " AND ")
                 end
             elseif type(params) == "string" then
-                query = params
+                if params:lower():match("^select") then
+                    query = params
+                else
+                    query = query .. " WHERE " .. params
+                end
             end
 
             -- finally create the method for repository
