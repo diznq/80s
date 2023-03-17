@@ -1,9 +1,6 @@
 #include "80s.h"
 #include "lua_codec.h"
-
-#ifdef CRYPTOGRAPHIC_EXTENSIONS
-#include <openssl/sha.h>
-#endif
+#include "lua_crext.h"
 
 #include <lauxlib.h>
 #include <lualib.h>
@@ -380,26 +377,6 @@ static int l_net_listdir(lua_State *L) {
     return 1;
 }
 
-#ifdef CRYPTOGRAPHIC_EXTENSIONS
-static int l_net_sha1(lua_State *L) {
-    size_t len;
-    unsigned char buffer[20];
-    const unsigned char *data = (const unsigned char *)lua_tolstring(L, 1, &len);
-    SHA1(data, len, buffer);
-    lua_pushlstring(L, (const char *)buffer, 20);
-    return 1;
-}
-
-static int l_net_sha256(lua_State *L) {
-    size_t len;
-    unsigned char buffer[32];
-    const unsigned char *data = (const unsigned char *)lua_tolstring(L, 1, &len);
-    SHA256(data, len, buffer);
-    lua_pushlstring(L, (const char *)buffer, 32);
-    return 1;
-}
-#endif
-
 LUALIB_API int luaopen_net(lua_State *L) {
     const luaL_Reg netlib[] = {
         {"write", l_net_write},
@@ -420,21 +397,6 @@ LUALIB_API int luaopen_net(lua_State *L) {
 #endif
     return 1;
 }
-
-#ifdef CRYPTOGRAPHIC_EXTENSIONS
-LUALIB_API int luaopen_cryptoext(lua_State *L) {
-    const luaL_Reg netlib[] = {
-        {"sha1", l_net_sha1},
-        {"sha256", l_net_sha256},
-        {NULL, NULL}};
-#if LUA_VERSION_NUM > 501
-    luaL_newlib(L, netlib);
-#else
-    luaL_openlib(L, "crext", netlib, 0);
-#endif
-    return 1;
-}
-#endif
 
 lua_State *create_lua(int elfd, int id, const char *entrypoint) {
     int status;
@@ -457,10 +419,10 @@ lua_State *create_lua(int elfd, int id, const char *entrypoint) {
 
 #ifdef CRYPTOGRAPHIC_EXTENSIONS
 #if LUA_VERSION_NUM > 501
-    luaL_requiref(L, "crext", luaopen_cryptoext, 1);
+    luaL_requiref(L, "crext", luaopen_crext, 1);
     lua_pop(L, 1);
 #else
-    luaopen_cryptoext(L);
+    luaopen_crext(L);
 #endif
 #endif
 
