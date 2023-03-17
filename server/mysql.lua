@@ -248,40 +248,33 @@ function mysql:connect(user, password, db, host, port)
                 on_resolved(ok, nil)
             end
 
-            local off, prev = 0, 1
             while true do
                 local seq, command = self:read_packet()
                 if seq == nil then
                     print("mysql.on_data: seq returned empty response")
                 end
 
-                -- in case it overflows, seq becomes zero, in that case
-                -- seq >= 256
-                if seq == 1 and prev ~= 0 then
-                    off = 0
-                elseif seq == 0 and prev == 255 then
-                    off = off + 256
-                end
-                if seq ~= nil then prev = seq end
-                seq = seq + off
-
                 -- responses from MySQL arrive sequentially, so we can call on_resolved callbacks in that fashion too
-                if #self.callbacks > 0 and seq == 1 then
-                    local first = self.callbacks[1]
-                    self.active_callback = first
-                    table.remove(self.callbacks, 1)
-                    local invoke = type(first) == "thread" and coroutine.resume or pcall
-                    -- use protected call, so it doesn't break our loop
-                    local ok, res = invoke(first, seq, command)
-                    if not ok then
-                        print("mysql.on_data: first call failed: ", res)
-                    end
-                elseif self.active_callback ~= nil and seq > 1 then
-                    -- use protected call, so it doesn't break our loop
-                    local invoke = type(self.active_callback) == "thread" and coroutine.resume or pcall
-                    local ok, res =  invoke(self.active_callback, seq, command)
+                -- in case active_callback was set and keeps returning true, it will be called until it doesn't return
+                -- true anymore
+                if self.active_callback ~= nil then
+                    local ok, res = pcall(self.active_callback, seq, command)
                     if not ok then
                         print("mysql.on_data: next call failed: ", res)
+                        self.active_callback = nil
+                    elseif res ~= true then
+                        self.active_callback = nil
+                    end
+                elseif #self.callbacks > 0 and seq == 1 then
+                    local first = self.callbacks[1]
+                    table.remove(self.callbacks, 1)
+                    -- use protected call, so it doesn't break our loop
+                    -- if it returns true, it means more sequences are needed!
+                    local ok, res = pcall(first, seq, command)
+                    if not ok then
+                        print("mysql.on_data: first call failed: ", res)
+                    elseif res == true then
+                        self.active_callback = first
                     end
                 end
             end
@@ -530,19 +523,19 @@ function mysql:select(query, ...)
             local by_name = {}
             local rows = {}
             for i=1, n_fields do
-                local seq, field_res = coroutine.yield()
+                local seq, field_res = coroutine.yield(true)
                 if seq == nil then resolve(nil, "network error while fetching fields") return end
                 local field = self:decode_field(field_res)
                 table.insert(fields, field)
                 by_name[field.name] = field
             end
-            local _, eof = coroutine.yield()
+            local _, eof = coroutine.yield(true)
             if eof:byte(1, 1) ~= 254 then
                 resolve(nil, "network error, expected eof after field definitions")
                 return
             end
             while true do
-                seq, res = coroutine.yield()
+                seq, res = coroutine.yield(true)
                 if seq == nil then resolve(nil, "network error while fetching rows") return end
                 if res:byte(1, 1) == 254 then break end
                 reader = mysql_decoder:new(res)

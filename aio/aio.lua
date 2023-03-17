@@ -539,9 +539,12 @@ function aio:prepare_promise()
                 local ok, err = coroutine.resume(callback, unpack(early_val))
                 if not ok then
                     error(err)
+                else
+                    ---@diagnostic disable-next-line: redundant-return-value
+                    return err
                 end
             else
-                callback(unpack(early_val))
+                return callback(unpack(early_val))
             end
         else
             on_resolved = callback
@@ -553,6 +556,8 @@ function aio:prepare_promise()
             local ok, err = coroutine.resume(on_resolved, ...)
             if not ok then
                 error(err)
+            else
+                return err
             end
         else
             return on_resolved(...)
