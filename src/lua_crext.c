@@ -4,22 +4,32 @@
 #include <lauxlib.h>
 
 #ifdef CRYPTOGRAPHIC_EXTENSIONS
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 
 static int l_net_sha1(lua_State *L) {
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
     size_t len;
+    unsigned int out_len;
     unsigned char buffer[20];
-    const unsigned char *data = (const unsigned char *)lua_tolstring(L, 1, &len);
-    SHA1(data, len, buffer);
+    const char *data = (const char *)lua_tolstring(L, 1, &len);
+    EVP_DigestInit(ctx, EVP_sha1());
+    EVP_DigestUpdate(ctx, (const void*)data, len);
+    EVP_DigestFinal_ex(ctx, buffer, &out_len);
+    EVP_MD_CTX_free(ctx);
     lua_pushlstring(L, (const char *)buffer, 20);
     return 1;
 }
 
 static int l_net_sha256(lua_State *L) {
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
     size_t len;
+    unsigned int out_len;
     unsigned char buffer[32];
-    const unsigned char *data = (const unsigned char *)lua_tolstring(L, 1, &len);
-    SHA256(data, len, buffer);
+    const char *data = (const char *)lua_tolstring(L, 1, &len);
+    EVP_DigestInit(ctx, EVP_sha256());
+    EVP_DigestUpdate(ctx, (const void*)data, len);
+    EVP_DigestFinal_ex(ctx, buffer, &out_len);
+    EVP_MD_CTX_free(ctx);
     lua_pushlstring(L, (const char *)buffer, 32);
     return 1;
 }
