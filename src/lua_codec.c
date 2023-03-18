@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+
+char url_encode_lut[256];
 
 static void encode_string(struct dynstr *out, const char *value, size_t value_len) {
     dynstr_putc(out, '"');
@@ -106,14 +109,84 @@ static int l_codec_json_encode(lua_State *L) {
     return 1;
 }
 
+static int l_codec_url_encode(lua_State *L) {
+    size_t len, i, j=0;
+    struct dynstr str;
+    char buffer[2048], c;
+    char chars[] = "0123456789ABCDEF";
+    char buf[3] = {'%', 0, 0};
+    const char* data = lua_tolstring(L, 1, &len);
+    char* ptr;
+    dynstr_init(&str, buffer, sizeof(buffer));
+    if(dynstr_check(&str, len * 3)) {
+        ptr = str.ptr;
+        for(i=0; i<len; i++) {
+            c = data[i] & 255;
+            if(url_encode_lut[c]) {
+                ptr[j++] = c;
+            } else {
+                ptr[j++] = '%';
+                ptr[j++] = chars[c >> 4];
+                ptr[j++] = chars[c & 15];
+            }
+        }
+    }
+    lua_pushlstring(L, ptr, j);
+    dynstr_release(&str);
+    return 1;
+}
+
+static int l_codec_mysql_encode(lua_State *L) {
+    size_t len, i;
+    struct dynstr str;
+    char buffer[512], c;
+    const char* data = lua_tolstring(L, 1, &len);
+    dynstr_init(&str, buffer, sizeof(buffer));
+    if(dynstr_check(&str, len)) {
+        for(i=0; i<len; i++) {
+            c = data[i];
+            switch (c) {
+            case '\r':
+                dynstr_puts(&str, "\\r", 2);
+                break;
+            case '\n':
+                dynstr_puts(&str, "\\n", 2);
+                break;
+            case '"':
+                dynstr_puts(&str, "\\\"", 2);
+                break;
+            case '\'':
+                dynstr_puts(&str, "\\'", 2);
+                break;
+            case '\0':
+                dynstr_puts(&str, "\\0", 2);
+                break;
+            default:
+                dynstr_putc(&str, c);
+                break;
+            }
+        }
+    }
+    lua_pushlstring(L, str.ptr, str.length);
+    dynstr_release(&str);
+    return 1;
+}
+
 LUALIB_API int luaopen_codec(lua_State *L) {
+    int i;
     const luaL_Reg netlib[] = {
         {"json_encode", l_codec_json_encode},
-        {NULL, NULL}};
+        {"url_encode", l_codec_url_encode},
+        {"mysql_encode", l_codec_mysql_encode},
+        {NULL, NULL}
+    };
 #if LUA_VERSION_NUM > 501
     luaL_newlib(L, netlib);
 #else
     luaL_openlib(L, "codec", netlib, 0);
 #endif
+    for(i=0; i<256; i++) {
+        url_encode_lut[i] = isalnum(i) || i == '~' || i == '-' || i == '.' || i == '_' ? i : 0;
+    }
     return 1;
 }

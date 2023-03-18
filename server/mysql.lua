@@ -421,29 +421,7 @@ function mysql:escape(text)
     if type(text) ~= "string" then
         return text
     end
-    local res = text
-        :gsub("\\", "\\\\")
-        :gsub("%'", "\\'")
-        :gsub("%\n", "\\n")
-        :gsub("%\r", "\\r")
-        :gsub("%\"", "\\\"")
-    -- LuaJIT has troubles with gsub on \0
-    if not jit then
-        res = res:gsub("[\0]", "\\0")
-    else
-        if res:find("\0", 1, true) then
-            local chars = {}
-            for i, byte in ipairs({res:byte(1, #res)}) do
-                if byte == 0 then
-                    table.insert(chars, "\\0")
-                else
-                    table.insert(chars, string.char(byte))
-                end
-            end
-            res = table.concat(chars)
-        end
-    end
-    return res
+    return codec.mysql_encode(text)
 end
 
 --- Execute SQL query in raw mode

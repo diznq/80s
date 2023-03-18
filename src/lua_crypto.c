@@ -32,8 +32,8 @@ static int l_crypto_sha256(lua_State *L) {
 static int l_crypto_cipher(lua_State* L) {
     EVP_CIPHER_CTX* ctx;
     size_t len, key_len, needed_size;
-    int encrypt, ok, offset, use_iv;
-    unsigned int out_len, final_len, ret_len, iv_len, hmac_len;
+    int encrypt, ok, offset, use_iv, out_len, final_len;
+    unsigned int ret_len, iv_len, hmac_len;
     unsigned char buffer[65536];
     unsigned char iv[16];
     unsigned char signature[32];
@@ -91,7 +91,7 @@ static int l_crypto_cipher(lua_State* L) {
     }
 
     // initialize our dynamic string and try to allocate enough memory
-    dynstr_init(&str, buffer, sizeof(buffer));
+    dynstr_init(&str, (char*)buffer, sizeof(buffer));
 
     if(!dynstr_check(&str, needed_size)) {
         lua_pushnil(L);

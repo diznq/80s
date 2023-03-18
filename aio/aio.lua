@@ -29,6 +29,8 @@ crypto = crypto or {}
 
 --- @class codec
 --- @field json_encode fun(obj: table): string JSON encode object or an array
+--- @field url_encode fun(text: string): string URL encode text
+--- @field mysql_encode fun(text: string): string MySQL encode text
 codec = codec or {}
 
 --- @class jit
@@ -366,7 +368,7 @@ function aio:create_query(params, private_key, ordered, iv)
     local values = {}
     for key, value in pairs(params) do
         if type(value) ~= "table" then
-            table.insert(values, string.format("%s=%s", key, self:url_encode(tostring(value))))
+            table.insert(values, string.format("%s=%s", key, codec.url_encode(tostring(value))))
         end
     end
     if ordered then
@@ -374,11 +376,25 @@ function aio:create_query(params, private_key, ordered, iv)
     end
     local result = table.concat(values, "&")
     if type(private_key) == "string" then
+        local hit = self.crypto_cache[result]
+        if hit then return hit end
         local encrypted = self:encrypt(result, self:create_key(private_key), iv, false)
         if not encrypted then
             encrypted = "nil"
         end
-        return string.format("e=%s", self:url_encode(encrypted))
+        local res = string.format("e=%s", codec.url_encode(encrypted))
+        -- cache the encrypted encoded URLs if possible
+        if not iv and #result < 1000 then
+            -- if cache grows too big, remove the first item
+            if self.crypto_size > 10000 then
+                local k, v = next(self.crypto_cache)
+                self.crypto_cache[k] = nil
+            else
+                self.crypto_size = self.crypto_size + 1
+            end
+            self.crypto_cache[result] = res
+        end
+        return res
     end
     return result
 end
@@ -424,25 +440,9 @@ end
 function aio:encrypt(data, key, iv, raw)
     if iv == nil then iv = true end
     raw = raw or false
-    local cache_key, cacheable = nil, false
-    if not iv and (#data + #key) < 1000 then
-        cacheable = true
-        cache_key = data .. key .. (raw and "1" or "0")
-        local hit = self.crypto_cache[cache_key]
-        if hit then 
-            return hit
-        end
-    end
     local res, err = crypto.cipher(data, crypto.sha256(key), iv, true)
     if res then
         if not raw then res = crypto.to64(res) end
-        if cacheable then
-            if self.crypto_size > 10000 then
-                self.crypto_cache = {}
-            end
-            self.crypto_cache[cache_key] = res
-            self.crypto_size = self.crypto_size + 1
-        end
         return res
     end
     return nil
