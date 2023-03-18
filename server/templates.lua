@@ -144,12 +144,17 @@ function templates:prepare(content, base)
                         local private_key = aio.master_key and endpoint or nil
                         if type(params) == "table" then
                             local iv = params.iv or false
+                            local ordered = true
                             if params.e == false then
                                 private_key = nil
                             end
+                            if params.ordered == false then
+                                ordered = false
+                            end
                             params["iv"] = nil
                             params["e"] = nil
-                            path = string.format("%s?%s", path, aio:create_query(params, private_key, iv))
+                            params["ordered"] = nil
+                            path = string.format("%s?%s", path, aio:create_query(params, private_key, ordered, iv))
                         end
                         return path
                     end

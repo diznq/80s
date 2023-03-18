@@ -356,15 +356,19 @@ end
 --- Create query string
 ---@param params {[string]: string} key value pairs of query params
 ---@param private_key string|nil private key to use to create signed query
+---@param ordered boolean|false guarantee same order everytime
 ---@param iv boolean|false true if IV in URL is to be used
 ---@return string result query string
-function aio:create_query(params, private_key, iv)
+function aio:create_query(params, private_key, ordered, iv)
     iv = iv or false
     local values = {}
     for key, value in pairs(params) do
         if type(value) ~= "table" then
             table.insert(values, string.format("%s=%s", key, self:url_encode(tostring(value))))
         end
+    end
+    if ordered then
+        table.sort(values)
     end
     local result = table.concat(values, "&")
     if type(private_key) == "string" then
