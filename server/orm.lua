@@ -183,17 +183,19 @@ function orm:create(sql, repo)
                 local attempts = 0
                 -- try for 10x to match any of possible fields defined in ormentity as the
                 -- starting substring of current token
-                while attempts < 10 and #token > 2 do
+                token = token:sub(3)
+                local it = token == "IpPort"
+                while attempts < 10 and #token > 0 do
                     for field, def in pairs(entity) do
                         if type(def) == "table" then
                             -- isolate text after By... and convert first letter to lower case
-                            local sub = token:sub(3, 3 + #field)
+                            local sub = token:sub(1, #field)
                             sub = sub:sub(1, 1):lower() .. sub:sub(2)
                             -- if we found a match, insert it to list or arguments
                             if sub == field then
                                 table.insert(args, def.field .. " = '" .. def.type.format() .. "'")
                                 table.insert(types, def.type)
-                                token = token:sub(3 + #field + 1)
+                                token = token:sub(1 + #field)
                                 break
                             end
                         end
