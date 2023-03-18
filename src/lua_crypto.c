@@ -208,11 +208,20 @@ static int l_crypto_to64(lua_State* L) {
 }
 
 static int l_crypto_from64(lua_State* L) {
-    size_t len, target_len;
+    size_t len;
+    EVP_ENCODE_CTX* ctx;
     struct dynstr str;
+    int final_len, target_len;
     char buffer[65536];
     const char* data = lua_tolstring(L, 1, &len);
-    target_len = len;
+    final_len = target_len = (int)len;
+
+    ctx = EVP_ENCODE_CTX_new();
+    if(ctx == NULL) {
+        lua_pushnil(L);
+        lua_pushstring(L, "failed to create decode context");
+        return 2;
+    }
 
     dynstr_init(&str, buffer, sizeof(buffer));
     if(!dynstr_check(&str, target_len)) {
@@ -220,17 +229,24 @@ static int l_crypto_from64(lua_State* L) {
         lua_pushstring(L, "failed to allocate enough memory");
         return 2;
     }
-    target_len = EVP_DecodeBlock((unsigned char*)str.ptr, (const unsigned char*)data, (int)len);
-    if(target_len < 0) {
+
+    EVP_DecodeInit(ctx);
+    if(
+            EVP_DecodeUpdate(ctx, (unsigned char*)str.ptr, &target_len, (const unsigned char*)data, (int)len) >= 0
+        &&  EVP_DecodeFinal(ctx, (unsigned char*)(str.ptr + target_len), &final_len)
+      )
+    {
+        lua_pushlstring(L, str.ptr, target_len + final_len);
+        EVP_ENCODE_CTX_free(ctx);
         dynstr_release(&str);
-        lua_pushnil(L);
-        lua_pushstring(L, "failed to decode");
-        return 2;
+        return 1;
     }
 
-    lua_pushlstring(L, str.ptr, target_len - 1);
+    EVP_ENCODE_CTX_free(ctx);
     dynstr_release(&str);
-    return 1;
+    lua_pushnil(L);
+    lua_pushstring(L, "failed to decode");
+    return 2;
 }
 
 LUALIB_API int luaopen_crypto(lua_State *L) {
