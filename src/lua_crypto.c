@@ -6,44 +6,34 @@
 
 #include <lauxlib.h>
 
+#include <openssl/hmac.h>
+#include <openssl/sha.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
 static int l_crypto_sha1(lua_State *L) {
-    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
     size_t len;
-    unsigned int out_len = 20;
     unsigned char buffer[20];
     const char *data = lua_tolstring(L, 1, &len);
-    EVP_DigestInit(ctx, EVP_sha1());
-    EVP_DigestUpdate(ctx, (const void*)data, len);
-    EVP_DigestFinal(ctx, buffer, &out_len);
-    EVP_MD_CTX_free(ctx);
+    SHA1((const unsigned char*)data, len, buffer);
     lua_pushlstring(L, (const char *)buffer, 20);
     return 1;
 }
 
 static int l_crypto_sha256(lua_State *L) {
-    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
     size_t len;
-    unsigned int out_len = 32;
     unsigned char buffer[32];
     const char *data = lua_tolstring(L, 1, &len);
-    EVP_DigestInit(ctx, EVP_sha256());
-    EVP_DigestUpdate(ctx, (const void*)data, len);
-    EVP_DigestFinal(ctx, buffer, &out_len);
-    EVP_MD_CTX_free(ctx);
+    SHA256((const unsigned char*)data, len, buffer);
     lua_pushlstring(L, (const char *)buffer, 32);
     return 1;
 }
 
 static int l_crypto_cipher(lua_State* L) {
     EVP_CIPHER_CTX* ctx;
-    EVP_MD_CTX* md_ctx;
-    EVP_PKEY* private_key;
-    size_t len, key_len, hmac_len, needed_size;
+    size_t len, key_len, needed_size;
     int encrypt, ok, offset, use_iv;
-    unsigned int out_len, final_len, ret_len, iv_len;
+    unsigned int out_len, final_len, ret_len, iv_len, hmac_len;
     unsigned char buffer[65536];
     unsigned char iv[16];
     unsigned char signature[32];
@@ -97,33 +87,13 @@ static int l_crypto_cipher(lua_State* L) {
         return 2;
     }
 
-    md_ctx = EVP_MD_CTX_new();
-
-    if(md_ctx == NULL) {
-        EVP_CIPHER_CTX_free(ctx);
-        lua_pushnil(L);
-        lua_pushstring(L, "failed to create md context");
-        return 2;
-    }
-
-    private_key = EVP_PKEY_new_mac_key(EVP_PKEY_HMAC, NULL, (const unsigned char*)key, (int)key_len);
-    if(private_key == NULL) {
-        EVP_CIPHER_CTX_free(ctx);
-        EVP_MD_CTX_free(md_ctx);
-        lua_pushnil(L);
-        lua_pushstring(L, "failed to create private key");
-        return 2;
-    }
-
     // initialize our dynamic string and try to allocate enough memory
     dynstr_init(&str, buffer, sizeof(buffer));
 
     if(!dynstr_check(&str, needed_size)) {
         lua_pushnil(L);
         lua_pushstring(L, "failed to allocate enough memory for cipher output buffer");
-        EVP_PKEY_free(private_key);
         EVP_CIPHER_CTX_free(ctx);
-        EVP_MD_CTX_free(md_ctx);
         return 2;
     }
 
@@ -143,17 +113,13 @@ static int l_crypto_cipher(lua_State* L) {
         }
     }
 
-    // initialize HMAC and our cipher
-    if(    EVP_DigestSignInit(md_ctx, NULL, EVP_sha256(), NULL, private_key)
-        && EVP_CipherInit(ctx, EVP_aes_256_cbc(), (const unsigned char*)key, (const unsigned char*)iv, encrypt)
-      ) {
+    if( EVP_CipherInit(ctx, EVP_aes_256_cbc(), (const unsigned char*)key, (const unsigned char*)iv, encrypt)) {
         // lets go with no padding
         EVP_CIPHER_CTX_set_padding(ctx, 16);
         
         // when decrypting, we first compute hmac and check it
         if(!encrypt) {
-            EVP_DigestSignUpdate(md_ctx, (const void*)(data + hmac_len), len - hmac_len);
-            EVP_DigestSignFinal(md_ctx, (unsigned char*)signature, &hmac_len);
+            HMAC(EVP_sha256(), (const void*)key, (int)key_len, (const unsigned char*)(data + hmac_len), len - hmac_len, (unsigned char*)signature, &hmac_len);
             // verify if computed signature matches received signature
             if(memcmp(data, signature, hmac_len)) {
                 ok = 0;
@@ -175,8 +141,7 @@ static int l_crypto_cipher(lua_State* L) {
         ) {
             if(encrypt) {
                 // when encrypting, compute signature over data[32:] and set it to data[0:32]
-                int res = EVP_DigestSignUpdate(md_ctx, (const void*)str.ptr + hmac_len, out_len + final_len + iv_len + 4);
-                EVP_DigestSignFinal(md_ctx, (unsigned char*)str.ptr, &hmac_len);
+                HMAC(EVP_sha256(), (const void*)key, (int)key_len, (const unsigned char*)(str.ptr + hmac_len), out_len + final_len + iv_len + 4, (unsigned char*)str.ptr, &hmac_len);
                 lua_pushlstring(L, (const char*)str.ptr, out_len + final_len + hmac_len + iv_len + 4);
             } else {
                 // when decrypting, let length be int(data[32:36]) and return data[52:52+length]
@@ -194,8 +159,6 @@ static int l_crypto_cipher(lua_State* L) {
         ret_len = 2;
     }
     // release all the resources we've allocated
-    EVP_PKEY_free(private_key);
-    EVP_MD_CTX_free(md_ctx);
     EVP_CIPHER_CTX_free(ctx);
     
     dynstr_release(&str);
