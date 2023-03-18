@@ -258,7 +258,7 @@ Live reloading can be enabled by setting `RELOAD=true` environmet variable. For 
 
 To change default public_html folder, set `PUBLIC_HTML` envirnoment variable, i.e. `PUBLIC_HTML=server/www/` will use `server/www/main.lua` + `server/www/public_html/*`.
 
-To set master key for URLs encryption, set `MASTER_KEY` environment variable, after that all URLs generated with `to_url` will be encrypted and all query parameters passed in `euri` will be decrypted automatically.
+To set master key for URLs encryption, set `MASTER_KEY` environment variable, after that all URLs generated with `to_url` will be encrypted and all query parameters passed in `e` will be decrypted automatically.
 
 
 ### Templating syntax
@@ -292,7 +292,7 @@ During code execution, several variables are set within context:
 - `session`: session context
 - `locals`: a table where scripts can store intermediate data that they can share across them while entire page renders
 - `endpoint`: request URL without query part
-- `query`: table with query parameters
+- `query`: table with query parameters, encrypted parameters available under `query.e` and should be used if possible instead as just `query` can be overriden in case of `?e=...&param1=...&param2=...`
 - `headers`: table of request headers
 - `body`: request body
 - `status(http_status)`: write HTTP status
@@ -302,7 +302,7 @@ During code execution, several variables are set within context:
 - `escape(text)`: HTML escape the text
 - `post_render(handler)`: add callback `fun(rendered_page: string): string new_page` that will be called after page is rendered and can alter the page content
 - `done()`: done signalizer
-- `to_url(endpoint, params)`: create URL, i.e. `to_url("/profile", {id=user.id})`, if aio master key is set, query parameters will be encrypted into `euri` by using `master_key .. endpoint` as a key
+- `to_url(endpoint, params)`: create URL, i.e. `to_url("/profile", {id=user.id})`, if aio master key is set, query parameters will be encrypted into `?e` by using `master_key .. endpoint` as a key. If `params.e` is set to false, no encryption is performed and if `params.iv` exists, IV will be available in encrypted URL based on it's value, by default it won't
 
 You can see examples in `server/public_html/` directory.
 

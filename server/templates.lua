@@ -143,7 +143,13 @@ function templates:prepare(content, base)
                         local path = endpoint
                         local private_key = aio.master_key and endpoint or nil
                         if type(params) == "table" then
-                            path = string.format("%s?%s", path, aio:create_query(params, private_key))
+                            local iv = params.iv or false
+                            if params.e == false then
+                                private_key = nil
+                            end
+                            params["iv"] = nil
+                            params["e"] = nil
+                            path = string.format("%s?%s", path, aio:create_query(params, private_key, iv))
                         end
                         return path
                     end

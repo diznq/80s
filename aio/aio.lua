@@ -22,7 +22,7 @@ net = net or {}
 --- @class crypto
 --- @field sha1 fun(data: string): string perform sha1(data), returns bytestring with raw data
 --- @field sha256 fun(data: string): string perform sha256(data), returns bytestring with raw data
---- @field cipher fun(data: string, key: string, encrypt: boolean): result: string?, error: string perform encryption/decryption
+--- @field cipher fun(data: string, key: string, iv: boolean, encrypt: boolean): result: string?, error: string perform encryption/decryption, if iv is false, iv is all zeros and not inserted to result
 --- @field to64 fun(data: string): string encode to base64
 --- @field from64 fun(data: string): string decode from base64
 crypto = crypto or {}
@@ -329,22 +329,25 @@ end
 
 --- Parse HTTP query
 --- @param query string query string
---- @param private_key string|nil string decryption key for ?euri
---- @return {[string]: string} query query params
+--- @param private_key string|nil string decryption key for ?e
+--- @return {[string]: string, e: {[string]: string}} query query params
 function aio:parse_query(query, private_key)
     local params = {}
+    params.e={} -- reserved for encrypted query
     query = "&" .. query
     -- match everything where first part doesn't contain = and second part doesn't contain &
     for key, value in query:gmatch("%&([^=]+)=?([^&]*)") do
-        params[key] = self:parse_url(value)
-        if key == "euri" and private_key ~= nil then
-            local value = self:decrypt(params[key], self:create_key(private_key))
+        if key == "e" and private_key ~= nil then
+            local value = self:decrypt(self:parse_url(value), self:create_key(private_key))
             if value then
                 local result = self:parse_query(value)
+                params.e = result
                 for i, v in pairs(result) do
                     params[i] = v
                 end
             end
+        elseif params[key] == nil then
+            params[key] = self:parse_url(value)
         end
     end
     return params
@@ -353,19 +356,23 @@ end
 --- Create query string
 ---@param params {[string]: string} key value pairs of query params
 ---@param private_key string|nil private key to use to create signed query
+---@param iv boolean|false true if IV in URL is to be used
 ---@return string result query string
-function aio:create_query(params, private_key)
+function aio:create_query(params, private_key, iv)
+    iv = iv or false
     local values = {}
     for key, value in pairs(params) do
-        table.insert(values, string.format("%s=%s", key, self:url_encode(tostring(value))))
+        if type(value) ~= "table" then
+            table.insert(values, string.format("%s=%s", key, self:url_encode(tostring(value))))
+        end
     end
     local result = table.concat(values, "&")
     if type(private_key) == "string" then
-        local encrypted = self:encrypt(result, self:create_key(private_key))
+        local encrypted = self:encrypt(result, self:create_key(private_key), iv, false)
         if not encrypted then
             encrypted = "nil"
         end
-        return string.format("euri=%s", self:url_encode(encrypted))
+        return string.format("e=%s", self:url_encode(encrypted))
     end
     return result
 end
@@ -405,11 +412,13 @@ end
 --- Encrypt data
 ---@param data string data
 ---@param key string key
----@param raw? boolean if true, raw cipher is returned, if false, base64 encoded version is returned
+---@param iv boolean|false if true, random IV will be used, if false IV is zeroes
+---@param raw boolean|false if true, raw cipher is returned, if false, base64 encoded version is returned
 ---@return string|nil result encrypted data
-function aio:encrypt(data, key, raw)
+function aio:encrypt(data, key, iv, raw)
+    iv = iv or false
     raw = raw or false
-    local res, err = crypto.cipher(data, crypto.sha256(key), true)
+    local res, err = crypto.cipher(data, crypto.sha256(key), iv, true)
     if res then
         if raw then return res end
         return crypto.to64(res)
@@ -428,7 +437,7 @@ function aio:decrypt(data, key, raw)
         return nil
     end
     if not raw then data = crypto.from64(data) end
-    local res, _ = crypto.cipher(data, crypto.sha256(key), false)
+    local res, _ = crypto.cipher(data, crypto.sha256(key), true, false)
     return res
 end
 

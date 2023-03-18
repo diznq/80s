@@ -42,21 +42,23 @@ static int l_crypto_cipher(lua_State* L) {
     EVP_MD_CTX* md_ctx;
     EVP_PKEY* private_key;
     size_t len, key_len, hmac_len, needed_size;
-    int encrypt, ok, offset;
-    unsigned int out_len, final_len, ret_len;
+    int encrypt, ok, offset, use_iv;
+    unsigned int out_len, final_len, ret_len, iv_len;
     unsigned char buffer[65536];
     unsigned char iv[16];
     unsigned char signature[32];
     struct dynstr str;
     const char* data = lua_tolstring(L, 1, &len);
     const char* key = lua_tolstring(L, 2, &key_len);
-    encrypt = lua_toboolean(L, 3);
+    use_iv = lua_toboolean(L, 3);
+    encrypt = lua_toboolean(L, 4);
 
     ok = 1;
     offset = 0;
     final_len = 0;
     ret_len = 1;
     hmac_len = 32;
+    iv_len = use_iv ? 16 : 0;
     needed_size = len;
     if(needed_size % 16 != 0) {
         needed_size += 16 - needed_size % 16;
@@ -70,10 +72,19 @@ static int l_crypto_cipher(lua_State* L) {
         return 2;
     }
 
-    if(!encrypt && len < 52) {
-        lua_pushnil(L);
-        lua_pushstring(L, "decrypt payload must be at least 52 bytes long");
-        return 2;
+    if(!encrypt) {
+        if(len - (*(int*)(data + hmac_len) + hmac_len + 4) <= 16) {
+            use_iv = 0;
+            iv_len = 0;
+        } else {
+            use_iv = 1;
+            iv_len = 16;
+        }
+        if(len < hmac_len + iv_len + 4) {
+            lua_pushnil(L);
+            lua_pushstring(L, "decrypt payload is too short");
+            return 2;
+        }
     }
 
     // first initialize cipher, message digest and private key for HMAC
@@ -118,10 +129,18 @@ static int l_crypto_cipher(lua_State* L) {
 
     if(encrypt) {
         // for encryption, generate random 16 IV bytes
-        RAND_bytes(iv, 16);
+        if(use_iv) {
+            RAND_bytes(iv, iv_len);
+        } else {
+            memset(iv, 0, sizeof(iv));
+        }
     } else {
-        // for decryption read IV from payload
-        memcpy(iv, data + 36, 16);
+        // autodetect if IV is present, if it's present, data length - read length shoudl be < 16
+        if(use_iv) {
+            memcpy(iv, data + hmac_len + 4, iv_len);
+        } else {
+            memset(iv, 0, sizeof(iv));
+        }
     }
 
     // initialize HMAC and our cipher
@@ -133,34 +152,36 @@ static int l_crypto_cipher(lua_State* L) {
         
         // when decrypting, we first compute hmac and check it
         if(!encrypt) {
-            EVP_DigestSignUpdate(md_ctx, (const void*)(data + 32), len - 32);
+            EVP_DigestSignUpdate(md_ctx, (const void*)(data + hmac_len), len - hmac_len);
             EVP_DigestSignFinal(md_ctx, (unsigned char*)signature, &hmac_len);
             // verify if computed signature matches received signature
-            if(memcmp(data, signature, 32)) {
+            if(memcmp(data, signature, hmac_len)) {
                 ok = 0;
             }
-            offset = 52;
+            offset = hmac_len + iv_len + 4;
         } else {
             // destination buffer will have following structure:
             // hmac[0:32] + length[32:36] + iv[36:52] + contents[52:]
-            memcpy(str.ptr + 36, iv, 16);
-            *(int*)(str.ptr + 32) = (int)len;
+            if(use_iv) {
+                memcpy(str.ptr + hmac_len + 4, iv, iv_len);
+            }
+            *(int*)(str.ptr + hmac_len) = (int)len;
         }
 
         if(
                 ok &&
-                EVP_CipherUpdate(ctx, (unsigned char*)str.ptr + 52, &out_len, (const unsigned char*)(data + offset), (int)len - offset)
-            &&  EVP_CipherFinal(ctx, (unsigned char*)(str.ptr + 52 + out_len), &final_len)
+                EVP_CipherUpdate(ctx, (unsigned char*)(str.ptr + hmac_len + iv_len + 4), &out_len, (const unsigned char*)(data + offset), (int)len - offset)
+            &&  EVP_CipherFinal(ctx, (unsigned char*)(str.ptr + out_len + hmac_len + iv_len + 4), &final_len)
         ) {
             if(encrypt) {
                 // when encrypting, compute signature over data[32:] and set it to data[0:32]
-                int res = EVP_DigestSignUpdate(md_ctx, (const void*)str.ptr + 32, out_len + final_len + 20);
+                int res = EVP_DigestSignUpdate(md_ctx, (const void*)str.ptr + hmac_len, out_len + final_len + iv_len + 4);
                 EVP_DigestSignFinal(md_ctx, (unsigned char*)str.ptr, &hmac_len);
-                lua_pushlstring(L, (const char*)str.ptr, out_len + final_len + 52);
+                lua_pushlstring(L, (const char*)str.ptr, out_len + final_len + hmac_len + iv_len + 4);
             } else {
                 // when decrypting, let length be int(data[32:36]) and return data[52:52+length]
                 out_len = *(int*)(data + 32);
-                lua_pushlstring(L, (const char*)(str.ptr + 52), out_len);
+                lua_pushlstring(L, (const char*)(str.ptr + hmac_len + iv_len + 4), out_len);
             }
         } else {
             lua_pushnil(L);

@@ -23,13 +23,13 @@ aio:http_get("/cipher", function (self, query, headers, body)
     local args = aio:parse_query(query)
     local key = crypto.sha256(args.key or "")
     local text = args.text or "Hello world!"
-    local crypted, err = crypto.cipher(text, key, true)
+    local crypted, err = crypto.cipher(text, key, true, true)
     if not crypted then
         self:http_response("500 Internal server error", "text/plain", err)
     else
         crypted = crypto.to64(crypted)
         local result = crypto.from64(crypted)
-        local decrypted, err = crypto.cipher(result, key, false)
+        local decrypted, err = crypto.cipher(result, key, true, false)
         if not decrypted then
             self:http_response("500 Internal server error", "text/plain", "Encrypted: " .. crypted .. "\nDecryption failed: " .. err)
         else
