@@ -16,7 +16,7 @@ Over time I already grew tired of insane software complexity of modern software 
 
 Prerequisites:
 - installed Lua librares (lualib.a and Lua headers possibly in /usr/local/include)
-- installed OpenSSL libraries if cryptograpic extensions are enabled
+- installed OpenSSL libraries
 - Linux (as of now, only epoll is supported as event loop provider, kqueue and IOCP to be in future)
 
 To compile the project, simply run `./build.sh`.
@@ -24,8 +24,6 @@ To compile the project, simply run `./build.sh`.
 You can also define following environment variables before running the build to enable certain features:
 
 - `JIT=true`: use LuaJIT instead of Lua
-- `WORKERS=n`: specify number of workers
-- `NOCRYPTO=true`: disable cryptographic extensions for Lua (links OpenSSL library)
 - `IPV6=true`: run server on IPv6 address
 - `DEBUG=true`: compile in debug mode
 
@@ -96,10 +94,11 @@ Naming conventions:
 - `net.reload()`: reload entrypoint Lua
 - `net.listdir(dir)`: list files in a directory, directories will end with `/` in returned result
 
-If binary is compiled with `-DCRYPTOGRAPHIC_EXTENSIONS=1`, also following APIs are available:
-
 - `crext.sha1(data)`: returns raw SHA1 of data
 - `crext.sha256(data)`: returns raw SHA256 of data
+- `crext.cipher(data, key, encrypt)`: encrypt or decrypt data
+
+- `codec.json_encode(table)`: encode table into sring
 
 ## Async helpers
 

@@ -22,6 +22,7 @@ net = net or {}
 --- @class crext
 --- @field sha1 fun(data: string): string perform sha1(data), returns bytestring with raw data
 --- @field sha256 fun(data: string): string perform sha256(data), returns bytestring with raw data
+--- @field cipher fun(data: string, key: string, encrypt: boolean): result: nil|string, error: string perform encryption/decryption
 crext = crext or {}
 
 --- @class codec

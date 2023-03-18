@@ -412,18 +412,12 @@ lua_State *create_lua(int elfd, int id, const char *entrypoint) {
     lua_pop(L, 1);
     luaL_requiref(L, "codec", luaopen_codec, 1);
     lua_pop(L, 1);
-#else
-    luaopen_net(L);
-    luaopen_codec(L);
-#endif
-
-#ifdef CRYPTOGRAPHIC_EXTENSIONS
-#if LUA_VERSION_NUM > 501
     luaL_requiref(L, "crext", luaopen_crext, 1);
     lua_pop(L, 1);
 #else
+    luaopen_net(L);
+    luaopen_codec(L);
     luaopen_crext(L);
-#endif
 #endif
 
     lua_pushinteger(L, id);

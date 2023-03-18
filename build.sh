@@ -44,13 +44,8 @@ fi
 
 mkdir -p bin
 
-DEFINES="-DCRYPTOGRAPHIC_EXTENSIONS=true"
+DEFINES=""
 LIBS="-lm -ldl -lpthread -lcrypto"
-
-if [[ "$NOCRYPTO" == "true" ]]; then
-    DEFINES=$(echo "$DEFINES" | sed 's/-DCRYPTOGRAPHIC_EXTENSIONS=true//g')
-    LIBS=$(echo "$LIBS" | sed 's/-lcrypto//g')
-fi
 
 if [[ "$IPV6" == "true" ]]; then
     DEFINES="$DEFINES -DALLOW_IPV6=1"

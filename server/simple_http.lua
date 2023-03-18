@@ -18,3 +18,20 @@ aio:http_post("/reload", function(fd, ...)
         fd:http_response("200 OK", "text/plain", "OK: " .. WORKERID)
     end
 end)
+
+aio:http_get("/cipher", function (self, query, headers, body)
+    local args = aio:parse_query(query)
+    local key = crext.sha256(args.key or "")
+    local text = args.text or "Hello world!"
+    local crypted, err = crext.cipher(text, key, true)
+    if not crypted then
+        self:http_response("500 Internal server error", "text/plain", err)
+    else
+        local decrypted, err = crext.cipher(crypted, key, false)
+        if not decrypted then
+            self:http_response("500 Internal server error", "text/plain", "Encrypted: " .. crypted .. "\nDecryption failed")
+        else
+            self:http_response("200 OK", "text/plain", "Encrypted: " .. crypted .. "\nDecrypted: " .. decrypted)
+        end
+    end
+end)
