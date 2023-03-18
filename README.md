@@ -100,6 +100,13 @@ Naming conventions:
 
 - `codec.json_encode(table)`: encode table into sring
 
+For systems supporting inotify API following additional APIs are available:
+
+- `net.inotify_init(elfd)`: initialize inotify listener, returns fd
+- `net.inotify_add(elfd, fd, path)`: adds path to watchlist and returns wd (watch descriptor)
+- `net.inotify_remove(elfd, fd, wd)`: remove wd from inotify listener
+- `net.inotify_read(data)`: decode inotify event to Lua table structure
+
 ## Async helpers
 
 ### Promises
