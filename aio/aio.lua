@@ -341,10 +341,10 @@ function aio:parse_query(query, private_key)
             local value = self:decrypt(self:parse_url(value), self:create_key(private_key))
             if value then
                 local result = self:parse_query(value)
-                params.e = result
                 for i, v in pairs(result) do
                     params[i] = v
                 end
+                params.e = result
             end
         elseif params[key] == nil then
             params[key] = self:parse_url(value)
