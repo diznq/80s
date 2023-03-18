@@ -19,7 +19,7 @@ static int l_crypto_sha1(lua_State *L) {
     EVP_DigestUpdate(ctx, (const void*)data, len);
     EVP_DigestFinal(ctx, buffer, &out_len);
     EVP_MD_CTX_free(ctx);
-    lua_pushlstring(L, (const char *)buffer, 32);
+    lua_pushlstring(L, (const char *)buffer, 20);
     return 1;
 }
 
