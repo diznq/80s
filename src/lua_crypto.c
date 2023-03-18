@@ -54,6 +54,7 @@ static int l_crypto_cipher(lua_State* L) {
 
     ok = 1;
     offset = 0;
+    final_len = 0;
     ret_len = 1;
     hmac_len = 32;
     needed_size = len;
@@ -61,6 +62,7 @@ static int l_crypto_cipher(lua_State* L) {
         needed_size += 16 - needed_size % 16;
     }
     needed_size += 36 + 16; // we need to also store SHA256 + length + IV
+    out_len = (unsigned int)needed_size;
 
     if(key_len != 32) {
         lua_pushnil(L);
@@ -148,7 +150,7 @@ static int l_crypto_cipher(lua_State* L) {
         if(
                 ok &&
                 EVP_CipherUpdate(ctx, (unsigned char*)str.ptr + 52, &out_len, (const unsigned char*)(data + offset), (int)len - offset)
-            &&  EVP_CipherFinal(ctx, (unsigned char*)(str.ptr + out_len + 52), &final_len)
+            &&  EVP_CipherFinal(ctx, (unsigned char*)(str.ptr + 52 + out_len), &final_len)
         ) {
             if(encrypt) {
                 // when encrypting, compute signature over data[32:] and set it to data[0:32]
@@ -157,7 +159,7 @@ static int l_crypto_cipher(lua_State* L) {
                 lua_pushlstring(L, (const char*)str.ptr, out_len + final_len + 52);
             } else {
                 // when decrypting, let length be int(data[32:36]) and return data[52:52+length]
-                out_len = *(int*)(str.ptr + 32);
+                out_len = *(int*)(data + 32);
                 lua_pushlstring(L, (const char*)(str.ptr + 52), out_len);
             }
         } else {
@@ -226,7 +228,7 @@ static int l_crypto_from64(lua_State* L) {
         return 2;
     }
 
-    lua_pushlstring(L, str.ptr, target_len);
+    lua_pushlstring(L, str.ptr, target_len - 1);
     dynstr_release(&str);
     return 1;
 }

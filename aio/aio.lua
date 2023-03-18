@@ -22,7 +22,9 @@ net = net or {}
 --- @class crypto
 --- @field sha1 fun(data: string): string perform sha1(data), returns bytestring with raw data
 --- @field sha256 fun(data: string): string perform sha256(data), returns bytestring with raw data
---- @field cipher fun(data: string, key: string, encrypt: boolean): result: nil|string, error: string perform encryption/decryption
+--- @field cipher fun(data: string, key: string, encrypt: boolean): result: string?, error: string perform encryption/decryption
+--- @field to64 fun(data: string): string encode to base64
+--- @field from64 fun(data: string): string decode from base64
 crypto = crypto or {}
 
 --- @class codec
