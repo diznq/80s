@@ -80,7 +80,7 @@ function templates:prepare(content, base)
                 match = match:gsub("[%%]", "%%%%")
                 match = match:gsub("%#%[%[(.-)%]%]", function(format_item)
                     local format_type = "s"
-                    local item, maybe_type = format_item:match("(.+):(.-)")
+                    local item, maybe_type = format_item:match("^(.+):([.sfd0-9]+)$")
                     if item and maybe_type then
                         format_item = maybe_type
                         format_item = item
