@@ -256,6 +256,10 @@ The file rendering follows these rules:
 
 Live reloading can be enabled by setting `RELOAD=true` environmet variable. For now that works only on systems that support inotify API.
 
+To change default public_html folder, set `PUBLIC_HTML` envirnoment variable, i.e. `PUBLIC_HTML=server/www/` will use `server/www/main.lua` + `server/www/public_html/*`.
+
+To set master key for URLs encryption, set `MASTER_KEY` environment variable, after that all URLs generated with `to_url` will be encrypted and all query parameters passed in `euri` will be decrypted automatically.
+
 
 ### Templating syntax
 To insert dynamic content to the file, wrap Lua code between either `<?lu ... ?>` for synchronous code or `<?lua ... ?>` asynchronous code. 
