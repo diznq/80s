@@ -49,13 +49,8 @@ static void json_encode(lua_State *L, int idx, struct dynstr *out) {
     while (lua_next(L, idx) != 0) {
         type = lua_type(L, -1);
         if (!is_array) {
-            type = lua_gettop(L);
-            if(type == LUA_TNUMBER) {
-                dynstr_putg(out, lua_tonumber(L, -2));
-            } else {
-                key = lua_tolstring(L, -2, &value_len);
-                encode_string(out, key, value_len);
-            }
+            key = lua_tolstring(L, -2, &value_len);
+            encode_string(out, key, value_len);
             dynstr_putc(out, ':');
         }
         if (!out->ok) {
