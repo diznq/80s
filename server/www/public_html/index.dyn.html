@@ -11,7 +11,7 @@
         locals.w3 = "None"
         if query.w3 then
             locals.w3 = await(HTTP:GET("www.w3.org", "/", "text/html"))
-            | #{locals.w3}
+            | #[[locals.w3]]
             done()
         else
             | w3 was not requested

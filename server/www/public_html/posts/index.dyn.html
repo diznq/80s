@@ -19,14 +19,14 @@
             
             local posts, err = await(Posts.all:by({orderBy="id DESC"}))
             if err then
-                | Failed to load posts: #{err}
+                | Failed to load posts: #[[err]]
                 return done()
             end
-            | <p>There are #{#posts:d} posts</p>
+            | <p>There are #[[#posts:d]] posts</p>
             for i, post in ipairs(posts) do
                 | <div class="post">
-                |    <div class="author">#{post.author}</div>
-                |    <div class="text">#{post.text}</div>    
+                |    <div class="author">#[[post.author]]</div>
+                |    <div class="text">#[[post.text]]</div>    
                 | </div>
             end
             done()

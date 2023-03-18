@@ -248,7 +248,9 @@ if not aio then
             --- @type {[string]: aiohttphandler}
             POST={}
         },
-        cors = 0
+        cors = 0,
+        -- master key
+        master_key = nil
     }
 end
 
@@ -336,7 +338,7 @@ function aio:parse_query(query, private_key)
     for key, value in query:gmatch("%&([^=]+)=?([^&]*)") do
         params[key] = self:parse_url(value)
         if key == "euri" and private_key ~= nil then
-            local value = self:decrypt(params[key], private_key)
+            local value = self:decrypt(params[key], self:create_key(private_key))
             if value then
                 local result = self:parse_query(value)
                 for i, v in pairs(result) do
@@ -348,6 +350,10 @@ function aio:parse_query(query, private_key)
     return params
 end
 
+--- Create query string
+---@param params {[string]: string} key value pairs of query params
+---@param private_key string|nil private key to use to create signed query
+---@return string result query string
 function aio:create_query(params, private_key)
     local values = {}
     for key, value in pairs(params) do
@@ -355,13 +361,27 @@ function aio:create_query(params, private_key)
     end
     local result = table.concat(values, "&")
     if type(private_key) == "string" then
-        local encrypted = self:encrypt(result, private_key)
+        local encrypted = self:encrypt(result, self:create_key(private_key))
         if not encrypted then
             encrypted = "nil"
         end
         return string.format("euri=%s", self:url_encode(encrypted))
     end
     return result
+end
+
+--- Derive encryption key from master key and private key
+---@param private_key string private key
+---@return string derived key
+function aio:create_key(private_key)
+    if self.master_key then return self.master_key .. private_key end
+    return private_key
+end
+
+--- Set master key
+---@param key string|nil key
+function aio:set_master_key(key)
+    self.master_key = key
 end
 
 --- URL encode text

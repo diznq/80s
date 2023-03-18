@@ -78,7 +78,7 @@ function templates:prepare(content, base)
             line = line:gsub("^%s*%|%s+(.+)%s*$", function(match)
                 local args = {}
                 match = match:gsub("[%%]", "%%%%")
-                match = match:gsub("%#%{(.-)%}", function(format_item)
+                match = match:gsub("%#%[%[(.-)%]%]", function(format_item)
                     local format_type = "s"
                     local item, maybe_type = format_item:match("(.+):(.-)")
                     if item and maybe_type then
@@ -97,7 +97,7 @@ function templates:prepare(content, base)
             table.insert(lines, line)
         end
         match = table.concat(lines, "\n") .. "\n"
-        local compiled, err = load("return function(session, locals, headers, body, endpoint, query, write, escape, post_render, await, header, status, done)" .. match .. "end")
+        local compiled, err = load("return function(session, locals, headers, body, endpoint, query, write, escape, post_render, await, header, status, done, to_url)" .. match .. "end")
         if not compiled then
             table.insert(context.parts, function (input, output, done)
                 done(err)
@@ -138,7 +138,15 @@ function templates:prepare(content, base)
                     await,
                     function(name, value) output.headers[name:lower()] = value end,
                     function(value) output.status = value end,
-                    function() done(table.concat(data)) end
+                    function() done(table.concat(data)) end,
+                    function(endpoint, params)
+                        local path = endpoint
+                        local private_key = aio.master_key and endpoint or nil
+                        if type(params) == "table" then
+                            path = string.format("%s?%s", path, aio:create_query(params, private_key))
+                        end
+                        return path
+                    end
                 )
                 if #async == 0 then
                     done(table.concat(data))

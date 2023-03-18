@@ -3,6 +3,9 @@ local templates = require("server.templates")
 local http_client = require("server.http_client")
 
 HTTP = http_client
+MASTER_KEY = os.getenv("MASTER_KEY") or nil
+
+aio:set_master_key(MASTER_KEY)
 
 local function create_endpoint(base, method, endpoint, mime, content, dynamic)
     local ctx = nil
@@ -26,7 +29,7 @@ local function create_endpoint(base, method, endpoint, mime, content, dynamic)
         if dynamic then
             -- process as dynamic template
             local session = {}
-            query = aio:parse_query(query)
+            query = aio:parse_query(query, aio.master_key and endpoint or nil)
             templates:render(session, headers, body, endpoint, query, mime, ctx)(function (result)
                 self:http_response(result.status, result.headers, result.content)
             end)
