@@ -94,9 +94,9 @@ Naming conventions:
 - `net.reload()`: reload entrypoint Lua
 - `net.listdir(dir)`: list files in a directory, directories will end with `/` in returned result
 
-- `crext.sha1(data)`: returns raw SHA1 of data
-- `crext.sha256(data)`: returns raw SHA256 of data
-- `crext.cipher(data, key, encrypt)`: encrypt or decrypt data
+- `crypto.sha1(data)`: returns raw SHA1 of data
+- `crypto.sha256(data)`: returns raw SHA256 of data
+- `crypto.cipher(data, key, encrypt)`: encrypt or decrypt data
 
 - `codec.json_encode(table)`: encode table into sring
 

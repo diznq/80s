@@ -1,5 +1,5 @@
 #include "80s.h"
-#include "lua_crext.h"
+#include "lua_crypto.h"
 #include "dynstr.h"
 
 #include <string.h>
@@ -9,43 +9,41 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
-static int l_crext_sha1(lua_State *L) {
+static int l_crypto_sha1(lua_State *L) {
     EVP_MD_CTX* ctx = EVP_MD_CTX_new();
     size_t len;
-    unsigned int out_len;
+    unsigned int out_len = 20;
     unsigned char buffer[20];
     const char *data = lua_tolstring(L, 1, &len);
     EVP_DigestInit(ctx, EVP_sha1());
     EVP_DigestUpdate(ctx, (const void*)data, len);
-    EVP_DigestFinal_ex(ctx, buffer, &out_len);
+    EVP_DigestFinal(ctx, buffer, &out_len);
     EVP_MD_CTX_free(ctx);
     lua_pushlstring(L, (const char *)buffer, 32);
     return 1;
 }
 
-static int l_crext_sha256(lua_State *L) {
+static int l_crypto_sha256(lua_State *L) {
     EVP_MD_CTX* ctx = EVP_MD_CTX_new();
     size_t len;
-    unsigned int out_len;
+    unsigned int out_len = 32;
     unsigned char buffer[32];
     const char *data = lua_tolstring(L, 1, &len);
     EVP_DigestInit(ctx, EVP_sha256());
     EVP_DigestUpdate(ctx, (const void*)data, len);
-    EVP_DigestFinal_ex(ctx, buffer, &out_len);
+    EVP_DigestFinal(ctx, buffer, &out_len);
     EVP_MD_CTX_free(ctx);
     lua_pushlstring(L, (const char *)buffer, 32);
     return 1;
 }
 
-static int l_crext_cipher(lua_State* L) {
+static int l_crypto_cipher(lua_State* L) {
     EVP_CIPHER_CTX* ctx;
     EVP_MD_CTX* md_ctx;
     EVP_PKEY* private_key;
-    size_t len;
-    size_t key_len;
-    size_t needed_size;
+    size_t len, key_len, hmac_len, needed_size;
     int encrypt, ok, offset;
-    unsigned int out_len, final_len, hmac_len, ret_len;
+    unsigned int out_len, final_len, ret_len;
     unsigned char buffer[65536];
     unsigned char iv[16];
     unsigned char signature[32];
@@ -57,6 +55,7 @@ static int l_crext_cipher(lua_State* L) {
     ok = 1;
     offset = 0;
     ret_len = 1;
+    hmac_len = 32;
     needed_size = len;
     if(needed_size % 16 != 0) {
         needed_size += 16 - needed_size % 16;
@@ -133,7 +132,7 @@ static int l_crext_cipher(lua_State* L) {
         // when decrypting, we first compute hmac and check it
         if(!encrypt) {
             EVP_DigestSignUpdate(md_ctx, (const void*)(data + 32), len - 32);
-            EVP_DigestFinal(md_ctx, (unsigned char*)signature, &hmac_len);
+            EVP_DigestSignFinal(md_ctx, (unsigned char*)signature, &hmac_len);
             // verify if computed signature matches received signature
             if(memcmp(data, signature, 32)) {
                 ok = 0;
@@ -153,8 +152,8 @@ static int l_crext_cipher(lua_State* L) {
         ) {
             if(encrypt) {
                 // when encrypting, compute signature over data[32:] and set it to data[0:32]
-                EVP_DigestSignUpdate(md_ctx, (const void*)data, len);
-                EVP_DigestFinal(md_ctx, (unsigned char*)str.ptr, &hmac_len);
+                int res = EVP_DigestSignUpdate(md_ctx, (const void*)str.ptr + 32, out_len + final_len + 20);
+                EVP_DigestSignFinal(md_ctx, (unsigned char*)str.ptr, &hmac_len);
                 lua_pushlstring(L, (const char*)str.ptr, out_len + final_len + 52);
             } else {
                 // when decrypting, let length be int(data[32:36]) and return data[52:52+length]
@@ -180,16 +179,71 @@ static int l_crext_cipher(lua_State* L) {
     return ret_len;
 }
 
-LUALIB_API int luaopen_crext(lua_State *L) {
+static int l_crypto_to64(lua_State* L) {
+    size_t len, target_len;
+    struct dynstr str;
+    char buffer[65536];
+    const char* data = lua_tolstring(L, 1, &len);
+    target_len = 4 + 4 * ((len + 2) / 3);
+
+    dynstr_init(&str, buffer, sizeof(buffer));
+    if(!dynstr_check(&str, target_len)) {
+        lua_pushnil(L);
+        lua_pushstring(L, "failed to allocate enough memory");
+        return 2;
+    }
+    target_len = EVP_EncodeBlock((unsigned char*)str.ptr, (const unsigned char*)data, (int)len);
+    if(target_len < 0) {
+        dynstr_release(&str);
+        lua_pushnil(L);
+        lua_pushstring(L, "failed to encode");
+        return 2;
+    }
+
+    lua_pushlstring(L, str.ptr, target_len);
+    dynstr_release(&str);
+    return 1;
+}
+
+static int l_crypto_from64(lua_State* L) {
+    size_t len, target_len;
+    struct dynstr str;
+    char buffer[65536];
+    const char* data = lua_tolstring(L, 1, &len);
+    target_len = len;
+
+    dynstr_init(&str, buffer, sizeof(buffer));
+    if(!dynstr_check(&str, target_len)) {
+        lua_pushnil(L);
+        lua_pushstring(L, "failed to allocate enough memory");
+        return 2;
+    }
+    target_len = EVP_DecodeBlock((unsigned char*)str.ptr, (const unsigned char*)data, (int)len);
+    if(target_len < 0) {
+        dynstr_release(&str);
+        lua_pushnil(L);
+        lua_pushstring(L, "failed to decode");
+        return 2;
+    }
+
+    lua_pushlstring(L, str.ptr, target_len);
+    dynstr_release(&str);
+    return 1;
+}
+
+LUALIB_API int luaopen_crypto(lua_State *L) {
     const luaL_Reg netlib[] = {
-        {"sha1", l_crext_sha1},
-        {"sha256", l_crext_sha256},
-        {"cipher", l_crext_cipher},
+        {"sha1", l_crypto_sha1},
+        {"sha256", l_crypto_sha256},
+        {"cipher", l_crypto_cipher},
+        {"to64", l_crypto_to64},
+        {"from64", l_crypto_from64},
         {NULL, NULL}};  
+    OPENSSL_add_all_algorithms_conf();
 #if LUA_VERSION_NUM > 501
     luaL_newlib(L, netlib);
 #else
-    luaL_openlib(L, "crext", netlib, 0);
+    luaL_openlib(L, "crypto", netlib, 0);
 #endif
     return 1;
 }

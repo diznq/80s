@@ -21,17 +21,17 @@ end)
 
 aio:http_get("/cipher", function (self, query, headers, body)
     local args = aio:parse_query(query)
-    local key = crext.sha256(args.key or "")
+    local key = crypto.sha256(args.key or "")
     local text = args.text or "Hello world!"
-    local crypted, err = crext.cipher(text, key, true)
+    local crypted, err = crypto.cipher(text, key, true)
     if not crypted then
         self:http_response("500 Internal server error", "text/plain", err)
     else
-        local decrypted, err = crext.cipher(crypted, key, false)
+        local decrypted, err = crypto.cipher(crypto.from64(crypto.to64(crypted)), key, false)
         if not decrypted then
-            self:http_response("500 Internal server error", "text/plain", "Encrypted: " .. crypted .. "\nDecryption failed")
+            self:http_response("500 Internal server error", "text/plain", "Encrypted: " .. crypto.to64(crypted) .. "\nDecryption failed: " .. err)
         else
-            self:http_response("200 OK", "text/plain", "Encrypted: " .. crypted .. "\nDecrypted: " .. decrypted)
+            self:http_response("200 OK", "text/plain", "Encrypted: " .. crypto.to64(crypted) .. "\nDecrypted: " .. decrypted)
         end
     end
 end)

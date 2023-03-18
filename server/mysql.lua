@@ -343,9 +343,9 @@ end
 ---@param scramble string nonce received from MySQL server
 ---@return string hash hashed password used for authentication
 function mysql:native_password_hash(password, scramble)
-    local shPwd = crext.sha1(password) -- SHA1(password)
-    local dshPwd = crext.sha1(shPwd) -- SHA1(SHA1(password))
-    local shJoin = crext.sha1(scramble .. dshPwd) -- SHA1(scramble .. SHA1(SHA1(password)))
+    local shPwd = crypto.sha1(password) -- SHA1(password)
+    local dshPwd = crypto.sha1(shPwd) -- SHA1(SHA1(password))
+    local shJoin = crypto.sha1(scramble .. dshPwd) -- SHA1(scramble .. SHA1(SHA1(password)))
     local b1 = {shPwd:byte(1, 20)}
     local b2 = {shJoin:byte(1, 20)}
     -- SHA1(password) XOR SHA1(scramble .. SHA1(SHA1(password)))

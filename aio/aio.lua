@@ -19,11 +19,11 @@
 --- @field inotify_read fun(data: string): inotify_event[] parse inotify events to Lua table
 net = net or {}
 
---- @class crext
+--- @class crypto
 --- @field sha1 fun(data: string): string perform sha1(data), returns bytestring with raw data
 --- @field sha256 fun(data: string): string perform sha256(data), returns bytestring with raw data
 --- @field cipher fun(data: string, key: string, encrypt: boolean): result: nil|string, error: string perform encryption/decryption
-crext = crext or {}
+crypto = crypto or {}
 
 --- @class codec
 --- @field json_encode fun(obj: table): string JSON encode object or an array

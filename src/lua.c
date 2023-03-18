@@ -1,6 +1,6 @@
 #include "80s.h"
 #include "lua_codec.h"
-#include "lua_crext.h"
+#include "lua_crypto.h"
 
 #include <lauxlib.h>
 #include <lualib.h>
@@ -412,12 +412,12 @@ lua_State *create_lua(int elfd, int id, const char *entrypoint) {
     lua_pop(L, 1);
     luaL_requiref(L, "codec", luaopen_codec, 1);
     lua_pop(L, 1);
-    luaL_requiref(L, "crext", luaopen_crext, 1);
+    luaL_requiref(L, "crypto", luaopen_crypto, 1);
     lua_pop(L, 1);
 #else
     luaopen_net(L);
     luaopen_codec(L);
-    luaopen_crext(L);
+    luaopen_crypto(L);
 #endif
 
     lua_pushinteger(L, id);

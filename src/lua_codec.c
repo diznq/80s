@@ -49,8 +49,13 @@ static void json_encode(lua_State *L, int idx, struct dynstr *out) {
     while (lua_next(L, idx) != 0) {
         type = lua_type(L, -1);
         if (!is_array) {
-            key = lua_tolstring(L, -2, &value_len);
-            encode_string(out, key, value_len);
+            type = lua_gettop(L);
+            if(type == LUA_TNUMBER) {
+                dynstr_putg(out, lua_tonumber(L, -2));
+            } else {
+                key = lua_tolstring(L, -2, &value_len);
+                encode_string(out, key, value_len);
+            }
             dynstr_putc(out, ':');
         }
         if (!out->ok) {
@@ -82,7 +87,11 @@ static void json_encode(lua_State *L, int idx, struct dynstr *out) {
         lua_pop(L, 1);
     }
 
-    out->ptr[out->length - 1] = is_array ? ']' : '}';
+    if(out->length > 1) {
+        out->ptr[out->length - 1] = is_array ? ']' : '}';
+    } else {
+        dynstr_putc(out, '}');
+    }
 #if LUA_VERSION_NUM > 501
     lua_pop(L, 1);
 #else
