@@ -93,11 +93,11 @@ Naming conventions:
 - `net.close(elfd, childfd)`: close a socket
 - `net.reload()`: reload entrypoint Lua
 - `net.listdir(dir)`: list files in a directory, directories will end with `/` in returned result
-
 - `crypto.sha1(data)`: returns raw SHA1 of data
 - `crypto.sha256(data)`: returns raw SHA256 of data
 - `crypto.cipher(data, key, encrypt)`: encrypt or decrypt data
-
+- `crypto.to64(data)`: base64 encode data
+- `crypto.from64(data)`: base64 decode data
 - `codec.json_encode(table)`: encode table into sring
 
 For systems supporting inotify API following additional APIs are available:
