@@ -298,6 +298,7 @@ During code execution, several variables are set within context:
 - `escape(text)`: HTML escape the text
 - `post_render(handler)`: add callback `fun(rendered_page: string): string new_page` that will be called after page is rendered and can alter the page content
 - `done()`: done signalizer
+- `to_url(endpoint, params)`: create URL, i.e. `to_url("/profile", {id=user.id})`, if aio master key is set, query parameters will be encrypted into `euri` by using `master_key .. endpoint` as a key
 
 You can see examples in `server/public_html/` directory.
 
