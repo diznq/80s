@@ -420,7 +420,7 @@ end
 ---@param raw boolean|false if true, raw cipher is returned, if false, base64 encoded version is returned
 ---@return string|nil result encrypted data
 function aio:encrypt(data, key, iv, raw)
-    iv = iv or false
+    if iv == nil then iv = true end
     raw = raw or false
     local res, err = crypto.cipher(data, crypto.sha256(key), iv, true)
     if res then
