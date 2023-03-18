@@ -250,7 +250,9 @@ if not aio then
         },
         cors = 0,
         -- master key
-        master_key = nil
+        master_key = nil,
+        crypto_cache = {},
+        crypto_size = 0
     }
 end
 
@@ -422,10 +424,23 @@ end
 function aio:encrypt(data, key, iv, raw)
     if iv == nil then iv = true end
     raw = raw or false
+    local cache_key = nil
+    if not iv then
+        cache_key = data .. key .. (raw and "1" or "0")
+        local hit = self.crypto_cache[cache_key]
+        if hit then return hit end
+    end
     local res, err = crypto.cipher(data, crypto.sha256(key), iv, true)
     if res then
-        if raw then return res end
-        return crypto.to64(res)
+        if not raw then res = crypto.to64(res) end
+        if not iv then
+            if self.crypto_size > 10000 then
+                self.crypto_cache = {}
+            end
+            self.crypto_cache[cache_key] = res
+            self.crypto_size = self.crypto_size + 1
+        end
+        return res
     end
     return nil
 end
