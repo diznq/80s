@@ -327,17 +327,50 @@ end
 
 --- Parse HTTP query
 --- @param query string query string
+--- @param private_key string|nil string decryption key for ?euri
 --- @return {[string]: string} query query params
-function aio:parse_query(query)
+function aio:parse_query(query, private_key)
     local params = {}
     query = "&" .. query
     -- match everything where first part doesn't contain = and second part doesn't contain &
     for key, value in query:gmatch("%&([^=]+)=?([^&]*)") do
         params[key] = self:parse_url(value)
+        if key == "euri" and private_key ~= nil then
+            local value = self:decrypt(params[key], private_key)
+            if value then
+                local result = self:parse_query(value)
+                for i, v in pairs(result) do
+                    params[i] = v
+                end
+            end
+        end
     end
     return params
 end
 
+function aio:create_query(params, private_key)
+    local values = {}
+    for key, value in pairs(params) do
+        table.insert(values, string.format("%s=%s", key, self:url_encode(tostring(value))))
+    end
+    local result = table.concat(values, "&")
+    if type(private_key) == "string" then
+        local encrypted = self:encrypt(result, private_key)
+        if not encrypted then
+            encrypted = "nil"
+        end
+        return string.format("euri=%s", self:url_encode(encrypted))
+    end
+    return result
+end
+
+--- URL encode text
+---@param text string text to encode
+---@return string text encoded text
+function aio:url_encode(text)
+    local res, _ = text:gsub("([^%w%d])", function(a) return string.format("%%%02X", a:byte(1, 1)) end)
+    return res
+end
 
 --- Parse URL encoded string
 --- @param url string url encoded string
@@ -347,6 +380,36 @@ function aio:parse_url(url)
         return string.char(tonumber(part, 16))
     end)
     return new
+end
+
+--- Encrypt data
+---@param data string data
+---@param key string key
+---@param raw? boolean if true, raw cipher is returned, if false, base64 encoded version is returned
+---@return string|nil result encrypted data
+function aio:encrypt(data, key, raw)
+    raw = raw or false
+    local res, err = crypto.cipher(data, crypto.sha256(key), true)
+    if res then
+        if raw then return res end
+        return crypto.to64(res)
+    end
+    return nil
+end
+
+--- Decrypt data
+---@param data string data to decrypt
+---@param key string encryption key
+---@param raw? boolean if true, data are not base64 decoded before decryption
+---@return string|nil result decrypted data
+function aio:decrypt(data, key, raw)
+    raw = raw or false
+    if type(data) ~= "string" then
+        return nil
+    end
+    if not raw then data = crypto.from64(data) end
+    local res, _ = crypto.cipher(data, crypto.sha256(key), false)
+    return res
 end
 
 --- Add HTTP GET handler
