@@ -22,7 +22,7 @@ net = net or {}
 --- @class crypto
 --- @field sha1 fun(data: string): string perform sha1(data), returns bytestring with raw data
 --- @field sha256 fun(data: string): string perform sha256(data), returns bytestring with raw data
---- @field cipher fun(data: string, key: string, iv: boolean, encrypt: boolean): result: string?, error: string perform encryption/decryption, if iv is false, iv is all zeros and not inserted to result, key must be at least 128 bits, if its longer, only first 128 bits are used
+--- @field cipher fun(data: string, key: string, iv: boolean, encrypt: boolean): result: string?, error: string perform encryption/decryption, if iv is false, iv is all zeros and not inserted to result, key must be at least 128 bits
 --- @field to64 fun(data: string): string encode to base64
 --- @field from64 fun(data: string): string decode from base64
 --- @field random fun(n: integer): string generate n random bytes
@@ -404,13 +404,28 @@ end
 ---@param private_key string private key
 ---@return string derived key
 function aio:create_key(private_key)
-    if self.master_key then return self.master_key .. private_key end
+    if self.master_key then 
+        return self.master_key .. private_key
+    end
     return private_key
 end
 
 --- Set master key
+--- Master key must be at least 16 bytes long, if it starts with b64:
+--- then it's decoded from base64 in first step
 ---@param key string|nil key
 function aio:set_master_key(key)
+    if type(key) == "string" then
+        if key:match("^b64:") then
+            key = crypto.from64(key:sub(5))
+        end
+        if #key == 0 then
+            key = nil
+        elseif #key < 16 then
+            error("master key must be at least 16 bytes long")
+        end
+    end
+    print("Key: ", key)
     self.master_key = key
 end
 
@@ -433,7 +448,7 @@ end
 function aio:encrypt(data, key, iv, raw)
     if iv == nil then iv = true end
     raw = raw or false
-    local res, err = crypto.cipher(data, crypto.sha256(key), iv, true)
+    local res, err = crypto.cipher(data, key, iv, true)
     if res then
         if not raw then res = crypto.to64(res) end
         return res
@@ -452,7 +467,7 @@ function aio:decrypt(data, key, raw)
         return nil
     end
     if not raw then data = crypto.from64(data) end
-    local res, _ = crypto.cipher(data, crypto.sha256(key), true, false)
+    local res, _ = crypto.cipher(data, key, true, false)
     return res
 end
 

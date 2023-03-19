@@ -31,12 +31,13 @@ static int l_crypto_sha256(lua_State *L) {
 
 static int l_crypto_cipher(lua_State* L) {
     EVP_CIPHER_CTX* ctx;
-    size_t len, key_len, needed_size;
+    size_t len, key_len, needed_size, i;
     int encrypt, ok, offset, use_iv, out_len, final_len;
     unsigned int ret_len, iv_len, hmac_len;
     unsigned char buffer[4096];
     unsigned char iv[16];
     unsigned char signature[32];
+    char key_buf[16];
     struct dynstr str;
     const char* data = lua_tolstring(L, 1, &len);
     const char* key = lua_tolstring(L, 2, &key_len);
@@ -56,12 +57,17 @@ static int l_crypto_cipher(lua_State* L) {
     needed_size += hmac_len + 16 + 4; // we need to also store SHA256 + length + IV
     out_len = (unsigned int)needed_size;
 
-    // only first 16 bytes of the key will be used, other will be ignored
     if(key_len < 16) {
+        // deny keys shorter than 128 bits
         lua_pushnil(L);
         lua_pushstring(L, "key must be 16 at least bytes long");
         return 2;
-    } else {
+    } else if(key_len > 16){
+        // in case key is longer, compress it down to 128 bits
+        memcpy(key_buf, key, 16);
+        for(i=16; i<key_len; i++)
+            key_buf[i & 15] ^= key[i];
+        key = key_buf;
         key_len = 16;
     }
 
@@ -119,7 +125,7 @@ static int l_crypto_cipher(lua_State* L) {
         }
     }
 
-    if( EVP_CipherInit(ctx, EVP_aes_256_cbc(), (const unsigned char*)key, (const unsigned char*)iv, encrypt)) {
+    if( EVP_CipherInit(ctx, EVP_aes_128_cbc(), (const unsigned char*)key, (const unsigned char*)iv, encrypt)) {
         // lets go with no padding
         EVP_CIPHER_CTX_set_padding(ctx, 16);
         
@@ -255,6 +261,7 @@ LUALIB_API int luaopen_crypto(lua_State *L) {
         {"cipher", l_crypto_cipher},
         {"to64", l_crypto_to64},
         {"from64", l_crypto_from64},
+        {"random", l_crypto_random},
         {NULL, NULL}
     };  
     OPENSSL_add_all_algorithms_conf();

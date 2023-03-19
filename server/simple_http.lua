@@ -21,7 +21,7 @@ end)
 
 aio:http_get("/cipher", function (self, query, headers, body)
     local args = aio:parse_query(query)
-    local key = crypto.sha256(args.key or "")
+    local key = args.key or "1234567890123456"
     local text = args.text or "Hello world!"
     local crypted, err = crypto.cipher(text, key, true, true)
     if not crypted then
