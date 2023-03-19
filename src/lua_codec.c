@@ -237,6 +237,9 @@ static int l_codec_html_encode(lua_State *L) {
             case '>':
                 dynstr_puts(&str, "&gt;", 4);
                 break;
+            case '\'':
+                dynstr_puts(&str, "&#39;", 5);
+                break;
             default:
                 dynstr_putc(&str, c);
                 break;
