@@ -309,6 +309,10 @@ During code execution, several variables are set within context:
 
 You can see examples in `server/public_html/` directory.
 
+### Best practices
+
+Never define global `function`s in `<?lu(a) ... ?>` to prevent undefined behaviour! Always use `local function` instead!
+
 ## MySQL module
 
 MySQL module allows simple interaction with MySQL server, such as connecting, automatic reconnecting and text queries.
