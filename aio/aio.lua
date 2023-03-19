@@ -31,7 +31,9 @@ crypto = crypto or {}
 --- @class codec
 --- @field json_encode fun(obj: table): string JSON encode object or an array
 --- @field url_encode fun(text: string): string URL encode text
+--- @field url_decode fun(text: string): string URL decode text
 --- @field mysql_encode fun(text: string): string MySQL encode text
+--- @field html_encode fun(text: string): string HTML encode text
 codec = codec or {}
 
 --- @class jit
@@ -343,7 +345,7 @@ function aio:parse_query(query, private_key)
     -- match everything where first part doesn't contain = and second part doesn't contain &
     for key, value in query:gmatch("%&([^=]+)=?([^&]*)") do
         if key == "e" and private_key ~= nil then
-            local value = self:decrypt(self:parse_url(value), self:create_key(private_key))
+            local value = self:decrypt(codec.url_decode(value), self:create_key(private_key))
             if value then
                 local result = self:parse_query(value)
                 for i, v in pairs(result) do
@@ -352,7 +354,7 @@ function aio:parse_query(query, private_key)
                 params.e = result
             end
         elseif params[key] == nil then
-            params[key] = self:parse_url(value)
+            params[key] = codec.url_decode(value)
         end
     end
     return params
@@ -410,6 +412,31 @@ function aio:create_key(private_key)
     return private_key
 end
 
+--- Create URL from endpoint and query params
+---@param endpoint string endpoint
+---@param params {[string]: string, e?: boolean, iv?: boolean, ordered?: boolean} parameters list, if e is false, no encryption is performed
+---@return any
+function aio:to_url(endpoint, params)
+    local path = endpoint
+    local private_key = aio.master_key and endpoint or nil
+    if type(params) == "table" then
+        local iv = params.iv or false
+        local ordered = true
+        if params.e == false then
+            private_key = nil
+        end
+        if params.ordered == false then
+            ordered = false
+        end
+        params["iv"] = nil
+        params["e"] = nil
+        params["ordered"] = nil
+        ---@diagnostic disable-next-line: param-type-mismatch
+        path = string.format("%s?%s", path, aio:create_query(params, private_key, ordered, iv))
+    end
+    return path
+end
+
 --- Set master key
 --- Master key must be at least 16 bytes long, if it starts with b64:
 --- then it's decoded from base64 in first step
@@ -425,7 +452,6 @@ function aio:set_master_key(key)
             error("master key must be at least 16 bytes long")
         end
     end
-    print("Key: ", key)
     self.master_key = key
 end
 

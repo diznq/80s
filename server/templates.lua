@@ -29,12 +29,11 @@ local templates = {}
 --- HTML escape text
 ---@param text any text
 ---@return any text escaped text
----@return integer matches
 local function escape(text)
     if type(text) == "string" then
-        return text:gsub("%&", "&amp;"):gsub("%\"", "&quot;"):gsub("%<", "&lt;"):gsub("%>", "&gt;")
+        return codec.html_encode(text)
     else
-        return text, 0
+        return text
     end
 end
 
@@ -139,25 +138,7 @@ function templates:prepare(content, base)
                     function(name, value) output.headers[name:lower()] = value end,
                     function(value) output.status = value end,
                     function() done(table.concat(data)) end,
-                    function(endpoint, params)
-                        local path = endpoint
-                        local private_key = aio.master_key and endpoint or nil
-                        if type(params) == "table" then
-                            local iv = params.iv or false
-                            local ordered = true
-                            if params.e == false then
-                                private_key = nil
-                            end
-                            if params.ordered == false then
-                                ordered = false
-                            end
-                            params["iv"] = nil
-                            params["e"] = nil
-                            params["ordered"] = nil
-                            path = string.format("%s?%s", path, aio:create_query(params, private_key, ordered, iv))
-                        end
-                        return path
-                    end
+                    function(endpoint, params) return aio:to_url(endpoint, params) end
                 )
                 if #async == 0 then
                     done(table.concat(data))
