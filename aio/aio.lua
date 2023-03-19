@@ -22,9 +22,10 @@ net = net or {}
 --- @class crypto
 --- @field sha1 fun(data: string): string perform sha1(data), returns bytestring with raw data
 --- @field sha256 fun(data: string): string perform sha256(data), returns bytestring with raw data
---- @field cipher fun(data: string, key: string, iv: boolean, encrypt: boolean): result: string?, error: string perform encryption/decryption, if iv is false, iv is all zeros and not inserted to result
+--- @field cipher fun(data: string, key: string, iv: boolean, encrypt: boolean): result: string?, error: string perform encryption/decryption, if iv is false, iv is all zeros and not inserted to result, key must be at least 128 bits, if its longer, only first 128 bits are used
 --- @field to64 fun(data: string): string encode to base64
 --- @field from64 fun(data: string): string decode from base64
+--- @field random fun(n: integer): string generate n random bytes
 crypto = crypto or {}
 
 --- @class codec
@@ -411,14 +412,6 @@ end
 ---@param key string|nil key
 function aio:set_master_key(key)
     self.master_key = key
-end
-
---- URL encode text
----@param text string text to encode
----@return string text encoded text
-function aio:url_encode(text)
-    local res, _ = text:gsub("([^%w%d])", function(a) return string.format("%%%02X", a:byte(1, 1)) end)
-    return res
 end
 
 --- Parse URL encoded string

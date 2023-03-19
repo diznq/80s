@@ -34,7 +34,7 @@ static int l_crypto_cipher(lua_State* L) {
     size_t len, key_len, needed_size;
     int encrypt, ok, offset, use_iv, out_len, final_len;
     unsigned int ret_len, iv_len, hmac_len;
-    unsigned char buffer[65536];
+    unsigned char buffer[4096];
     unsigned char iv[16];
     unsigned char signature[32];
     struct dynstr str;
@@ -53,13 +53,16 @@ static int l_crypto_cipher(lua_State* L) {
     if(needed_size % 16 != 0) {
         needed_size += 16 - needed_size % 16;
     }
-    needed_size += 36 + 16; // we need to also store SHA256 + length + IV
+    needed_size += hmac_len + 16 + 4; // we need to also store SHA256 + length + IV
     out_len = (unsigned int)needed_size;
 
-    if(key_len != 32) {
+    // only first 16 bytes of the key will be used, other will be ignored
+    if(key_len < 16) {
         lua_pushnil(L);
-        lua_pushstring(L, "iv must be 16 bytes long, key must be 32 bytes long");
+        lua_pushstring(L, "key must be 16 at least bytes long");
         return 2;
+    } else {
+        key_len = 16;
     }
 
     if(!encrypt) {
@@ -236,6 +239,15 @@ static int l_crypto_from64(lua_State* L) {
     return 2;
 }
 
+static int l_crypto_random(lua_State* L) {
+    // generate max 65535 random bytes
+    const size_t len = ((size_t)lua_tointeger(L, 1)) & 0xFFFF;
+    char buf[len];
+    RAND_bytes((unsigned char*)buf, len);
+    lua_pushlstring(L, buf, len);
+    return 1;
+}
+
 LUALIB_API int luaopen_crypto(lua_State *L) {
     const luaL_Reg netlib[] = {
         {"sha1", l_crypto_sha1},
@@ -243,7 +255,8 @@ LUALIB_API int luaopen_crypto(lua_State *L) {
         {"cipher", l_crypto_cipher},
         {"to64", l_crypto_to64},
         {"from64", l_crypto_from64},
-        {NULL, NULL}};  
+        {NULL, NULL}
+    };  
     OPENSSL_add_all_algorithms_conf();
 #if LUA_VERSION_NUM > 501
     luaL_newlib(L, netlib);

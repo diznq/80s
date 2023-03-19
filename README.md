@@ -95,10 +95,13 @@ Naming conventions:
 - `net.listdir(dir)`: list files in a directory, directories will end with `/` in returned result
 - `crypto.sha1(data)`: returns raw SHA1 of data
 - `crypto.sha256(data)`: returns raw SHA256 of data
-- `crypto.cipher(data, key, encrypt)`: encrypt or decrypt data
+- `crypto.cipher(data, key, iv, encrypt)`: encrypt or decrypt data, only first 128 bit of key are used, if IV is false, IV is set to all zeroes
 - `crypto.to64(data)`: base64 encode data
 - `crypto.from64(data)`: base64 decode data
+- `crypto.random(n)`: generate n bytes of random data
 - `codec.json_encode(table)`: encode table into sring
+- `codec.url_encode(data)`: URL encode data
+- `codec.mysql_encode(data)`: MySQL encode data
 
 For systems supporting inotify API following additional APIs are available:
 

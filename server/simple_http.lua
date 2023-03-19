@@ -27,13 +27,11 @@ aio:http_get("/cipher", function (self, query, headers, body)
     if not crypted then
         self:http_response("500 Internal server error", "text/plain", err)
     else
-        crypted = crypto.to64(crypted)
-        local result = crypto.from64(crypted)
-        local decrypted, err = crypto.cipher(result, key, true, false)
+        local decrypted, err = crypto.cipher(crypted, key, true, false)
         if not decrypted then
-            self:http_response("500 Internal server error", "text/plain", "Encrypted: " .. crypted .. "\nDecryption failed: " .. err)
+            self:http_response("500 Internal server error", "text/plain", string.format("Encrypted: %s\nDecrypted: %s", crypto.to64(crypted), err))
         else
-            self:http_response("200 OK", "text/plain", "Encrypted: " .. crypted .. "\nDecrypted: " .. decrypted)
+            self:http_response("200 OK", "text/plain", string.format("Encrypted: %s\nDecrypted: %s", crypto.to64(crypted), decrypted))
         end
     end
 end)
