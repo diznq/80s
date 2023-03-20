@@ -304,7 +304,7 @@ static int l_net_inotify_read(lua_State* L) {
     lua_newtable(L);
     while(i < length) {
         struct inotify_event* evt = (struct inotify_event*)(data + i);
-        if(evt->len) {
+        if(evt->len && (i + evt->len + (sizeof(struct inotify_event))) <= length) {
             lua_createtable(L, 6, 0);
 
             lua_pushstring(L, "name");
