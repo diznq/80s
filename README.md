@@ -322,7 +322,7 @@ You can see examples in `server/public_html/` directory.
 ### Best practices
 
 - **Never** define global `function`s in `<?lu(a) ... ?>` to prevent undefined behaviour! Always use `local function` instead!
-- For multi line text outputs, prefer \`\`\`...\`\`\` syntax over multple `| ...` lines syntax
+- For multi line text outputs, prefer \`\`\`...\`\`\` syntax over multple `| ...` lines syntax **if code has fewer formatting arguments**
 - Leverage `aio:cached(cache_name, key, fun(): any)` to accelerate generation of known static content
 
 ## MySQL module
