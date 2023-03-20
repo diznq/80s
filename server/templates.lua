@@ -62,7 +62,7 @@ local function transform_to_code(match)
     end
 end
 
----comment
+---Prepare a template context
 ---@param content string template file
 ---@param base string directory that current file is located in
 ---@return templatectx

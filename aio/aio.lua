@@ -1008,7 +1008,7 @@ end
 --- @return aiothen resolver values
 function aio:gather(...)
     local tasks = {...}
-    local counter = #{...}
+    local counter = #tasks
     local retvals = {}
     local on_resolved, resolve_event = self:prepare_promise()
 
