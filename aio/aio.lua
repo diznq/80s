@@ -275,7 +275,13 @@ function aio:on_data(elfd, childfd, data, len)
         return
     end
 
-    self:handle_as_http(elfd, childfd, data, len)
+    -- G as for GET, P as for POST/PUT, D as for DELETE, O as for OPTIONS, H as for HEAD
+    local is_http = {G = true, P = true, D = true, O = true, H = true}
+    local initial = data:sub(1, 1)
+    -- detect the protocol and add correct handler
+    if is_http[initial] then
+        self:handle_as_http(elfd, childfd, data, len)
+    end
 end
 
 --- Create new HTTP handler for network stream
