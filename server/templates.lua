@@ -41,6 +41,27 @@ local function await(callback)
     return aio:await(callback)
 end
 
+local function transform_to_code(match)
+    local args = {}
+    match = match:gsub("%s*[\r\n]%s*", "")
+    match = match:gsub("[%%]", "%%%%")
+    match = match:gsub("%#%[%[(.-)%]%]", function(format_item)
+        local format_type = "s"
+        local item, maybe_type = format_item:match("^(.+):([.sfd0-9]+)$")
+        if item and maybe_type then
+            format_item = maybe_type
+            format_item = item
+        end
+        table.insert(args, format_item)
+        return "%" .. format_type
+    end)
+    if #args == 0 then
+        return " write([[" .. match .. "]])"
+    else
+        return " write([[" .. match .. "]], " .. table.concat(args, ", ") .. ")"
+    end
+end
+
 ---comment
 ---@param content string template file
 ---@param base string directory that current file is located in
@@ -73,26 +94,9 @@ function templates:prepare(content, base)
 
     context.content = content:gsub("<%?lu(a?)%s+(.-)%s*%?>", function (async, match)
         local lines = {}
+        match = match:gsub("```%s*(.-)%s*```", transform_to_code)
         for line in match:gmatch("[^\r\n]+") do
-            line = line:gsub("^%s*%|%s+(.+)%s*$", function(match)
-                local args = {}
-                match = match:gsub("[%%]", "%%%%")
-                match = match:gsub("%#%[%[(.-)%]%]", function(format_item)
-                    local format_type = "s"
-                    local item, maybe_type = format_item:match("^(.+):([.sfd0-9]+)$")
-                    if item and maybe_type then
-                        format_item = maybe_type
-                        format_item = item
-                    end
-                    table.insert(args, format_item)
-                    return "%" .. format_type
-                end)
-                if #args == 0 then
-                    return " write([[" .. match .. "]])"
-                else
-                    return " write([[" .. match .. "]], " .. table.concat(args, ", ") .. ")"
-                end
-            end)
+            line = line:gsub("^%s*%|%s+(.+)%s*$", transform_to_code)
             table.insert(lines, line)
         end
         match = table.concat(lines, "\n") .. "\n"

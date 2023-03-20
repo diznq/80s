@@ -24,10 +24,12 @@
             end
             | <p>There are #[[#posts:d]] posts</p>
             for i, post in ipairs(posts) do
-                | <div class="post">
-                |    <div class="author">#[[post.author]]</div>
-                |    <div class="text">#[[post.text]]</div>    
-                | </div>
+                ```
+                <div class="post">
+                    <div class="author">#[[post.author]]</div>
+                    <div class="text">#[[post.text]]</div>    
+                </div>
+                ```
             end
             done()
         ?>

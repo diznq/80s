@@ -291,6 +291,16 @@ write([[Hello there, %s. Random number of today is: %.3f]], name, math.random())
 write([[</div>]])
 ```
 
+Same rules apply for text between \`\`\`...\`\`\`, so previous example could be further simplified to just
+
+```html
+\`\`\`
+<div class="message">
+  Hello there, #[[name]]. Random number of today is: #[[math.random():.3f]]
+</div>
+\`\`\`
+```
+
 During code execution, several variables are set within context:
 - `session`: session context
 - `locals`: a table where scripts can store intermediate data that they can share across them while entire page renders
@@ -311,7 +321,9 @@ You can see examples in `server/public_html/` directory.
 
 ### Best practices
 
-Never define global `function`s in `<?lu(a) ... ?>` to prevent undefined behaviour! Always use `local function` instead!
+- **Never** define global `function`s in `<?lu(a) ... ?>` to prevent undefined behaviour! Always use `local function` instead!
+- For multi line text outputs, prefer \`\`\`...\`\`\` syntax over multple `| ...` lines syntax
+- Leverage `aio:cached(cache_name, key, fun(): any)` to accelerate generation of known static content
 
 ## MySQL module
 

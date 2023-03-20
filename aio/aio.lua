@@ -256,8 +256,9 @@ if not aio then
         cors = 0,
         -- master key
         master_key = nil,
-        crypto_cache = {},
-        crypto_size = 0
+        ---@type {size: integer, data: table}
+        cache = {},
+        max_cache_size = 10000
     }
 end
 
@@ -379,25 +380,13 @@ function aio:create_query(params, private_key, ordered, iv)
     end
     local result = table.concat(values, "&")
     if type(private_key) == "string" then
-        local hit = self.crypto_cache[result]
-        if hit then return hit end
-        local encrypted = self:encrypt(result, self:create_key(private_key), iv, false)
-        if not encrypted then
-            encrypted = "nil"
-        end
-        local res = string.format("e=%s", codec.url_encode(encrypted))
-        -- cache the encrypted encoded URLs if possible
-        if not iv and #result < 1000 then
-            -- if cache grows too big, remove the first item
-            if self.crypto_size > 10000 then
-                local k, v = next(self.crypto_cache)
-                self.crypto_cache[k] = nil
-            else
-                self.crypto_size = self.crypto_size + 1
+        return self:cached("url", result, function()
+            local encrypted = self:encrypt(result, self:create_key(private_key), iv, false)
+            if not encrypted then
+                encrypted = "nil"
             end
-            self.crypto_cache[result] = res
-        end
-        return res
+            return string.format("e=%s", codec.url_encode(encrypted))
+        end, not iv)
     end
     return result
 end
@@ -410,6 +399,38 @@ function aio:create_key(private_key)
         return self.master_key .. private_key
     end
     return private_key
+end
+
+--- Cache an item
+---@generic T : string
+---@param cache_name string cache name
+---@param key string caching key
+---@param callback fun(): T producer if item is not found
+---@param condition boolean|nil if false, no cache is performed
+---@return T value
+function aio:cached(cache_name, key, callback, condition)
+    if condition == false then
+        return callback()
+    end
+    local cache = self.cache[cache_name]
+    if not cache then
+        self.cache[cache_name] = {size = 0, data = {}}
+        cache = self.cache[cache_name]
+    end
+    local hit = cache[key]
+    if hit then return hit end
+    if self.max_cache_size == nil or self.max_cache_size == 0 then
+        return callback()
+    end
+    if cache.size == self.max_cache_size then
+        local k, v = next(cache.data)
+        cache[k] = nil
+    else
+        cache.size = cache.size + 1
+    end
+    hit = callback()
+    cache[key] = hit
+    return hit
 end
 
 --- Create URL from endpoint and query params
@@ -455,14 +476,10 @@ function aio:set_master_key(key)
     self.master_key = key
 end
 
---- Parse URL encoded string
---- @param url string url encoded string
---- @return string text url decoded value
-function aio:parse_url(url)
-    local new = url:gsub("%+", " "):gsub("%%([0-9A-F][0-9A-F])", function(part)
-        return string.char(tonumber(part, 16))
-    end)
-    return new
+--- Set max cache size
+---@param size integer size
+function aio:set_max_cache_size(size)
+    self.max_cache_size = size
 end
 
 --- Encrypt data
