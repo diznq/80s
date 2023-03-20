@@ -407,7 +407,10 @@ function aio:create_key(private_key)
     return private_key
 end
 
---- Cache an item
+--- Cache an item or a promise
+--- in case callback returns a promised, next time promise is returned as well
+--- as a cached item that always maps to the same result
+---
 ---@generic T : string
 ---@param cache_name string cache name
 ---@param key string caching key
@@ -435,7 +438,19 @@ function aio:cached(cache_name, key, callback, condition)
         cache.size = cache.size + 1
     end
     hit = callback()
-    cache[key] = hit
+    -- in case callback is a promise, cache the value once it is resolved
+    if type(hit) == "function" then
+        local resolve, resolver = aio:prepare_promise()
+        hit(function (value)
+            cache[key] = function(cb)
+                cb(value)
+            end
+            resolve(value)
+        end)
+        return resolver
+    else
+        cache[key] = hit
+    end
     return hit
 end
 
