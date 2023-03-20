@@ -14,7 +14,7 @@ else
   LUA_INC="${LUA_INC_PATH}"
 fi
 
-FLAGS="-s -Ofast"
+FLAGS="-s -O2"
 OUT="${OUT:-bin/80s}"
 CC="${CC:-gcc}"
 
