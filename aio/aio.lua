@@ -131,16 +131,14 @@ function aiosocket:http_response(status, headers, response)
         str_headers = "content-type: " .. headers .. "\r\n"
     else
         for k, v in pairs(headers) do
-            str_headers = str_headers .. string.format("%s: %s\r\n", k, v)
+            str_headers = str_headers .. k .. ": " .. v .. "\r\n"
         end
     end
     return self:write(
-        string.format("HTTP/1.1 %s\r\nconnection: %s\r\n%scontent-length: %d\r\n\r\n%s",
-            status,
-            self.cw and "close" or "keep-alive",
-            str_headers,
-            #response, response
-        )
+        "HTTP/1.1 " .. status .. 
+        "\r\nconnection: " .. (self.cw and "close" or "keep-alive") .. 
+        "\r\n" .. str_headers .. "content-length: " .. #response .. 
+        "\r\n\r\n" .. response
     )
 end
 
@@ -378,7 +376,7 @@ function aio:create_query(params, private_key, ordered, iv)
     local values = {}
     for key, value in pairs(params) do
         if type(value) ~= "table" then
-            table.insert(values, string.format("%s=%s", key, codec.url_encode(tostring(value))))
+            table.insert(values, key .. "=" .. codec.url_encode(tostring(value)))
         end
     end
     if ordered then
@@ -391,7 +389,7 @@ function aio:create_query(params, private_key, ordered, iv)
             if not encrypted then
                 encrypted = "nil"
             end
-            return string.format("e=%s", codec.url_encode(encrypted))
+            return "e=" .. codec.url_encode(encrypted)
         end, not iv)
     end
     return result
@@ -474,7 +472,7 @@ function aio:to_url(endpoint, params)
         params["e"] = nil
         params["ordered"] = nil
         ---@diagnostic disable-next-line: param-type-mismatch
-        path = string.format("%s?%s", path, aio:create_query(params, private_key, ordered, iv))
+        path = path .. "?" .. aio:create_query(params, private_key, ordered, iv)
     end
     return path
 end
