@@ -40,10 +40,4 @@ void on_init(lua_State *L, int elfd, int parentfd);
 #define BUFSIZE 16384
 #define MAX_EVENTS 4096
 
-#ifdef ALLOW_IPV6
-#define addr_type sockaddr_in6
-#else
-#define addr_type sockaddr_in
-#endif
-
 #endif

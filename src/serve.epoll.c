@@ -18,12 +18,17 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+union addr_common {
+    struct sockaddr_in6 v6;
+    struct sockaddr_in v4;
+};
+
 void *serve(void *vparams) {
     int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id;
     socklen_t clientlen;
     unsigned accepts;
     lua_State *L;
-    struct addr_type clientaddr;
+    union addr_common clientaddr;
     struct epoll_event ev, events[MAX_EVENTS];
     struct serve_params *params;
     char buf[BUFSIZE];

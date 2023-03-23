@@ -105,7 +105,7 @@ static int l_net_connect(lua_State *L) {
     struct event_t ev[2];
     struct sockaddr_in ipv4addr;
     struct sockaddr_in6 ipv6addr;
-    int status, i, found4 = 0, found6 = 0, usev6 = 0, found = 0;
+    int status, i, found4 = 0, found6 = 0, usev6 = 0, found = 0, v6 = 0;
     struct hostent *hp;
     struct in_addr **ipv4;
     struct in6_addr **ipv6;
@@ -113,6 +113,11 @@ static int l_net_connect(lua_State *L) {
     int elfd = (int)lua_touserdata(L, 1);
     const char *addr = (const char *)lua_tolstring(L, 2, &len);
     int portno = (int)lua_tointeger(L, 3);
+
+    if(strstr(addr, "v6:") == addr) {
+        v6 = 1;
+        addr += 3;
+    }
 
     hp = gethostbyname(addr);
     if (hp == NULL) {
@@ -151,8 +156,7 @@ static int l_net_connect(lua_State *L) {
     int childfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
 
-#ifdef ALLOW_IPV6
-    if (found6) {
+    if (found6 && v6) {
         found = 1;
         usev6 = 1;
     } else if (found4) {
@@ -161,12 +165,6 @@ static int l_net_connect(lua_State *L) {
     } else {
         found = 0;
     }
-#else
-    if (found4) {
-        found = 1;
-        usev6 = 0;
-    }
-#endif
 
     if (!found) {
         lua_pushnil(L);

@@ -1,6 +1,4 @@
 #! /bin/bash
-NUM_HCPU="$(nproc)"
-NUM_CPU="$(($NUM_HCPU / 2))"
 
 if [[ -z "${LUA_LIB_PATH}" ]]; then
   LUA_LIB="/usr/local/lib/liblua.a"
@@ -46,10 +44,6 @@ mkdir -p bin
 
 DEFINES=""
 LIBS="-lm -ldl -lpthread -lcrypto"
-
-if [[ "$IPV6" == "true" ]]; then
-    DEFINES="$DEFINES -DALLOW_IPV6=1"
-fi
 
 if [[ "$DEBUG" == "true" ]]; then
     DEFINES="$DEFINES -DDEBUG=1"

@@ -20,6 +20,11 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+union addr_common {
+    struct sockaddr_in6 v6;
+    struct sockaddr_in v4;
+};
+
 // 80s.h/error implementation
 void error(const char *msg) {
     perror(msg);
@@ -65,20 +70,23 @@ void on_init(lua_State *L, int elfd, int parentfd) {
     }
 }
 
-int get_arg(const char *arg, int default_value, int argc, const char **argv) {
-    int i;
-    for (i = 1; i < argc - 1; i++) {
+int get_arg(const char *arg, int default_value, int flag, int argc, const char **argv) {
+    int i, off = flag ? 0 : 1;
+    for (i = 1; i < argc - off; i++) {
         if (!strcmp(argv[i], arg)) {
+            if(flag) {
+                return 1;
+            }
             return atoi(argv[i + 1]);
         }
     }
-    return default_value;
+    return flag ? 0 : default_value;
 }
 
 int get_cpus(int argc, const char **argv) {
     FILE *fr;
     char buf[1024];
-    int n_cpus = get_arg("-c", 0, argc, argv);
+    int n_cpus = get_arg("-c", 0, 0, argc, argv);
     // if cpu count was specified, use it
     if (n_cpus > 0) {
         return n_cpus;
@@ -103,8 +111,10 @@ int get_cpus(int argc, const char **argv) {
 
 int main(int argc, const char **argv) {
     const int workers = get_cpus(argc, argv);
-    int elfd, parentfd, optval, i, portno = get_arg("-p", 8080, argc, argv);
-    struct addr_type serveraddr;
+    int elfd, parentfd, optval, i, 
+        portno = get_arg("-p", 8080, 0, argc, argv),
+        v6 = get_arg("-6", 0, 1, argc, argv);
+    union addr_common serveraddr;
     const char *entrypoint;
     struct serve_params params[workers];
     pthread_t handles[workers];
@@ -119,13 +129,9 @@ int main(int argc, const char **argv) {
 
     entrypoint = argv[1];
 
-    printf("port: %d, cpus: %d\n", portno, workers);
+    printf("port: %d, cpus: %d, v6: %d\n", portno, workers, !!v6);
 
-#ifdef ALLOW_IPV6
-    parentfd = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
-#else
-    parentfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-#endif
+    parentfd = socket(v6? AF_INET6 : AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
     if (parentfd < 0)
         error("main: failed to create server socket");
@@ -134,16 +140,16 @@ int main(int argc, const char **argv) {
     setsockopt(parentfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
     bzero((void *)&serveraddr, sizeof(serveraddr));
 
-#ifdef ALLOW_IPV6
-    serveraddr.sin6_family = AF_INET6;
-    serveraddr.sin6_port = htons((unsigned short)portno);
-#else
-    serveraddr.sin_family = AF_INET;
-    serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    serveraddr.sin_port = htons((unsigned short)portno);
-#endif
+    if(v6) {
+        serveraddr.v6.sin6_family = AF_INET6;
+        serveraddr.v6.sin6_port = htons((unsigned short)portno);
+    } else {
+        serveraddr.v4.sin_family = AF_INET;
+        serveraddr.v4.sin_addr.s_addr = htonl(INADDR_ANY);
+        serveraddr.v4.sin_port = htons((unsigned short)portno);
+    }
 
-    if (bind(parentfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0)
+    if (bind(parentfd, (struct sockaddr *)(v6 ? (void*)&serveraddr.v6 : (void*)&serveraddr.v4), v6 ? sizeof(serveraddr.v6) : sizeof(serveraddr.v4)) < 0)
         error("main: failed to bind server socket");
 
     if (listen(parentfd, 20000) < 0)
