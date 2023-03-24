@@ -377,7 +377,7 @@ static int l_net_listdir(lua_State *L) {
 
 static int l_net_partscan(lua_State *L) {
     ssize_t len, pattern_len, offset, best_offset, best_match;
-    ssize_t i, j, k, l;
+    ssize_t i, j, k;
     int match = 0, KMP_T[256];
     const char* haystack = lua_tolstring(L, 1, (size_t*)&len);
     const char* pattern = lua_tolstring(L, 2, (size_t*)&pattern_len);
@@ -421,16 +421,13 @@ static int l_net_partscan(lua_State *L) {
                 lua_pushinteger(L, (lua_Integer)k);
                 return 2;
             }
+        } else if(j == len) {
+            break;
         } else {
-            l = k;
             k = KMP_T[k];
             if(k < 0) {
                 j++;
                 k++;
-            }
-            if(j == len) {
-                k = l;
-                break;
             }
         }
     }
