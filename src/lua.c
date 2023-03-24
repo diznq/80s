@@ -375,6 +375,71 @@ static int l_net_listdir(lua_State *L) {
     return 1;
 }
 
+static int l_net_partscan(lua_State *L) {
+    ssize_t len, pattern_len, offset, best_offset, best_match;
+    ssize_t i, j, k, l;
+    int match = 0, KMP_T[256];
+    const char* haystack = lua_tolstring(L, 1, (size_t*)&len);
+    const char* pattern = lua_tolstring(L, 2, (size_t*)&pattern_len);
+    offset = ((size_t)lua_tointeger(L, 3)) - 1;
+
+    if(pattern_len == 0) {
+        pattern = memchr(haystack, pattern[0], len);
+        if(pattern) {
+            lua_pushinteger(L, (lua_Integer)(pattern - haystack));
+            lua_pushinteger(L, 1);
+            return 2;
+        }
+    }
+
+    KMP_T[0] = -1;
+    j = 0;
+    i = 1;
+    while(i <= pattern_len) {
+        if(pattern[i] == pattern[j]) {
+            KMP_T[i] = KMP_T[j];
+        } else {
+            KMP_T[i] = j;
+            while(j >= 0 && pattern[i] != pattern[j]) {
+                j = KMP_T[j];
+            }
+        }
+        i++, j++;
+    }
+    KMP_T[i] = j;
+
+    j = offset;
+    k = 0;
+    best_match = 0;
+    best_offset = 0;
+    while (j <= len) {
+        if(pattern[k] == haystack[j]) {
+            j++;
+            k++;
+            if(k == pattern_len) {
+                lua_pushinteger(L, (lua_Integer)(j - k + 1));
+                lua_pushinteger(L, (lua_Integer)k);
+                return 2;
+            }
+        } else {
+            l = k;
+            k = KMP_T[k];
+            if(k < 0) {
+                j++;
+                k++;
+            }
+            if(j == len) {
+                k = l;
+                break;
+            }
+        }
+    }
+
+    lua_pushinteger(L, (lua_Integer)(j - k + 1));
+    lua_pushinteger(L, (lua_Integer)k);
+    return 2;
+}
+
 LUALIB_API int luaopen_net(lua_State *L) {
     const luaL_Reg netlib[] = {
         {"write", l_net_write},
@@ -386,6 +451,7 @@ LUALIB_API int luaopen_net(lua_State *L) {
         {"inotify_add", l_net_inotify_add},
         {"inotify_remoev", l_net_inotify_remove},
         {"inotify_read", l_net_inotify_read},
+        {"partscan", l_net_partscan},
         {NULL, NULL}
     };
 #if LUA_VERSION_NUM > 501

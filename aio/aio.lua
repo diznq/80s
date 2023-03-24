@@ -17,6 +17,7 @@
 --- @field inotify_add fun(elfd: lightuserdata, childfd: lightuserdata, target: string): wd: lightuserdata add file to watchlist of inotify, returns watch descriptor
 --- @field inotify_remove fun(elfd: lightuserdata, childfd: lightuserdata, wd: lightuserdata): boolean, string|nil remove watch decriptor from watchlist
 --- @field inotify_read fun(data: string): inotify_event[] parse inotify events to Lua table
+--- @field partscan fun(haystack: string, needle: string, offset: integer): pos: integer, length: integer find partial substring in a string
 net = net or {}
 
 --- @class crypto
@@ -942,6 +943,129 @@ end
 ---@param reader fun(resolve: fun(...: any)) reader coroutine
 ---@return aiothen 
 function aio:buffered_cor(target, reader)
+    return self:cor(target, function (stream, resolve)
+        local reader = self:cor0(reader)
+        -- resume the coroutine the first time and receive initial
+        -- requested number of bytes to be read
+        local ok, requested = coroutine.resume(reader, resolve)
+        local read, read_len = {}, 0
+        local req_delim = false
+        local exit = requested == nil
+        local nil_resolve = false
+        local prev_match = 0
+
+        req_delim = type(requested) == "string"
+
+        -- if we failed in very first step, return early and resolve with nil
+        if not ok then
+            print("aio.buffered_cor: coroutine failed in initial run", requested)
+            resolve(nil)
+            return
+        end
+
+        -- iterate over bytes from network as we receive them
+        for data in stream do
+            table.insert(read, data)
+            read_len = read_len + #data
+            -- check if state is ok, and if we read >= bytes requested to read
+            while not exit and ok do
+                local pivot = requested
+                local skip = 0
+                if req_delim then
+                    local full = true
+                    local data = read[#read]
+                    -- there are 6 possible cases total
+                    if #read > 1 and prev_match > 0 then
+                        full = false
+                        local pos, match_len = net.partscan(data, requested:sub(prev_match + 1), 1)
+                        if pos == 1 and match_len + prev_match == #requested then
+                            -- 1. we already read something that ended partially with out delimiter
+                            -- and now it begins with the rest!
+                            pivot = read_len - #data + pos - (#requested - match_len) - 1
+                            skip = #requested
+                            prev_match = 0
+                        elseif pos == 1 then
+                            -- 2. last time it ended with our delimiter partially and now it begins partially
+                            read[#read - 1] = read[#read - 1] .. data
+                            read[#read] = nil
+                            prev_match = prev_match + match_len
+                            pivot = nil
+                        else
+                            -- 3. last time it ended with out delimiter partially, but now no match
+                            -- at the beginning, in this case we move to scan as usual with full delimiter
+                            prev_match = 0
+                            pivot = nil
+                            full = true
+                        end
+                    end
+                    if full then
+                        -- scan the string using full delimiter
+                        local pos, match_len = net.partscan(data, requested, 1)
+                        if match_len == #requested then
+                            -- if data was found right away, set pivot
+                            pivot = read_len - #data + pos - 1
+                            skip = #requested
+                            prev_match = 0
+                        elseif match_len > 0 and pos + match_len - 1 == #data then
+                            -- if delimiter was found at the end, but only partially, proceed to steps 1/2/3 next time
+                            prev_match = match_len
+                            pivot = nil
+                        else
+                            -- if delimiter wasn't found, better luck next time
+                            prev_match = 0
+                            pivot = nil
+                        end
+                    end
+                    if not pivot then break end
+                elseif pivot > read_len then
+                    break
+                end
+                local str_read = table.concat(read)
+                -- iterate over all surplus we have and resume the receiver coroutine
+                -- with chunks of size requested by it
+                ok, requested = coroutine.resume(reader, str_read:sub(1, pivot))
+                req_delim = type(requested) == "string"
+
+                if not ok then
+                    -- if coroutine fails, exit and print error
+                    print("aio.buffered_cor: coroutine failed to resume", requested)
+                    nil_resolve = true
+                    exit = true
+                    break
+                elseif requested == nil then
+                    -- if coroutine is finished, exit
+                    exit = true
+                    break
+                end
+                if requested ~= nil then
+                    read = { str_read:sub(pivot + skip + 1) }
+                    read_len = #read[1]
+                end
+            end
+            -- if we ended reading in buffered reader, exit this loop
+            if exit then
+                break
+            end
+            coroutine.yield()
+        end
+
+        -- after main stream is over, signalize end by sending nil to the reader
+        if coroutine.status(reader) ~= "dead" then
+            ok, requested = coroutine.resume(reader, nil, "eof")
+            if not ok then
+                print("aio.buffered_cor: finishing coroutine failed", requested)
+            end
+        end
+
+        -- if coroutine failed, resolve with nil value
+        if nil_resolve then
+            resolve(nil)
+        end
+    end)
+end
+
+
+function aio:buffered_cor0(target, reader)
     return self:cor(target, function (stream, resolve)
         local reader = self:cor0(reader)
         -- resume the coroutine the first time and receive initial
