@@ -986,8 +986,6 @@ function aio:buffered_cor(target, reader)
                             prev_match = 0
                         elseif pos == 1 then
                             -- 2. last time it ended with our delimiter partially and now it begins partially
-                            read[#read - 1] = read[#read - 1] .. data
-                            read[#read] = nil
                             prev_match = prev_match + match_len
                             pivot = nil
                         else
