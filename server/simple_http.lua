@@ -35,5 +35,3 @@ aio:http_get("/cipher", function (self, query, headers, body)
         end
     end
 end)
-
-print(net.partscan("Ahojojo", "ojojojo"))
