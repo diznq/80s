@@ -968,7 +968,7 @@ function aio:buffered_cor(target, reader)
             table.insert(read, data)
             read_len = read_len + #data
             -- check if state is ok, and if we read >= bytes requested to read
-            while not exit and ok do
+            while not exit and ok and read_len > 0 do
                 local pivot = requested
                 local skip = 0
                 if req_delim then

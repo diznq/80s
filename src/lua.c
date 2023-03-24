@@ -376,26 +376,38 @@ static int l_net_listdir(lua_State *L) {
 }
 
 static int l_net_partscan(lua_State *L) {
-    ssize_t len, pattern_len, offset, best_offset, best_match;
+    ssize_t len, pattern_len, offset;
     ssize_t i, j, k;
     int match = 0, KMP_T[256];
     const char* haystack = lua_tolstring(L, 1, (size_t*)&len);
     const char* pattern = lua_tolstring(L, 2, (size_t*)&pattern_len);
     offset = ((size_t)lua_tointeger(L, 3)) - 1;
 
-    if(pattern_len == 0) {
+    if(len == 0 || pattern_len == 0) {
+        lua_pushinteger(L, (lua_Integer)len + 1);
+        lua_pushinteger(L, 0);
+        return 2;
+    }
+
+    // if pattern is single character, we can afford to just use memchr for this
+    if(pattern_len == 1) {
         pattern = memchr(haystack, pattern[0], len);
         if(pattern) {
-            lua_pushinteger(L, (lua_Integer)(pattern - haystack));
+            lua_pushinteger(L, (lua_Integer)(pattern - haystack) + 1);
             lua_pushinteger(L, 1);
+            return 2;
+        } else {
+            lua_pushinteger(L, (lua_Integer)len + 1);
+            lua_pushinteger(L, 0);
             return 2;
         }
     }
 
+    // use Knuth-Morris-Pratt algorithm to find a partial substring in haystack with O(m+n) complexity
     KMP_T[0] = -1;
     j = 0;
     i = 1;
-    while(i <= pattern_len) {
+    while(i < pattern_len) {
         if(pattern[i] == pattern[j]) {
             KMP_T[i] = KMP_T[j];
         } else {
@@ -410,9 +422,7 @@ static int l_net_partscan(lua_State *L) {
 
     j = offset;
     k = 0;
-    best_match = 0;
-    best_offset = 0;
-    while (j <= len) {
+    while (j < len) {
         if(pattern[k] == haystack[j]) {
             j++;
             k++;
