@@ -10,6 +10,10 @@ aio:http_get("/haha", function (fd, query, headers, body)
     )
 end)
 
+aio:http_get("/headers", function (fd, query, headers, body)
+    fd:http_response("200 OK", "application/json; charset=utf-8", headers)
+end)
+
 aio:http_post("/reload", function(fd, ...)
     local status = net.reload()
     if not status then

@@ -333,7 +333,7 @@ function aio:parse_http(data)
     local headers = {}
     local method, url, header = data:match("(.-) (.-) HTTP.-\r(.*)")
 
-    for key, value in header:gmatch("\n(.-):[ ]*(.-)\r") do
+    for key, value in header:gmatch("\n(.-):[ ]*([^\r]+)") do
         headers[key:lower()] = value
     end
 
