@@ -7,7 +7,7 @@
 #define USE_KQUEUE
 #include <sys/event.h>
 #define event_t kevent
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__sun)
 #define USE_EPOLL
 #include <sys/epoll.h>
 #define event_t epoll_event

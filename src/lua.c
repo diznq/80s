@@ -24,6 +24,9 @@
 #ifdef USE_EPOLL
 #include <sys/inotify.h>
 #endif
+#ifdef __sun
+#include <sys/stat.h>
+#endif
 
 static int l_net_write(lua_State *L) {
     size_t len;
@@ -345,10 +348,15 @@ static int l_net_inotify_read(lua_State* L) {
 
 static int l_net_listdir(lua_State *L) {
     struct dirent **eps = NULL;
+    #ifdef __sun
+    struct stat s;
+    char full_path[2000];
+    #endif
     int n, i;
-    char buf[260];
+    char buf[1000];
+    const char* dir_name = lua_tostring(L, 1);
 
-    n = scandir(lua_tostring(L, 1), &eps, NULL, alphasort);
+    n = scandir(dir_name, &eps, NULL, alphasort);
 
     lua_newtable(L);
 
@@ -358,9 +366,17 @@ static int l_net_listdir(lua_State *L) {
         }
         // treat directores special way, they will end with / always
         // so we don't need isdir? later
-        if (eps[n]->d_type == DT_DIR) {
-            strncpy(buf, eps[n]->d_name, 256);
-            strncat(buf, "/", 256);
+        #ifdef __sun
+        strncpy(full_path, dir_name, 1996);
+        strncat(full_path, eps[n]->d_name, 1996);
+        if(stat(full_path, &s) < 0) continue;
+        if(S_ISDIR(s.st_mode))
+        #else
+        if (eps[n]->d_type == DT_DIR) 
+        #endif
+        {
+            strncpy(buf, eps[n]->d_name, 996);
+            strncat(buf, "/", 996);
             lua_pushstring(L, buf);
         } else {
             lua_pushstring(L, eps[n]->d_name);
