@@ -106,6 +106,9 @@ void *serve(void *vparams) {
                     readlen = read(childfd, buf, BUFSIZE);
                     // if length is <= 0, remove the socket from event loop
                     if (readlen <= 0) {
+                        if (port_dissociate(elfd, PORT_SOURCE_FD, childfd) < 0) {
+                            dbg("serve: failed to dissociate childfd");
+                        }
                         if (close(childfd) < 0) {
                             dbg("serve: failed to close child socket");
                             continue;
