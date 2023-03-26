@@ -65,7 +65,7 @@ void *serve(void *vparams) {
     for (;;) {
         // wait for new event
         nfds = 1;
-        status = port_getn(elfd, events, MAX_EVENTS, &nfds, NULL);
+        status = port_getn(elfd, events, MAX_EVENTS, (unsigned int*)&nfds, NULL);
         if (status < 0) {
             error("serve: error on epoll_wait");
         }
