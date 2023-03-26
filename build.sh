@@ -45,7 +45,7 @@ mkdir -p bin
 DEFINES=""
 LIBS="-lm -ldl -lpthread -lcrypto"
 
-if [[ "$OSTYPE" == "solaris "]]; then
+if [[ "$OSTYPE" == "solaris" ]]; then
   LIBS="$LIBS -lsocket -lnsl"
 fi
 
