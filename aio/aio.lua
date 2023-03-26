@@ -18,6 +18,7 @@
 --- @field inotify_remove fun(elfd: lightuserdata, childfd: lightuserdata, wd: lightuserdata): boolean, string|nil remove watch decriptor from watchlist
 --- @field inotify_read fun(data: string): inotify_event[] parse inotify events to Lua table
 --- @field partscan fun(haystack: string, needle: string, offset: integer): pos: integer, length: integer find partial substring in a string
+--- @field sockname fun(fd: lightuserdata): ip: string, port: integer get ip and port of remote FD
 net = net or {}
 
 --- @class crypto
@@ -321,6 +322,21 @@ function aio:handle_as_http(elfd, childfd, data, len)
 
     -- provide data event
     fd:on_data(elfd, childfd, data, len)
+end
+
+---Get IP address of a socket
+---@param sock aiosocket remote socket
+---@param headers table|nil http headers if available
+---@return string ip address
+function aio:get_ip(sock, headers)
+    local fd = sock.childfd
+    local ip, _ = net.sockname(fd)
+    if headers ~= nil then
+        if headers["x-real-ip"] then
+            ip = headers["x-real-ip"]
+        end
+    end
+    return ip
 end
 
 ---Parse HTTP request

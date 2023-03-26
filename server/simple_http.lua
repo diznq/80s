@@ -14,6 +14,11 @@ aio:http_get("/headers", function (fd, query, headers, body)
     fd:http_response("200 OK", "application/json; charset=utf-8", headers)
 end)
 
+aio:http_get("/ip", function (fd, query, headers, body)
+    local ip, port = net.sockname(fd.childfd)
+    fd:http_response("200 OK", "text/plain", string.format("%s:%d", ip, port))
+end)
+
 aio:http_post("/reload", function(fd, ...)
     local status = net.reload()
     if not status then

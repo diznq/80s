@@ -30,6 +30,11 @@
 #include <sys/stat.h>
 #endif
 
+union addr_common {
+    struct sockaddr_in6 v6;
+    struct sockaddr_in v4;
+};
+
 static int l_net_write(lua_State *L) {
     size_t len;
     struct event_t ev;
@@ -216,6 +221,31 @@ static int l_net_connect(lua_State *L) {
     }
 
     return 2;
+}
+
+static int l_net_sockname(lua_State *L) {
+    union addr_common addr;
+    socklen_t clientlen;
+    char buf[500];
+    int fd = (int)lua_touserdata(L, 1);
+
+    if(getsockname(fd, (struct sockaddr*)&addr, &clientlen) < 0) {
+        return 0;
+    }
+
+    if (clientlen == sizeof(struct sockaddr_in)) {
+        inet_ntop(AF_INET, &addr.v4.sin_addr, buf, clientlen);
+        lua_pushstring(L, buf);
+        lua_pushinteger(L, ntohs(addr.v4.sin_port));
+        return 2;
+    } else if(clientlen == sizeof(struct sockaddr_in6)) {
+        inet_ntop(AF_INET, &addr.v6.sin6_addr, buf, clientlen);
+        lua_pushstring(L, buf);
+        lua_pushinteger(L, ntohs(addr.v6.sin6_port));
+        return 2;
+    } else {
+        return 0;
+    }
 }
 
 static int l_net_reload(lua_State *L) {
@@ -479,6 +509,7 @@ LUALIB_API int luaopen_net(lua_State *L) {
         {"write", l_net_write},
         {"close", l_net_close},
         {"connect", l_net_connect},
+        {"sockname", l_net_sockname},
         {"reload", l_net_reload},
         {"listdir", l_net_listdir},
         {"inotify_init", l_net_inotify_init},
