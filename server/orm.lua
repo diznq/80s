@@ -161,7 +161,7 @@ function orm:create(sql, repo)
         end
         for _, key in ipairs(index) do
             table.insert(where, entity[key].field .. "='%s'")
-            table.insert(params, entity[key])
+            table.insert(params, entity[key].type.toformat(object[key]))
         end
         local final_query = string.format(update_base_query, table.concat(sets, ","), table.concat(where, " AND "))
         return sql:exec(final_query, unpack(params))
