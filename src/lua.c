@@ -21,9 +21,11 @@
 
 #include <sys/socket.h>
 #include <sys/types.h>
-#ifdef USE_EPOLL
+
+#ifdef USE_INOTIFY
 #include <sys/inotify.h>
 #endif
+
 #ifdef __sun
 #include <sys/stat.h>
 #endif
@@ -31,7 +33,7 @@
 static int l_net_write(lua_State *L) {
     size_t len;
     struct event_t ev;
-    int result;
+    int status;
 
     int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
@@ -49,13 +51,15 @@ static int l_net_write(lua_State *L) {
 #ifdef USE_EPOLL
             ev.events = EPOLLIN | EPOLLOUT;
             ev.data.fd = childfd;
-            result = epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev);
+            status = epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev);
 #elif defined(USE_KQUEUE)
             EV_SET(&ev, childfd, EVFILT_WRITE, EV_ADD, 0, 0, NULL);
-            result = kevent(elfd, &ev, 1, NULL, 0, NULL);
+            status = kevent(elfd, &ev, 1, NULL, 0, NULL);
+#elif defined(USE_PORT)
+            status = port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN | POLLOUT, NULL);
 #endif
 
-            if (result < 0) {
+            if (status < 0) {
                 dbg("l_net_write: failed to add socket to out poll");
                 lua_pushboolean(L, 0);
                 lua_pushinteger(L, errno);
@@ -87,6 +91,8 @@ static int l_net_close(lua_State *L) {
     status = kevent(elfd, &ev, 1, NULL, 0, NULL);
     EV_SET(&ev, childfd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
     status = kevent(elfd, &ev, 1, NULL, 0, NULL);
+#elif defined(USE_PORT)
+    status = port_dissociate(elfd, PORT_SOURCE_FD, childfd);
 #endif
 
     if (status < 0) {
@@ -117,7 +123,7 @@ static int l_net_connect(lua_State *L) {
     const char *addr = (const char *)lua_tolstring(L, 2, &len);
     int portno = (int)lua_tointeger(L, 3);
 
-    if(strstr(addr, "v6:") == addr) {
+    if (strstr(addr, "v6:") == addr) {
         v6 = 1;
         addr += 3;
     }
@@ -192,6 +198,8 @@ static int l_net_connect(lua_State *L) {
         EV_SET(ev, childfd, EVFILT_READ, EV_ADD, 0, 0, NULL);
         EV_SET(ev + 1, childfd, EVFILT_WRITE, EV_ADD, 0, 0, NULL);
         status = kevent(elfd, ev, 2, NULL, 0, NULL);
+#elif defined(USE_PORT)
+        status = port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN | POLLOUT, NULL);
 #endif
 
         if (status < 0) {
@@ -226,52 +234,54 @@ static int l_net_reload(lua_State *L) {
     return 1;
 }
 
-static int l_net_inotify_init(lua_State* L) {
-    #ifdef USE_EPOLL
-    int result, elfd, childfd;
+static int l_net_inotify_init(lua_State *L) {
+#ifdef USE_INOTIFY
+    int status, elfd, childfd;
     struct event_t ev;
 
     elfd = (int)lua_touserdata(L, 1);
     childfd = inotify_init();
 
+#ifdef USE_EPOLL
     ev.events = EPOLLIN;
     ev.data.fd = childfd;
-    result = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, &ev);
-
-    if (result < 0) {
+    status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, &ev);
+#elif defined(USE_PORT)
+    status = port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN, NULL);
+#endif
+    if (status < 0) {
         dbg("l_net_write: failed to add socket to out poll");
         lua_pushnil(L);
         lua_pushstring(L, strerror(errno));
         return 2;
     }
 
-    lua_pushlightuserdata(L, (void*)childfd);
+    lua_pushlightuserdata(L, (void *)childfd);
     return 1;
-    #else
+#else
     return 0;
-    #endif
+#endif
 }
 
-
-static int l_net_inotify_add(lua_State* L) {
-    #ifdef USE_EPOLL
+static int l_net_inotify_add(lua_State *L) {
+#ifdef USE_INOTIFY
     int result, elfd, childfd, wd;
-    const char* target;
+    const char *target;
     struct event_t ev;
 
     elfd = (int)lua_touserdata(L, 1);
     childfd = (int)lua_touserdata(L, 2);
     target = lua_tostring(L, 3);
     wd = inotify_add_watch(childfd, target, IN_MODIFY | IN_CREATE | IN_DELETE);
-    lua_pushlightuserdata(L, (void*)wd);
+    lua_pushlightuserdata(L, (void *)wd);
     return 1;
-    #else
+#else
     return 0;
-    #endif
+#endif
 }
 
-static int l_net_inotify_remove(lua_State* L) {
-    #ifdef USE_EPOLL
+static int l_net_inotify_remove(lua_State *L) {
+#ifdef USE_INOTIFY
     int result, elfd, childfd, wd;
 
     elfd = (int)lua_touserdata(L, 1);
@@ -279,21 +289,21 @@ static int l_net_inotify_remove(lua_State* L) {
     wd = (int)lua_touserdata(L, 3);
 
     result = inotify_rm_watch(childfd, wd);
-    if(result < 0) {
+    if (result < 0) {
         lua_pushboolean(L, 0);
         lua_pushstring(L, strerror(errno));
         return 2;
     }
     lua_pushboolean(L, 1);
     return 1;
-    #else
+#else
     return 0;
-    #endif
+#endif
 }
 
-static int l_net_inotify_read(lua_State* L) {
-    #ifdef USE_EPOLL
-    const char* data;
+static int l_net_inotify_read(lua_State *L) {
+#ifdef USE_EPOLL
+    const char *data;
     size_t i, length;
     struct timespec tp;
     int c = 1;
@@ -303,9 +313,9 @@ static int l_net_inotify_read(lua_State* L) {
     clock_gettime(CLOCK_MONOTONIC, &tp);
     t = tp.tv_sec + tp.tv_nsec / 1000000000.0;
     lua_newtable(L);
-    while(i < length) {
-        struct inotify_event* evt = (struct inotify_event*)(data + i);
-        if(evt->len && (i + evt->len + (sizeof(struct inotify_event))) <= length) {
+    while (i < length) {
+        struct inotify_event *evt = (struct inotify_event *)(data + i);
+        if (evt->len && (i + evt->len + (sizeof(struct inotify_event))) <= length) {
             lua_createtable(L, 6, 0);
 
             lua_pushstring(L, "name");
@@ -313,7 +323,7 @@ static int l_net_inotify_read(lua_State* L) {
             lua_settable(L, -3);
 
             lua_pushstring(L, "wd");
-            lua_pushlightuserdata(L, (void*)evt->wd);
+            lua_pushlightuserdata(L, (void *)evt->wd);
             lua_settable(L, -3);
 
             lua_pushstring(L, "dir");
@@ -341,20 +351,20 @@ static int l_net_inotify_read(lua_State* L) {
         i += (sizeof(struct inotify_event)) + evt->len;
     }
     return 1;
-    #else
+#else
     return 0;
-    #endif
+#endif
 }
 
 static int l_net_listdir(lua_State *L) {
     struct dirent **eps = NULL;
-    #ifdef __sun
+#ifdef __sun
     struct stat s;
     char full_path[2000];
-    #endif
+#endif
     int n, i;
     char buf[1000];
-    const char* dir_name = lua_tostring(L, 1);
+    const char *dir_name = lua_tostring(L, 1);
 
     n = scandir(dir_name, &eps, NULL, alphasort);
 
@@ -366,14 +376,15 @@ static int l_net_listdir(lua_State *L) {
         }
         // treat directores special way, they will end with / always
         // so we don't need isdir? later
-        #ifdef __sun
+#ifdef __sun
         strncpy(full_path, dir_name, 1996);
         strncat(full_path, eps[n]->d_name, 1996);
-        if(stat(full_path, &s) < 0) continue;
-        if(S_ISDIR(s.st_mode))
-        #else
-        if (eps[n]->d_type == DT_DIR) 
-        #endif
+        if (stat(full_path, &s) < 0)
+            continue;
+        if (S_ISDIR(s.st_mode))
+#else
+        if (eps[n]->d_type == DT_DIR)
+#endif
         {
             strncpy(buf, eps[n]->d_name, 996);
             strncat(buf, "/", 996);
@@ -395,20 +406,20 @@ static int l_net_partscan(lua_State *L) {
     ssize_t len, pattern_len, offset;
     ssize_t i, j, k;
     int match = 0, KMP_T[256];
-    const char* haystack = lua_tolstring(L, 1, (size_t*)&len);
-    const char* pattern = lua_tolstring(L, 2, (size_t*)&pattern_len);
+    const char *haystack = lua_tolstring(L, 1, (size_t *)&len);
+    const char *pattern = lua_tolstring(L, 2, (size_t *)&pattern_len);
     offset = ((size_t)lua_tointeger(L, 3)) - 1;
 
-    if(len == 0 || pattern_len == 0) {
+    if (len == 0 || pattern_len == 0) {
         lua_pushinteger(L, (lua_Integer)len + 1);
         lua_pushinteger(L, 0);
         return 2;
     }
 
     // if pattern is single character, we can afford to just use memchr for this
-    if(pattern_len == 1) {
+    if (pattern_len == 1) {
         pattern = memchr(haystack, pattern[0], len);
-        if(pattern) {
+        if (pattern) {
             lua_pushinteger(L, (lua_Integer)(pattern - haystack) + 1);
             lua_pushinteger(L, 1);
             return 2;
@@ -423,12 +434,12 @@ static int l_net_partscan(lua_State *L) {
     KMP_T[0] = -1;
     j = 0;
     i = 1;
-    while(i < pattern_len) {
-        if(pattern[i] == pattern[j]) {
+    while (i < pattern_len) {
+        if (pattern[i] == pattern[j]) {
             KMP_T[i] = KMP_T[j];
         } else {
             KMP_T[i] = j;
-            while(j >= 0 && pattern[i] != pattern[j]) {
+            while (j >= 0 && pattern[i] != pattern[j]) {
                 j = KMP_T[j];
             }
         }
@@ -439,19 +450,19 @@ static int l_net_partscan(lua_State *L) {
     j = offset;
     k = 0;
     while (j < len) {
-        if(pattern[k] == haystack[j]) {
+        if (pattern[k] == haystack[j]) {
             j++;
             k++;
-            if(k == pattern_len) {
+            if (k == pattern_len) {
                 lua_pushinteger(L, (lua_Integer)(j - k + 1));
                 lua_pushinteger(L, (lua_Integer)k);
                 return 2;
             }
-        } else if(j == len) {
+        } else if (j == len) {
             break;
         } else {
             k = KMP_T[k];
-            if(k < 0) {
+            if (k < 0) {
                 j++;
                 k++;
             }
@@ -475,8 +486,7 @@ LUALIB_API int luaopen_net(lua_State *L) {
         {"inotify_remoev", l_net_inotify_remove},
         {"inotify_read", l_net_inotify_read},
         {"partscan", l_net_partscan},
-        {NULL, NULL}
-    };
+        {NULL, NULL}};
 #if LUA_VERSION_NUM > 501
     luaL_newlib(L, netlib);
 #else

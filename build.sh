@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/usr/bin/env bash
 
 if [[ -z "${LUA_LIB_PATH}" ]]; then
   LUA_LIB="/usr/local/lib/liblua.a"
@@ -45,6 +45,10 @@ mkdir -p bin
 DEFINES=""
 LIBS="-lm -ldl -lpthread -lcrypto"
 
+if [[ "$OSTYPE" == "solaris "]]; then
+  LIBS="$LIBS -lsocket -lnsl"
+fi
+
 if [[ "$DEBUG" == "true" ]]; then
     DEFINES="$DEFINES -DDEBUG=1"
     FLAGS="-O0 -g"
@@ -56,7 +60,10 @@ echo "Flags: $FLAGS"
 echo "Lua include directory: $LUA_INC"
 echo "Lua library directory: $LUA_LIB"
 
-$CC src/main.c src/lua.c src/lua_codec.c src/dynstr.c src/serve.epoll.c src/serve.kqueue.c src/lua_crypto.c "$LUA_LIB" \
+$CC src/main.c src/dynstr.c \
+    src/lua.c src/lua_codec.c src/lua_crypto.c \
+    src/serve.epoll.c src/serve.kqueue.c src/serve.port.c \
+    "$LUA_LIB" \
     $DEFINES \
     "-I$LUA_INC" \
     $LIBS \

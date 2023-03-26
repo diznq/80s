@@ -7,10 +7,17 @@
 #define USE_KQUEUE
 #include <sys/event.h>
 #define event_t kevent
-#elif defined(__linux__) || defined(__sun)
+#elif defined(__linux__) || defined(SOLARIS_EPOLL)
 #define USE_EPOLL
+#define USE_INOTIFY
 #include <sys/epoll.h>
 #define event_t epoll_event
+#elif defined(__sun)
+#define USE_PORT
+#define USE_INOTIFY
+#include <port.h>
+#include <sys/port.h>
+#define event_t port_event
 #else
 #error unsupported platform
 #endif
