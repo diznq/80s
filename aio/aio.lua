@@ -53,8 +53,10 @@ WORKERID = WORKERID or nil
 --- @alias aioresolve fun(result: any): nil AIO resolver
 --- @alias aiothen fun(on_resolved: fun(...: any)|thread) AIO then
 --- @alias aiohttphandler fun(self: aiosocket, query: string, headers: {[string]: string}, body: string) AIO HTTP handler
-
 --- @alias aiowritebuf {d: string, o: integer}
+
+--- @generic T : string
+--- @alias aiopromise fun(on_resolved: fun(result: T)) AIO promise
 
 unpack = unpack or table.unpack
 
@@ -472,8 +474,9 @@ end
 --- Create URL from endpoint and query params
 ---@param endpoint string endpoint
 ---@param params {[string]: string, e?: boolean, iv?: boolean, ordered?: boolean} parameters list, if e is false, no encryption is performed
+---@param hash string|nil URL hash
 ---@return any
-function aio:to_url(endpoint, params)
+function aio:to_url(endpoint, params, hash)
     local path = endpoint
     local private_key = aio.master_key and endpoint or nil
     if type(params) == "table" then
@@ -490,6 +493,9 @@ function aio:to_url(endpoint, params)
         params["ordered"] = nil
         ---@diagnostic disable-next-line: param-type-mismatch
         path = path .. "?" .. aio:create_query(params, private_key, ordered, iv)
+    end
+    if hash ~= nil then
+        path = path .. "#" .. codec.url_encode(hash)
     end
     return path
 end
