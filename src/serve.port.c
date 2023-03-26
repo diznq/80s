@@ -42,15 +42,15 @@ void *serve(void *vparams) {
 
     signal(SIGPIPE, SIG_IGN);
 
-    // create local epoll and assign it to context's array of els, so others can reach it
+    // create local port and assign it to context's array of els, so others can reach it
     elfd = els[id] = port_create();
     if (elfd < 0)
-        error("serve: failed to create epoll");
+        error("serve: failed to create port");
 
     // only one thread can poll on server socket and accept others!
     if (id == 0) {
         if (port_associate(elfd, PORT_SOURCE_FD, parentfd, POLLIN, NULL) < 0) {
-            error("serve: failed to add server socket to epoll");
+            error("serve: failed to add server socket to port");
         }
     }
 
@@ -67,7 +67,7 @@ void *serve(void *vparams) {
         nfds = 1;
         status = port_getn(elfd, events, MAX_EVENTS, (unsigned int*)&nfds, NULL);
         if (status < 0) {
-            error("serve: error on epoll_wait");
+            error("serve: error on port_getn");
         }
 
         for (n = 0; n < nfds; ++n) {
@@ -83,7 +83,7 @@ void *serve(void *vparams) {
                 // add the child socket to the event loop it belongs to based on modulo
                 // with number of workers, to balance the load to other threads
                 if (port_associate(els[accepts++], PORT_SOURCE_FD, childfd, POLLIN, NULL) < 0) {
-                    dbg("serve: on add child socket to epoll");
+                    dbg("serve: on add child socket to port");
                 }
                 // on Solaris we also need to reassociate the file descriptor with original port
                 if (port_associate(elfd, PORT_SOURCE_FD, parentfd, POLLIN, NULL) < 0) {
