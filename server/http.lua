@@ -50,7 +50,7 @@ local function init_dir(root, base, prefix)
     for _, file in pairs(net.listdir(base)) do
         if file:match("/$") then
             -- all folders that begin with i. will be ignored, i.e. they might contain large files
-            local ignore = file:match("i%.")
+            local ignore = file:match("i%.") or file:match("^%.")
             if not ignore then
                 -- treat files in public_html/ as in root /
                 local found_dirs = {}
