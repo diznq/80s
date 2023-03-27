@@ -45,7 +45,7 @@ local ormtypes = {
     bit = {
         format = function() return "%c" end,
         fromstring = function(text) return text:byte(1, 1) ~= 0 end,
-        toformat = function(value) return string.char(value and 1 or 0) end
+        toformat = function(value) return value and 1 or 0 end
     },
     ---@diagnostic disable-next-line: assign-type-mismatch
     varchar = function(size)
@@ -156,11 +156,11 @@ function orm:create(sql, repo)
         local where = {}
         local params = {}
         for k, v in pairs(update) do
-            table.insert(sets, entity[k].field .."='%s'")
+            table.insert(sets, entity[k].field .."='" .. entity[k].type.format() .. "'")
             table.insert(params, entity[k].type.toformat(v))
         end
         for _, key in ipairs(index) do
-            table.insert(where, entity[key].field .. "='%s'")
+            table.insert(where, entity[key].field .. "='".. entity[key].type.format() .."'")
             table.insert(params, entity[key].type.toformat(object[key]))
         end
         local final_query = string.format(update_base_query, table.concat(sets, ","), table.concat(where, " AND "))
