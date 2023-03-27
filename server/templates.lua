@@ -100,7 +100,7 @@ function templates:prepare(content, base)
             table.insert(lines, line)
         end
         match = table.concat(lines, "\n") .. "\n"
-        local compiled, err = load("return function(session, locals, headers, body, endpoint, query, write, escape, post_render, await, header, status, done, to_url)" .. match .. "end")
+        local compiled, err = load("return function(fd, session, locals, headers, body, endpoint, query, write, escape, post_render, await, header, status, done, to_url)" .. match .. "end")
         if not compiled then
             table.insert(context.parts, function (input, output, done)
                 done(err)
@@ -113,6 +113,7 @@ function templates:prepare(content, base)
             aio:async(function()
                 local data = {}
                 code(
+                    input.fd,
                     input.session,
                     input.locals,
                     input.headers,
@@ -161,14 +162,15 @@ end
 --- <?lua ... ?> for asynchronous functions that must signalize they are done by making done() call at end
 --- Further description can be found in README.md
 ---
+---@param fd aiosocket requester
 ---@param session {[string]: string} user session
 ---@param headers {[string]: string} headers table
 ---@param endpoint string request URL
----@param query {[string]: string} query parameters
+---@param query aiohttpquery query parameters
 ---@param mime string expected mime type
 ---@param ctx templatectx prepared template context
 ---@return fun(on_resolved: fun(result: render_result)) promise
-function templates:render(session, headers, body, endpoint, query, mime, ctx)
+function templates:render(fd, session, headers, body, endpoint, query, mime, ctx)
     local on_resolved, resolve_event = aio:prepare_promise()
 
     -- if there is no dynamic content, resolve immediately
@@ -190,6 +192,7 @@ function templates:render(session, headers, body, endpoint, query, mime, ctx)
     }
 
     local input = {
+        fd = fd,
         session = session,
         headers = headers,
         locals = {},

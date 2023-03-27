@@ -54,6 +54,7 @@ WORKERID = WORKERID or nil
 --- @alias aiothen fun(on_resolved: fun(...: any)|thread) AIO then
 --- @alias aiohttphandler fun(self: aiosocket, query: string, headers: {[string]: string}, body: string) AIO HTTP handler
 --- @alias aiowritebuf {d: string, o: integer}
+--- @alias aiohttpquery {[string]: string, e: {[string]: string}}
 
 --- @generic T : string
 --- @alias aiopromise fun(on_resolved: fun(result: T)) AIO promise
@@ -361,7 +362,7 @@ end
 --- Parse HTTP query
 --- @param query string query string
 --- @param private_key string|nil string decryption key for ?e
---- @return {[string]: string, e: {[string]: string}} query query params
+--- @return aiohttpquery query query params
 function aio:parse_query(query, private_key)
     local params = {}
     params.e={} -- reserved for encrypted query

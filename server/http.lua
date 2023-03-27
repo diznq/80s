@@ -29,8 +29,8 @@ local function create_endpoint(base, method, endpoint, mime, content, dynamic)
         if dynamic then
             -- process as dynamic template
             local session = {}
-            query = aio:parse_query(query, aio.master_key and endpoint or nil)
-            templates:render(session, headers, body, endpoint, query, mime, ctx)(function (result)
+            local parsed_query = aio:parse_query(query, aio.master_key and endpoint or nil)
+            templates:render(self, session, headers, body, endpoint, parsed_query, mime, ctx)(function (result)
                 self:http_response(result.status, result.headers, result.content)
             end)
         else
@@ -140,25 +140,6 @@ end
 
 local root = os.getenv("PUBLIC_HTML") or "server/www/"
 local dirs = init_dir(root, root, "/")
-
-aio:http_post("/reload", function (self, query, headers, body)
-    net.reload()
-    self:http_response("200 OK", "text/plain", tostring(WORKERID))
-end)
-
-aio:http_post("/gc", function (self, query, headers, body)
-    local before = collectgarbage("count")
-    local col = collectgarbage("collect")
-    self:http_response("200 OK", "text/plain", tostring(before - collectgarbage("count")))
-end)
-
-aio:http_get("/fds", function (self, query, headers, body)
-    local n = 0
-    for i, v in pairs(aio.fds) do
-        n = n + 1
-    end
-    self:http_response("200 OK", "text/plain", tostring(n) .. ", " .. aio.cors)
-end)
 
 if (os.getenv("RELOAD") or "false") == "true" then
     LAST_LIVE_RELOAD = LAST_LIVE_RELOAD or 0
