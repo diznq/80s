@@ -148,6 +148,9 @@ function templates:prepare(content, base)
                 if #async == 0 then
                     done(table.concat(data))
                 end
+            end, function (err)
+                output.status = "500 Internal server error"
+                done("Server error")
             end)
         end)
         return "<?l" .. tostring(#context.parts) .. "?>"

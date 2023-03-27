@@ -903,13 +903,17 @@ end
 
 --- Execute code in async environment so await can be used
 ---@param callback function to be ran
+---@param on_error function|nil error handler
 ---@return thread coroutine
 ---@return boolean ok value
-function aio:async(callback)
+function aio:async(callback, on_error)
     local cor = aio:cor0(callback)
     local ok, result = coroutine.resume(cor)
     if not ok then
         print("aio.async failed: ", result)
+        if on_error ~= nil then
+            on_error(result)
+        end
     end
     return cor, ok
 end
