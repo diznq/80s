@@ -32,6 +32,8 @@ crypto = crypto or {}
 
 --- @class codec
 --- @field json_encode fun(obj: table): string JSON encode object or an array
+--- @field lua_encode fun(obj: table): string Lua encode object or an array
+--- @field hex_encode fun(text: string): string Hex encode text
 --- @field url_encode fun(text: string): string URL encode text
 --- @field url_decode fun(text: string): string URL decode text
 --- @field mysql_encode fun(text: string): string MySQL encode text

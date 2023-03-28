@@ -97,6 +97,72 @@ static void json_encode(lua_State *L, int idx, struct dynstr *out) {
 #endif
 }
 
+
+static void lua_encode(lua_State *L, int idx, struct dynstr *out) {
+    int type;
+    int x;
+    size_t value_len;
+    const char *key, *value;
+    int is_array;
+
+#if LUA_VERSION_NUM > 501
+    lua_len(L, idx);
+    is_array = lua_tointeger(L, idx + 1);
+#else
+    is_array = lua_objlen(L, idx);
+#endif
+
+    lua_pushnil(L);
+    dynstr_putc(out, '{');
+    while (lua_next(L, idx) != 0) {
+        type = lua_type(L, -1);
+        if (!is_array) {
+            key = lua_tolstring(L, -2, &value_len);
+            dynstr_putc(out, '[');
+            encode_string(out, key, value_len);
+            dynstr_puts(out, "]=", 2);
+        }
+        if (!out->ok) {
+            lua_pop(L, 1);
+            continue;
+        }
+        switch (type) {
+        case LUA_TTABLE:
+            lua_encode(L, lua_gettop(L), out);
+            break;
+        case LUA_TNUMBER:
+            dynstr_putg(out, lua_tonumber(L, -1));
+            break;
+        case LUA_TSTRING:
+            value = lua_tolstring(L, -1, &value_len);
+            encode_string(out, value, value_len);
+            break;
+        case LUA_TBOOLEAN:
+            x = lua_toboolean(L, -1);
+            dynstr_puts(out, x ? "true" : "false", x ? 4 : 5);
+            break;
+        case LUA_TNIL:
+            dynstr_puts(out, "nil", 4);
+            break;
+        default:
+            break;
+        }
+        dynstr_putc(out, ',');
+        lua_pop(L, 1);
+    }
+
+    if(out->length > 1) {
+        out->ptr[out->length - 1] = '}';
+    } else {
+        dynstr_putc(out, '}');
+    }
+#if LUA_VERSION_NUM > 501
+    lua_pop(L, 1);
+#else
+    lua_pop(L, is_array ? 1 : 0);
+#endif
+}
+
 static int l_codec_json_encode(lua_State *L) {
     char buffer[65536];
     size_t offset = 0;
@@ -105,6 +171,40 @@ static int l_codec_json_encode(lua_State *L) {
     dynstr_init(&str, buffer, sizeof(buffer));
     json_encode(L, 1, &str);
     lua_pushlstring(L, str.ptr, str.length);
+    dynstr_release(&str);
+    return 1;
+}
+
+static int l_codec_lua_encode(lua_State *L) {
+    char buffer[65536];
+    size_t offset = 0;
+    struct dynstr str;
+    int args = lua_gettop(L);
+    buffer[0] = 0;
+    dynstr_init(&str, buffer, sizeof(buffer));
+    lua_encode(L, 1, &str);
+    lua_pushlstring(L, str.ptr, str.length);
+    dynstr_release(&str);
+    return 1;
+}
+
+static int l_codec_hex_encode(lua_State* L) {
+    struct dynstr str;
+    size_t len, i, j = 0;
+    char buffer[2048], c;
+    char chars[] = "0123456789abcdef";
+    char* ptr;
+    const char* data = lua_tolstring(L, 1, &len);
+    dynstr_init(&str, buffer, sizeof(buffer));
+    if(dynstr_check(&str, len * 2)) {
+        ptr = str.ptr;
+        for(i=0; i<len; i++) {
+            c = data[i] & 255;
+            ptr[j++] = chars[(c >> 4) & 15];
+            ptr[j++] = chars[c & 15];
+        }
+    }
+    lua_pushlstring(L, str.ptr, j);
     dynstr_release(&str);
     return 1;
 }
@@ -126,7 +226,7 @@ static int l_codec_url_encode(lua_State *L) {
                 ptr[j++] = c;
             } else {
                 ptr[j++] = '%';
-                ptr[j++] = chars[c >> 4];
+                ptr[j++] = chars[(c >> 4) & 15];
                 ptr[j++] = chars[c & 15];
             }
         }
@@ -255,6 +355,8 @@ LUALIB_API int luaopen_codec(lua_State *L) {
     int i;
     const luaL_Reg netlib[] = {
         {"json_encode", l_codec_json_encode},
+        {"lua_encode", l_codec_lua_encode},
+        {"hex_encode", l_codec_hex_encode},
         {"url_encode", l_codec_url_encode},
         {"url_decode", l_codec_url_decode},
         {"mysql_encode", l_codec_mysql_encode},
