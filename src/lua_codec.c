@@ -33,16 +33,19 @@ static void encode_string(struct dynstr *out, const char *value, size_t value_le
     dynstr_putc(out, '"');
 }
 
-static void json_encode(lua_State *L, int idx, struct dynstr *out) {
+static void json_encode(lua_State *L, struct dynstr *out) {
     int type;
-    int x;
+    int x, idx;
     size_t value_len;
     const char *key = 0, *value;
     int is_array, is_empty = 1;
 
+    idx = lua_gettop(L);
+
 #if LUA_VERSION_NUM > 501
     lua_len(L, idx);
     is_array = lua_tointeger(L, idx + 1);
+    lua_pop(L, 1);
 #else
     is_array = lua_objlen(L, idx);
 #endif
@@ -69,7 +72,7 @@ static void json_encode(lua_State *L, int idx, struct dynstr *out) {
         }
         switch (type) {
         case LUA_TTABLE:
-            json_encode(L, lua_gettop(L), out);
+            json_encode(L, out);
             break;
         case LUA_TNUMBER:
             dynstr_putg(out, lua_tonumber(L, -1));
@@ -105,24 +108,22 @@ static void json_encode(lua_State *L, int idx, struct dynstr *out) {
     } else {
         dynstr_putc(out, '}');
     }
-#if LUA_VERSION_NUM > 501
-    lua_pop(L, 1);
-#else
-    lua_pop(L, is_array ? 1 : 0);
-#endif
 }
 
 
-static void lua_encode(lua_State *L, int idx, struct dynstr *out) {
+static void lua_encode(lua_State *L, struct dynstr *out) {
     int type;
-    int x;
+    int x, idx;
     size_t value_len;
     const char *key, *value;
     int is_array, is_empty = 1;
 
+    idx = lua_gettop(L);
+
 #if LUA_VERSION_NUM > 501
     lua_len(L, idx);
     is_array = lua_tointeger(L, idx + 1);
+    lua_pop(L, 1);
 #else
     is_array = lua_objlen(L, idx);
 #endif
@@ -144,7 +145,7 @@ static void lua_encode(lua_State *L, int idx, struct dynstr *out) {
         }
         switch (type) {
         case LUA_TTABLE:
-            lua_encode(L, lua_gettop(L), out);
+            lua_encode(L, out);
             break;
         case LUA_TNUMBER:
             dynstr_putg(out, lua_tonumber(L, -1));
@@ -179,11 +180,6 @@ static void lua_encode(lua_State *L, int idx, struct dynstr *out) {
     } else {
         dynstr_putc(out, '}');
     }
-#if LUA_VERSION_NUM > 501
-    lua_pop(L, 1);
-#else
-    lua_pop(L, is_array ? 1 : 0);
-#endif
 }
 
 static int l_codec_json_encode(lua_State *L) {
@@ -192,7 +188,7 @@ static int l_codec_json_encode(lua_State *L) {
     struct dynstr str;
     buffer[0] = 0;
     dynstr_init(&str, buffer, sizeof(buffer));
-    json_encode(L, 1, &str);
+    json_encode(L, &str);
     lua_pushlstring(L, str.ptr, str.length);
     dynstr_release(&str);
     return 1;
@@ -205,7 +201,7 @@ static int l_codec_lua_encode(lua_State *L) {
     int args = lua_gettop(L);
     buffer[0] = 0;
     dynstr_init(&str, buffer, sizeof(buffer));
-    lua_encode(L, 1, &str);
+    lua_encode(L, &str);
     lua_pushlstring(L, str.ptr, str.length);
     dynstr_release(&str);
     return 1;
