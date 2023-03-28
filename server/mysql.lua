@@ -432,12 +432,16 @@ function mysql:raw_exec(query, ...)
     local params = {...}
     local on_resolved, resolve_event = aio:prepare_promise()
     local executor = function()
-        local command = query
+        local command, ok = query, true
         if #params > 0 then
             for i, param in ipairs(params) do
                 params[i] = self:escape(param)
             end
-            command = string.format(query, unpack(params))
+            ok, command = pcall(string.format, query, unpack(params))
+            if not ok then
+                on_resolved({error="string format failed: " .. command})
+                return
+            end
         end
         table.insert(self.callbacks, on_resolved)
         self:write_packet(0, string.char(3) .. command)

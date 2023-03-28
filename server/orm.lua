@@ -130,6 +130,7 @@ function orm:create(sql, repo)
 
     repo.insert = function(self, ...)
         local tuples = {}
+        local params = {}
         for i, item in ipairs({...}) do
             local values = {}
             for j, key in ipairs(insert_order) do
@@ -141,14 +142,15 @@ function orm:create(sql, repo)
                 elseif value == nil then
                     value = "NULL"
                 else
-                    value = string.format("'%s'", sql:escape(def.type.format():format(def.type.toformat(value))))
+                    table.insert(params, def.type.toformat(value))
+                    value = "'" .. def.type:format() .. "'"
                 end
                 table.insert(values, value)
             end
-            table.insert(tuples, string.format("(%s)", table.concat(values, ",")))
+            table.insert(tuples, "(" .. table.concat(values, ",") .. ")" )
         end
-        local final_query = string.format("%s %s", insert_base_query, table.concat(tuples, ","))
-        return sql:exec(final_query)
+        local final_query = insert_base_query .. " " ..  table.concat(tuples, ",")
+        return sql:exec(final_query, unpack(params))
     end
 
     repo.update = function(self, object, update)
@@ -269,7 +271,7 @@ function orm:create_method(sql, query, types, decoders, single, count, parent)
         if single and not has_limit then
             table.insert(extras, "LIMIT 1")
         end
-        local final_query = string.format("%s %s", query, table.concat(extras, " "))
+        local final_query = query .. " " .. table.concat(extras, " ")
         sql:select(final_query, unpack(treated))(function (rows, errorOrColumns)
             -- this function returns either (nil, str_error)
             -- or (nil, nil) for single result that has not been found
