@@ -333,15 +333,16 @@ end
 ---@param sock aiosocket remote socket
 ---@param headers table|nil http headers if available
 ---@return string ip address
+---@return integer port port
 function aio:get_ip(sock, headers)
     local fd = sock.childfd
-    local ip, _ = net.sockname(fd)
+    local ip, port = net.sockname(fd)
     if headers ~= nil then
         if headers["x-real-ip"] then
             ip = headers["x-real-ip"]
         end
     end
-    return ip
+    return ip, port
 end
 
 ---Parse HTTP request
