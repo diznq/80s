@@ -37,8 +37,8 @@ static void json_encode(lua_State *L, int idx, struct dynstr *out) {
     int type;
     int x;
     size_t value_len;
-    const char *key, *value;
-    int is_array;
+    const char *key = 0, *value;
+    int is_array, is_empty = 1;
 
 #if LUA_VERSION_NUM > 501
     lua_len(L, idx);
@@ -48,9 +48,16 @@ static void json_encode(lua_State *L, int idx, struct dynstr *out) {
 #endif
 
     lua_pushnil(L);
-    dynstr_putc(out, is_array ? '[' : '{');
+    dynstr_putc(out, '{');
     while (lua_next(L, idx) != 0) {
         type = lua_type(L, -1);
+        if(is_empty) {
+            is_empty = 0;
+            is_array = lua_type(L, -2) == LUA_TNUMBER;
+            if(is_array) {
+                out->ptr[out->length - 1] = '[';
+            }
+        }
         if (!is_array) {
             key = lua_tolstring(L, -2, &value_len);
             encode_string(out, key, value_len);
@@ -79,13 +86,21 @@ static void json_encode(lua_State *L, int idx, struct dynstr *out) {
             dynstr_puts(out, "null", 4);
             break;
         default:
+            printf("unknown type");
             break;
         }
         dynstr_putc(out, ',');
         lua_pop(L, 1);
     }
 
-    if(out->length > 1) {
+    if(is_empty) {
+        if(out->length > 0) {
+            out->ptr[out->length - 1] = '[';
+            dynstr_putc(out, ']');
+        } else {
+            dynstr_puts(out, "[]", 2);
+        }
+    } else if(out->length > 0) {
         out->ptr[out->length - 1] = is_array ? ']' : '}';
     } else {
         dynstr_putc(out, '}');
@@ -103,7 +118,7 @@ static void lua_encode(lua_State *L, int idx, struct dynstr *out) {
     int x;
     size_t value_len;
     const char *key, *value;
-    int is_array;
+    int is_array, is_empty = 1;
 
 #if LUA_VERSION_NUM > 501
     lua_len(L, idx);
@@ -116,6 +131,7 @@ static void lua_encode(lua_State *L, int idx, struct dynstr *out) {
     dynstr_putc(out, '{');
     while (lua_next(L, idx) != 0) {
         type = lua_type(L, -1);
+        is_empty = 0;
         if (!is_array) {
             key = lua_tolstring(L, -2, &value_len);
             dynstr_putc(out, '[');
@@ -151,8 +167,15 @@ static void lua_encode(lua_State *L, int idx, struct dynstr *out) {
         lua_pop(L, 1);
     }
 
-    if(out->length > 1) {
-        out->ptr[out->length - 1] = '}';
+    if(is_empty) {
+        if(out->length > 0) {
+            out->ptr[out->length - 1] = '{';
+            dynstr_putc(out, '}');
+        } else {
+            dynstr_puts(out, "{}", 2);
+        }
+    } else if(out->length > 0) {
+        out->ptr[out->length - 1] = is_array ? ']' : '}';
     } else {
         dynstr_putc(out, '}');
     }
