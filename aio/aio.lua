@@ -1124,13 +1124,14 @@ end
 
 
 --- Array map
----@param array table
----@param fn function
----@return table
-function aio:map(array, fn)
+---@param array table array to transform
+---@param fn function map function
+---@param ... any additional parameters to be passed to fn
+---@return table transformed array
+function aio:map(array, fn, ...)
     local new_array = {}
     for i=1,#array do
-        new_array[i] = fn(array[i])
+        new_array[i] = fn(array[i], ...)
     end
     return new_array
 end

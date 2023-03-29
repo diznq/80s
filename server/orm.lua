@@ -309,7 +309,7 @@ function orm:create_method(sql, query, types, decoders, single, count, parent)
                     if count then result = result.c end
                     on_resolved(result, nil)
                 else
-                    on_resolved(results)
+                    on_resolved(results, nil)
                 end
             end
         end)
