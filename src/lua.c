@@ -432,6 +432,15 @@ static int l_net_listdir(lua_State *L) {
     return 1;
 }
 
+static int l_net_clock(lua_State* L) {
+    struct timespec tp;
+    double t;
+    clock_gettime(CLOCK_MONOTONIC, &tp);
+    t = tp.tv_sec + tp.tv_nsec / 1000000000.0;
+    lua_pushnumber(L, (lua_Number)t);
+    return 1;
+}
+
 static int l_net_partscan(lua_State *L) {
     ssize_t len, pattern_len, offset;
     ssize_t i, j, k;
@@ -517,6 +526,7 @@ LUALIB_API int luaopen_net(lua_State *L) {
         {"inotify_remoev", l_net_inotify_remove},
         {"inotify_read", l_net_inotify_read},
         {"partscan", l_net_partscan},
+        {"clock", l_net_clock},
         {NULL, NULL}};
 #if LUA_VERSION_NUM > 501
     luaL_newlib(L, netlib);

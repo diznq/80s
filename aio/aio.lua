@@ -19,6 +19,7 @@
 --- @field inotify_read fun(data: string): inotify_event[] parse inotify events to Lua table
 --- @field partscan fun(haystack: string, needle: string, offset: integer): pos: integer, length: integer find partial substring in a string
 --- @field sockname fun(fd: lightuserdata): ip: string, port: integer get ip and port of remote FD
+--- @field clock fun(): number return monotonic clock in seconds
 net = net or {}
 
 --- @class crypto
@@ -32,6 +33,7 @@ crypto = crypto or {}
 
 --- @class codec
 --- @field json_encode fun(obj: table): string JSON encode object or an array
+--- @field json_decode fun(text: string): table JSON decode text into array or object
 --- @field lua_encode fun(obj: table): string Lua encode object or an array
 --- @field hex_encode fun(text: string): string Hex encode text
 --- @field url_encode fun(text: string): string URL encode text
