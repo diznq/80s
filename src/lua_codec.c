@@ -22,6 +22,8 @@ static void encode_string(struct dynstr *out, const char *value, size_t value_le
         case '"':
             dynstr_puts(out, "\\\"", 2);
             break;
+        case '\\':
+            dynstr_puts(out, "\\\\", 2);
         case '\0':
             dynstr_puts(out, "\\0", 2);
             break;
