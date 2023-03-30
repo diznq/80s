@@ -156,7 +156,7 @@ static void lua_encode(lua_State *L, struct dynstr *out) {
     }
 }
 
-static int json_decode(lua_State* L, const char* text, size_t len) {
+static void json_decode(lua_State* L, const char* text, size_t len) {
     enum state { 
         none, 
         in_object, in_array, 
