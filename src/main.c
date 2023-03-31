@@ -31,7 +31,7 @@ void error(const char *msg) {
     exit(1);
 }
 
-int get_arg(const char *arg, int default_value, int flag, int argc, const char **argv) {
+static int get_arg(const char *arg, int default_value, int flag, int argc, const char **argv) {
     int i, off = flag ? 0 : 1;
     for (i = 1; i < argc - off; i++) {
         if (!strcmp(argv[i], arg)) {
@@ -44,7 +44,7 @@ int get_arg(const char *arg, int default_value, int flag, int argc, const char *
     return flag ? 0 : default_value;
 }
 
-int get_cpus(int argc, const char **argv) {
+static int get_cpus(int argc, const char **argv) {
     FILE *fr;
     char buf[1024];
     int n_cpus = get_arg("-c", 0, 0, argc, argv);

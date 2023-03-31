@@ -35,7 +35,7 @@ union addr_common {
     struct sockaddr_in v4;
 };
 
-lua_State *create_lua(int elfd, int id, const char *entrypoint);
+static lua_State *create_lua(int elfd, int id, const char *entrypoint);
 
 void *create_context(int elfd, int id, const char *entrypoint) {
     return (void*)create_lua(elfd, id, entrypoint);
@@ -589,7 +589,7 @@ LUALIB_API int luaopen_net(lua_State *L) {
     return 1;
 }
 
-lua_State *create_lua(int elfd, int id, const char *entrypoint) {
+static lua_State *create_lua(int elfd, int id, const char *entrypoint) {
     int status;
     lua_State *L = luaL_newstate();
 

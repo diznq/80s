@@ -41,16 +41,16 @@ void *serve(void *vparams) {
 
     signal(SIGPIPE, SIG_IGN);
 
-    // create local epoll and assign it to context's array of els, so others can reach it
+    // create local kqueue and assign it to context's array of els, so others can reach it
     elfd = els[id] = kqueue();
     if (elfd < 0)
-        error("serve: failed to create epoll");
+        error("serve: failed to create kqueue");
 
     // only one thread can poll on server socket and accept others!
     if (id == 0) {
         EV_SET(&ev, parentfd, EVFILT_READ, EV_ADD, 0, 0, NULL);
         if (kevent(elfd, &ev, 1, NULL, 0, NULL) == -1) {
-            error("serve: failed to add server socket to epoll");
+            error("serve: failed to add server socket to kqueue");
         }
     }
 
@@ -84,7 +84,7 @@ void *serve(void *vparams) {
                 // add the child socket to the event loop it belongs to based on modulo
                 // with number of workers, to balance the load to other threads
                 if (kevent(els[accepts++], &ev, 1, NULL, 0, NULL) < 0) {
-                    dbg("serve: on add child socket to epoll");
+                    dbg("serve: on add child socket to kqueue");
                 }
                 if (accepts == workers) {
                     accepts = 0;
