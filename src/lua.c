@@ -338,7 +338,7 @@ static int l_net_partscan(lua_State *L) {
 
     // if pattern is single character, we can afford to just use memchr for this
     if (pattern_len == 1) {
-        pattern = memchr(haystack, pattern[0], len);
+        pattern = (const char*)memchr((const void*)haystack, pattern[0], len);
         if (pattern) {
             lua_pushinteger(L, (lua_Integer)(pattern - haystack) + 1);
             lua_pushinteger(L, 1);

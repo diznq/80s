@@ -3,4 +3,6 @@
 bin/
 private/
 crymp/
+src/*.cpp
+build90s.sh
 *.env.sh
