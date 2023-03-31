@@ -81,7 +81,7 @@ int s80_connect(void *ctx, int elfd, const char *addr, int portno) {
     }
 
     if (!found) {
-        errno = ENODATA;
+        errno = EINVAL;
         return -1;
     }
 
