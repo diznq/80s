@@ -1,6 +1,8 @@
 #ifndef __80S_H__
 #define __80S_H__
 
+#include <stdint.h>
+
 #if defined(__FreeBSD__) || defined(__APPLE__)
 #define USE_KQUEUE
 #include <sys/event.h>
@@ -37,6 +39,11 @@ void on_receive(void *ctx, int elfd, int childfd, const char *buf, int readlen);
 void on_close(void *ctx, int elfd, int childfd);
 void on_write(void *ctx, int elfd, int childfd, int written);
 void on_init(void *ctx, int elfd, int parentfd);
+
+int s80_connect(void *ctx, int elfd, const char *addr, int port);
+ssize_t s80_write(void *ctx, int elfd, int childfd, const char *data, ssize_t offset, size_t len);
+int s80_close(void *ctx, int elfd, int childfd);
+int s80_peername(int fd, char* buf, size_t bufsize, int* port);
 
 #ifdef DEBUG
 #define dbg(message) printf("%s: %s\n", message, strerror(errno))

@@ -11,16 +11,6 @@
 #include <time.h>
 
 #include <dirent.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <strings.h>
-#include <unistd.h>
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
-
-#include <sys/socket.h>
-#include <sys/types.h>
 
 #ifdef USE_INOTIFY
 #include <sys/inotify.h>
@@ -30,10 +20,6 @@
 #include <sys/stat.h>
 #endif
 
-union addr_common {
-    struct sockaddr_in6 v6;
-    struct sockaddr_in v4;
-};
 
 static lua_State *create_lua(int elfd, int id, const char *entrypoint);
 
@@ -90,215 +76,58 @@ void on_init(void *ctx, int elfd, int parentfd) {
 
 static int l_net_write(lua_State *L) {
     size_t len;
-    struct event_t ev;
-    int status;
-
     int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
     const char *data = lua_tolstring(L, 3, &len);
     ssize_t offset = (ssize_t)lua_tointeger(L, 4);
-    ssize_t writelen = write(childfd, data + offset, len - offset);
-
-    if (writelen < 0 && errno != EWOULDBLOCK) {
-        dbg("l_net_write: write failed");
+    ssize_t writelen = s80_write((void*)L, elfd, childfd, data, offset, len);
+    if(writelen < 0) {
         lua_pushboolean(L, 0);
-        lua_pushinteger(L, errno);
+        lua_pushstring(L, strerror(errno));
     } else {
-        if (writelen < len) {
-
-#ifdef USE_EPOLL
-            ev.events = EPOLLIN | EPOLLOUT;
-            ev.data.fd = childfd;
-            status = epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev);
-#elif defined(USE_KQUEUE)
-            EV_SET(&ev, childfd, EVFILT_WRITE, EV_ADD, 0, 0, NULL);
-            status = kevent(elfd, &ev, 1, NULL, 0, NULL);
-#elif defined(USE_PORT)
-            status = port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN | POLLOUT, NULL);
-#endif
-
-            if (status < 0) {
-                dbg("l_net_write: failed to add socket to out poll");
-                lua_pushboolean(L, 0);
-                lua_pushinteger(L, errno);
-                return 2;
-            }
-        }
         lua_pushboolean(L, 1);
         lua_pushinteger(L, (lua_Integer)writelen);
     }
-
     return 2;
 }
 
 static int l_net_close(lua_State *L) {
-    size_t len;
-    struct event_t ev;
-    int status;
-
     int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
-
-#ifdef USE_EPOLL
-    ev.events = EPOLLIN | EPOLLOUT;
-    ev.data.fd = childfd;
-    status = epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev);
-#elif defined(USE_KQUEUE)
-    EV_SET(&ev, childfd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
-    // ignore this as socket might be in write mode, we don't care if it was not
-    status = kevent(elfd, &ev, 1, NULL, 0, NULL);
-    EV_SET(&ev, childfd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
-    status = kevent(elfd, &ev, 1, NULL, 0, NULL);
-#elif defined(USE_PORT)
-    status = port_dissociate(elfd, PORT_SOURCE_FD, childfd);
-#endif
-
-    if (status < 0) {
-        dbg("l_net_close: failed to remove child from epoll");
-        lua_pushboolean(L, 0);
-        return 1;
-    }
-    status = close(childfd);
-    if (status < 0) {
-        dbg("l_net_close: failed to close childfd");
-    }
-    on_close(L, elfd, childfd);
+    int status = s80_close((void*)L, elfd, childfd);
     lua_pushboolean(L, status >= 0);
     return 1;
 }
 
 static int l_net_connect(lua_State *L) {
-    size_t len;
-    struct event_t ev[2];
-    struct sockaddr_in ipv4addr;
-    struct sockaddr_in6 ipv6addr;
-    int status, i, found4 = 0, found6 = 0, usev6 = 0, found = 0, v6 = 0;
-    struct hostent *hp;
-    struct in_addr **ipv4;
-    struct in6_addr **ipv6;
-
     int elfd = (int)lua_touserdata(L, 1);
-    const char *addr = (const char *)lua_tolstring(L, 2, &len);
+    const char *addr = (const char *)lua_tostring(L, 2);
     int portno = (int)lua_tointeger(L, 3);
 
-    if (strstr(addr, "v6:") == addr) {
-        v6 = 1;
-        addr += 3;
-    }
-
-    hp = gethostbyname(addr);
-    if (hp == NULL) {
-        lua_pushnil(L);
-        lua_pushstring(L, "get host by name failed");
-        return 2;
-    }
-
-    bzero((void *)&ipv4addr, sizeof(ipv4addr));
-    bzero((void *)&ipv6addr, sizeof(ipv6addr));
-
-    ipv4addr.sin_family = AF_INET;
-    ipv4addr.sin_port = htons((unsigned short)portno);
-    ipv6addr.sin6_family = AF_INET6;
-    ipv6addr.sin6_port = htons((unsigned short)portno);
-
-    switch (hp->h_addrtype) {
-    case AF_INET:
-        ipv4 = (struct in_addr **)hp->h_addr_list;
-        for (i = 0; ipv4[i] != NULL; i++) {
-            ipv4addr.sin_addr.s_addr = ipv4[i]->s_addr;
-            found4 = 1;
-            break;
-        }
-        break;
-    case AF_INET6:
-        ipv6 = (struct in6_addr **)hp->h_addr_list;
-        for (i = 0; ipv6[i] != NULL; i++) {
-            ipv6addr.sin6_addr = ipv6[i][0];
-            found6 = 1;
-            break;
-        }
-    }
-
-    // create a non-blocking socket
-    int childfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
-
-    if (found6 && v6) {
-        found = 1;
-        usev6 = 1;
-    } else if (found4) {
-        found = 1;
-        usev6 = 0;
-    } else {
-        found = 0;
-    }
-
-    if (!found) {
-        lua_pushnil(L);
-        lua_pushstring(L, "get host by name failed, couldn't find any usable address");
-        return 2;
-    }
-
-    if (usev6) {
-        status = connect(childfd, (const struct sockaddr *)&ipv6addr, sizeof(ipv6addr));
-    } else {
-        status = connect(childfd, (const struct sockaddr *)&ipv4addr, sizeof(ipv4addr));
-    }
-    if (status == 0 || errno == EINPROGRESS) {
-
-#ifdef USE_EPOLL
-        // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
-        ev[0].events = EPOLLIN | EPOLLOUT;
-        ev[0].data.fd = childfd;
-        status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
-#elif defined(USE_KQUEUE)
-        // subscribe for both read and write separately
-        EV_SET(ev, childfd, EVFILT_READ, EV_ADD, 0, 0, NULL);
-        EV_SET(ev + 1, childfd, EVFILT_WRITE, EV_ADD, 0, 0, NULL);
-        status = kevent(elfd, ev, 2, NULL, 0, NULL);
-#elif defined(USE_PORT)
-        status = port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN | POLLOUT, NULL);
-#endif
-
-        if (status < 0) {
-            dbg("l_net_connect: failed to add child to epoll");
-            lua_pushnil(L);
-            lua_pushstring(L, strerror(errno));
-            return 2;
-        }
-        lua_pushlightuserdata(L, (void *)childfd);
-        lua_pushnil(L);
-    } else {
+    int childfd = s80_connect((void*)L, elfd, addr, portno);
+    if(childfd < 0) {
         lua_pushnil(L);
         lua_pushstring(L, strerror(errno));
+    } else {
+        lua_pushlightuserdata(L, (void*)childfd);
+        lua_pushnil(L);
     }
-
     return 2;
 }
 
 static int l_net_sockname(lua_State *L) {
-    union addr_common addr;
-    socklen_t clientlen;
     char buf[500];
+    int port;
     int fd = (int)lua_touserdata(L, 1);
+    int status = s80_peername(fd, buf, sizeof(buf), &port);
 
-    if(getsockname(fd, (struct sockaddr*)&addr, &clientlen) < 0) {
+    if(!status) {
         return 0;
     }
 
-    if (clientlen == sizeof(struct sockaddr_in)) {
-        inet_ntop(AF_INET, &addr.v4.sin_addr, buf, clientlen);
-        lua_pushstring(L, buf);
-        lua_pushinteger(L, ntohs(addr.v4.sin_port));
-        return 2;
-    } else if(clientlen == sizeof(struct sockaddr_in6)) {
-        inet_ntop(AF_INET, &addr.v6.sin6_addr, buf, clientlen);
-        lua_pushstring(L, buf);
-        lua_pushinteger(L, ntohs(addr.v6.sin6_port));
-        return 2;
-    } else {
-        return 0;
-    }
+    lua_pushstring(L, buf);
+    lua_pushinteger(L, port);
+    return 2;
 }
 
 static int l_net_reload(lua_State *L) {
