@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <threads.h>
 
 #include <fcntl.h>
 #include <netdb.h>
@@ -27,7 +26,7 @@ void *serve(void *vparams) {
     int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id;
     socklen_t clientlen;
     unsigned accepts;
-    lua_State *L;
+    void *ctx;
     union addr_common clientaddr;
     struct kevent ev, events[MAX_EVENTS];
     struct serve_params *params;
@@ -55,13 +54,13 @@ void *serve(void *vparams) {
         }
     }
 
-    L = create_lua(elfd, id, params->entrypoint);
+    ctx = create_lua(elfd, id, params->entrypoint);
 
-    if (L == NULL) {
-        error("failed to initialize Lua");
+    if (ctx == NULL) {
+        error("failed to initialize context");
     }
 
-    on_init(L, elfd, parentfd);
+    on_init(ctx, elfd, parentfd);
 
     for (;;) {
         // wait for new events
@@ -100,7 +99,7 @@ void *serve(void *vparams) {
                         dbg("serve: failed to move child socket from out to in");
                         continue;
                     }
-                    on_write(L, elfd, childfd, 0);
+                    on_write(ctx, elfd, childfd, 0);
                     break;
                 case EVFILT_READ:
                     buf[0] = 0;
@@ -111,9 +110,9 @@ void *serve(void *vparams) {
                             dbg("serve: failed to close child socket");
                             continue;
                         }
-                        on_close(L, elfd, childfd);
+                        on_close(ctx, elfd, childfd);
                     } else {
-                        on_receive(L, elfd, childfd, buf, readlen);
+                        on_receive(ctx, elfd, childfd, buf, readlen);
                     }
                     break;
                 }
@@ -121,7 +120,7 @@ void *serve(void *vparams) {
         }
     }
 
-    lua_close(L);
+    close_context(ctx);
 
     return NULL;
 }

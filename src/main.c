@@ -31,45 +31,6 @@ void error(const char *msg) {
     exit(1);
 }
 
-void on_receive(lua_State *L, int elfd, int childfd, const char *buf, int readlen) {
-    lua_getglobal(L, "on_data");
-    lua_pushlightuserdata(L, (void *)elfd);
-    lua_pushlightuserdata(L, (void *)childfd);
-    lua_pushlstring(L, buf, readlen);
-    lua_pushinteger(L, readlen);
-    if (lua_pcall(L, 4, 0, 0) != 0) {
-        printf("on_receive: error running on_data: %s\n", lua_tostring(L, -1));
-    }
-}
-
-void on_close(lua_State *L, int elfd, int childfd) {
-    lua_getglobal(L, "on_close");
-    lua_pushlightuserdata(L, (void *)elfd);
-    lua_pushlightuserdata(L, (void *)childfd);
-    if (lua_pcall(L, 2, 0, 0) != 0) {
-        printf("on_close: error running on_data: %s\n", lua_tostring(L, -1));
-    }
-}
-
-void on_write(lua_State *L, int elfd, int childfd, int written) {
-    lua_getglobal(L, "on_write");
-    lua_pushlightuserdata(L, (void *)elfd);
-    lua_pushlightuserdata(L, (void *)childfd);
-    lua_pushinteger(L, written);
-    if (lua_pcall(L, 3, 0, 0) != 0) {
-        printf("on_write: error running on_write: %s\n", lua_tostring(L, -1));
-    }
-}
-
-void on_init(lua_State *L, int elfd, int parentfd) {
-    lua_getglobal(L, "on_init");
-    lua_pushlightuserdata(L, (void *)elfd);
-    lua_pushlightuserdata(L, (void *)parentfd);
-    if (lua_pcall(L, 2, 0, 0) != 0) {
-        printf("on_init: error running on_data: %s\n", lua_tostring(L, -1));
-    }
-}
-
 int get_arg(const char *arg, int default_value, int flag, int argc, const char **argv) {
     int i, off = flag ? 0 : 1;
     for (i = 1; i < argc - off; i++) {

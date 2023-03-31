@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <threads.h>
 
 #include <fcntl.h>
 #include <netdb.h>
@@ -27,7 +26,7 @@ void *serve(void *vparams) {
     int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id;
     socklen_t clientlen;
     unsigned accepts;
-    lua_State *L;
+    void *ctx;
     union addr_common clientaddr;
     struct port_event ev, events[MAX_EVENTS];
     struct serve_params *params;
@@ -54,13 +53,13 @@ void *serve(void *vparams) {
         }
     }
 
-    L = create_lua(elfd, id, params->entrypoint);
+    ctx = create_context(elfd, id, params->entrypoint);
 
-    if (L == NULL) {
-        error("failed to initialize Lua");
+    if (ctx == NULL) {
+        error("failed to initialize context");
     }
 
-    on_init(L, elfd, parentfd);
+    on_init(ctx, elfd, parentfd);
 
     for (;;) {
         // wait for new event
@@ -99,7 +98,7 @@ void *serve(void *vparams) {
                     // unlike on BSD and Linux, we don't need to remove it from event loop
                     // as on Solaris it needs to be reassociated instead, so if we don't,
                     // it's same as if we've had removed it
-                    on_write(L, elfd, childfd, 0);
+                    on_write(ctx, elfd, childfd, 0);
                 }
                 if ((events[n].portev_events & POLLIN) == POLLIN) {
                     buf[0] = 0;
@@ -113,20 +112,20 @@ void *serve(void *vparams) {
                             dbg("serve: failed to close child socket");
                             continue;
                         }
-                        on_close(L, elfd, childfd);
+                        on_close(ctx, elfd, childfd);
                     } else {
                         // reassociate with port only on success
                         if (port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN, NULL) < 0) {
                             dbg("serve: failed to reassociate child socket");
                         }
-                        on_receive(L, elfd, childfd, buf, readlen);
+                        on_receive(ctx, elfd, childfd, buf, readlen);
                     }
                 }
             }
         }
     }
 
-    lua_close(L);
+    close_context(ctx);
 
     return NULL;
 }

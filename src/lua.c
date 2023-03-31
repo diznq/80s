@@ -35,6 +35,59 @@ union addr_common {
     struct sockaddr_in v4;
 };
 
+lua_State *create_lua(int elfd, int id, const char *entrypoint);
+
+void *create_context(int elfd, int id, const char *entrypoint) {
+    return (void*)create_lua(elfd, id, entrypoint);
+}
+
+void close_context(void* ctx) {
+    lua_close((lua_State*)ctx);
+}
+
+void on_receive(void *ctx, int elfd, int childfd, const char *buf, int readlen) {
+    lua_State *L = (lua_State*)ctx;
+    lua_getglobal(L, "on_data");
+    lua_pushlightuserdata(L, (void *)elfd);
+    lua_pushlightuserdata(L, (void *)childfd);
+    lua_pushlstring(L, buf, readlen);
+    lua_pushinteger(L, readlen);
+    if (lua_pcall(L, 4, 0, 0) != 0) {
+        printf("on_receive: error running on_data: %s\n", lua_tostring(L, -1));
+    }
+}
+
+void on_close(void *ctx, int elfd, int childfd) {
+    lua_State *L = (lua_State*)ctx;
+    lua_getglobal(L, "on_close");
+    lua_pushlightuserdata(L, (void *)elfd);
+    lua_pushlightuserdata(L, (void *)childfd);
+    if (lua_pcall(L, 2, 0, 0) != 0) {
+        printf("on_close: error running on_data: %s\n", lua_tostring(L, -1));
+    }
+}
+
+void on_write(void *ctx, int elfd, int childfd, int written) {
+    lua_State *L = (lua_State*)ctx;
+    lua_getglobal(L, "on_write");
+    lua_pushlightuserdata(L, (void *)elfd);
+    lua_pushlightuserdata(L, (void *)childfd);
+    lua_pushinteger(L, written);
+    if (lua_pcall(L, 3, 0, 0) != 0) {
+        printf("on_write: error running on_write: %s\n", lua_tostring(L, -1));
+    }
+}
+
+void on_init(void *ctx, int elfd, int parentfd) {
+    lua_State *L = (lua_State*)ctx;
+    lua_getglobal(L, "on_init");
+    lua_pushlightuserdata(L, (void *)elfd);
+    lua_pushlightuserdata(L, (void *)parentfd);
+    if (lua_pcall(L, 2, 0, 0) != 0) {
+        printf("on_init: error running on_data: %s\n", lua_tostring(L, -1));
+    }
+}
+
 static int l_net_write(lua_State *L) {
     size_t len;
     struct event_t ev;
