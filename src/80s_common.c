@@ -36,6 +36,7 @@ int s80_connect(void *ctx, int elfd, const char *addr, int portno) {
 
     hp = gethostbyname(addr);
     if (hp == NULL) {
+        errno = EINVAL;
         return -1;
     }
 
@@ -80,6 +81,7 @@ int s80_connect(void *ctx, int elfd, const char *addr, int portno) {
     }
 
     if (!found) {
+        errno = ENODATA;
         return -1;
     }
 
