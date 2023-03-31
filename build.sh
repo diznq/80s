@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 
 if [[ -z "${LUA_LIB_PATH}" ]]; then
   LUA_LIB="/usr/local/lib/liblua.a"
@@ -16,15 +16,15 @@ FLAGS="-s -O2"
 OUT="${OUT:-bin/80s}"
 CC="${CC:-gcc}"
 
-if [[ "${JIT}" == "true" ]]; then
+if [ "${JIT}" == "true" ]; then
 
-    if [[ -z "${LUA_JIT_LIB_PATH}" ]]; then
+    if [ -z "${LUA_JIT_LIB_PATH}" ]; then
       LUA_LIB="/usr/local/lib/libluajit-5.1.a"
     else
       LUA_LIB="${LUA_JIT_LIB_PATH}"
     fi
 
-    if [[ -z "${LUA_JIT_INC_PATH}" ]]; then
+    if [ -z "${LUA_JIT_INC_PATH}" ]; then
       LUA_INC="/usr/local/include/luajit-2.1/"
     else
       LUA_INC="${LUA_JIT_INC_PATH}"
@@ -45,11 +45,11 @@ mkdir -p bin
 DEFINES=""
 LIBS="-lm -ldl -lpthread -lcrypto"
 
-if [[ $(uname) == "SunOS" ]]; then
+if [ $(uname) == "SunOS" ]; then
   LIBS="$LIBS -lsocket -lnsl"
 fi
 
-if [[ "$DEBUG" == "true" ]]; then
+if [ "$DEBUG" == "true" ]; then
     DEFINES="$DEFINES -DDEBUG=1"
     FLAGS="-O0 -g"
 fi
