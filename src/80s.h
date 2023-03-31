@@ -1,6 +1,8 @@
 #ifndef __80S_H__
 #define __80S_H__
-
+#ifdef __cplusplus
+extern "C" {
+#endif
 #include <stdint.h>
 
 #if defined(__FreeBSD__) || defined(__APPLE__)
@@ -54,4 +56,7 @@ int s80_peername(int fd, char *buf, size_t bufsize, int *port);
 #define BUFSIZE 16384
 #define MAX_EVENTS 4096
 
+#ifdef __cplusplus
+}
+#endif
 #endif
