@@ -1,7 +1,7 @@
 #include "80s.h"
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 #include <fcntl.h>
 #include <netdb.h>
@@ -173,11 +173,11 @@ int s80_close(void *ctx, int elfd, int childfd) {
     return status;
 }
 
-int s80_peername(int fd, char* buf, size_t bufsize, int* port) {
+int s80_peername(int fd, char *buf, size_t bufsize, int *port) {
     union addr_common addr;
     socklen_t clientlen;
 
-    if(getsockname(fd, (struct sockaddr*)&addr, &clientlen) < 0) {
+    if (getsockname(fd, (struct sockaddr *)&addr, &clientlen) < 0) {
         return 0;
     }
 
@@ -185,7 +185,7 @@ int s80_peername(int fd, char* buf, size_t bufsize, int* port) {
         inet_ntop(AF_INET, &addr.v4.sin_addr, buf, clientlen);
         *port = ntohs(addr.v4.sin_port);
         return 1;
-    } else if(clientlen == sizeof(struct sockaddr_in6)) {
+    } else if (clientlen == sizeof(struct sockaddr_in6)) {
         inet_ntop(AF_INET, &addr.v6.sin6_addr, buf, clientlen);
         *port = ntohs(addr.v6.sin6_port);
         return 1;

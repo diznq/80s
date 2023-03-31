@@ -35,7 +35,7 @@ static int get_arg(const char *arg, int default_value, int flag, int argc, const
     int i, off = flag ? 0 : 1;
     for (i = 1; i < argc - off; i++) {
         if (!strcmp(argv[i], arg)) {
-            if(flag) {
+            if (flag) {
                 return 1;
             }
             return atoi(argv[i + 1]);
@@ -72,7 +72,7 @@ static int get_cpus(int argc, const char **argv) {
 
 int main(int argc, const char **argv) {
     const int workers = get_cpus(argc, argv);
-    int elfd, parentfd, optval, i, 
+    int elfd, parentfd, optval, i,
         portno = get_arg("-p", 8080, 0, argc, argv),
         v6 = get_arg("-6", 0, 1, argc, argv);
     union addr_common serveraddr;
@@ -92,7 +92,7 @@ int main(int argc, const char **argv) {
 
     printf("port: %d, cpus: %d, v6: %d\n", portno, workers, !!v6);
 
-    parentfd = socket(v6? AF_INET6 : AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    parentfd = socket(v6 ? AF_INET6 : AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
     if (parentfd < 0)
         error("main: failed to create server socket");
@@ -101,7 +101,7 @@ int main(int argc, const char **argv) {
     setsockopt(parentfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
     bzero((void *)&serveraddr, sizeof(serveraddr));
 
-    if(v6) {
+    if (v6) {
         serveraddr.v6.sin6_family = AF_INET6;
         serveraddr.v6.sin6_port = htons((unsigned short)portno);
     } else {
@@ -110,7 +110,7 @@ int main(int argc, const char **argv) {
         serveraddr.v4.sin_port = htons((unsigned short)portno);
     }
 
-    if (bind(parentfd, (struct sockaddr *)(v6 ? (void*)&serveraddr.v6 : (void*)&serveraddr.v4), v6 ? sizeof(serveraddr.v6) : sizeof(serveraddr.v4)) < 0)
+    if (bind(parentfd, (struct sockaddr *)(v6 ? (void *)&serveraddr.v6 : (void *)&serveraddr.v4), v6 ? sizeof(serveraddr.v6) : sizeof(serveraddr.v4)) < 0)
         error("main: failed to bind server socket");
 
     if (listen(parentfd, 20000) < 0)

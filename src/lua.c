@@ -20,19 +20,18 @@
 #include <sys/stat.h>
 #endif
 
-
 static lua_State *create_lua(int elfd, int id, const char *entrypoint);
 
 void *create_context(int elfd, int id, const char *entrypoint) {
-    return (void*)create_lua(elfd, id, entrypoint);
+    return (void *)create_lua(elfd, id, entrypoint);
 }
 
-void close_context(void* ctx) {
-    lua_close((lua_State*)ctx);
+void close_context(void *ctx) {
+    lua_close((lua_State *)ctx);
 }
 
 void on_receive(void *ctx, int elfd, int childfd, const char *buf, int readlen) {
-    lua_State *L = (lua_State*)ctx;
+    lua_State *L = (lua_State *)ctx;
     lua_getglobal(L, "on_data");
     lua_pushlightuserdata(L, (void *)elfd);
     lua_pushlightuserdata(L, (void *)childfd);
@@ -44,7 +43,7 @@ void on_receive(void *ctx, int elfd, int childfd, const char *buf, int readlen) 
 }
 
 void on_close(void *ctx, int elfd, int childfd) {
-    lua_State *L = (lua_State*)ctx;
+    lua_State *L = (lua_State *)ctx;
     lua_getglobal(L, "on_close");
     lua_pushlightuserdata(L, (void *)elfd);
     lua_pushlightuserdata(L, (void *)childfd);
@@ -54,7 +53,7 @@ void on_close(void *ctx, int elfd, int childfd) {
 }
 
 void on_write(void *ctx, int elfd, int childfd, int written) {
-    lua_State *L = (lua_State*)ctx;
+    lua_State *L = (lua_State *)ctx;
     lua_getglobal(L, "on_write");
     lua_pushlightuserdata(L, (void *)elfd);
     lua_pushlightuserdata(L, (void *)childfd);
@@ -65,7 +64,7 @@ void on_write(void *ctx, int elfd, int childfd, int written) {
 }
 
 void on_init(void *ctx, int elfd, int parentfd) {
-    lua_State *L = (lua_State*)ctx;
+    lua_State *L = (lua_State *)ctx;
     lua_getglobal(L, "on_init");
     lua_pushlightuserdata(L, (void *)elfd);
     lua_pushlightuserdata(L, (void *)parentfd);
@@ -80,8 +79,8 @@ static int l_net_write(lua_State *L) {
     int childfd = (int)lua_touserdata(L, 2);
     const char *data = lua_tolstring(L, 3, &len);
     ssize_t offset = (ssize_t)lua_tointeger(L, 4);
-    ssize_t writelen = s80_write((void*)L, elfd, childfd, data, offset, len);
-    if(writelen < 0) {
+    ssize_t writelen = s80_write((void *)L, elfd, childfd, data, offset, len);
+    if (writelen < 0) {
         lua_pushboolean(L, 0);
         lua_pushstring(L, strerror(errno));
     } else {
@@ -94,7 +93,7 @@ static int l_net_write(lua_State *L) {
 static int l_net_close(lua_State *L) {
     int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
-    int status = s80_close((void*)L, elfd, childfd);
+    int status = s80_close((void *)L, elfd, childfd);
     lua_pushboolean(L, status >= 0);
     return 1;
 }
@@ -104,12 +103,12 @@ static int l_net_connect(lua_State *L) {
     const char *addr = (const char *)lua_tostring(L, 2);
     int portno = (int)lua_tointeger(L, 3);
 
-    int childfd = s80_connect((void*)L, elfd, addr, portno);
-    if(childfd < 0) {
+    int childfd = s80_connect((void *)L, elfd, addr, portno);
+    if (childfd < 0) {
         lua_pushnil(L);
         lua_pushstring(L, strerror(errno));
     } else {
-        lua_pushlightuserdata(L, (void*)childfd);
+        lua_pushlightuserdata(L, (void *)childfd);
         lua_pushnil(L);
     }
     return 2;
@@ -121,7 +120,7 @@ static int l_net_sockname(lua_State *L) {
     int fd = (int)lua_touserdata(L, 1);
     int status = s80_peername(fd, buf, sizeof(buf), &port);
 
-    if(!status) {
+    if (!status) {
         return 0;
     }
 
@@ -314,7 +313,7 @@ static int l_net_listdir(lua_State *L) {
     return 1;
 }
 
-static int l_net_clock(lua_State* L) {
+static int l_net_clock(lua_State *L) {
     struct timespec tp;
     double t;
     clock_gettime(CLOCK_MONOTONIC, &tp);

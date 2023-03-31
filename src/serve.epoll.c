@@ -26,7 +26,7 @@ void *serve(void *vparams) {
     int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id;
     socklen_t clientlen;
     unsigned accepts;
-    void* ctx;
+    void *ctx;
     union addr_common clientaddr;
     struct epoll_event ev, events[MAX_EVENTS];
     struct serve_params *params;
