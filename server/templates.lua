@@ -100,7 +100,7 @@ function templates:prepare(content, base)
             table.insert(lines, line)
         end
         match = table.concat(lines, "\n") .. "\n"
-        local compiled, err = load("return function(fd, session, locals, headers, body, endpoint, query, write, escape, post_render, await, header, status, done, to_url)" .. match .. "end")
+        local compiled, err = load("return function(fd, session, locals, headers, body, method, endpoint, query, write, escape, post_render, await, header, status, done, to_url)" .. match .. "end")
         if not compiled then
             table.insert(context.parts, function (input, output, done)
                 done(err)
@@ -118,6 +118,7 @@ function templates:prepare(content, base)
                     input.locals,
                     input.headers,
                     input.body,
+                    input.method,
                     input.endpoint, 
                     input.query,
                     function(text, ...)
@@ -173,7 +174,7 @@ end
 ---@param mime string expected mime type
 ---@param ctx templatectx prepared template context
 ---@return fun(on_resolved: fun(result: render_result)) promise
-function templates:render(fd, session, headers, body, endpoint, query, mime, ctx)
+function templates:render(fd, session, headers, body, method, endpoint, query, mime, ctx)
     local on_resolved, resolve_event = aio:prepare_promise()
 
     -- if there is no dynamic content, resolve immediately
@@ -200,6 +201,7 @@ function templates:render(fd, session, headers, body, endpoint, query, mime, ctx
         headers = headers,
         locals = {},
         body = body,
+        method = method,
         endpoint = endpoint,
         query = query
     }
