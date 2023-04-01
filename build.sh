@@ -1,12 +1,12 @@
 #!/usr/bin/env sh
 
-if [[ -z "${LUA_LIB_PATH}" ]]; then
+if [ -z "${LUA_LIB_PATH}" ]; then
   LUA_LIB="/usr/local/lib/liblua.a"
 else
   LUA_LIB="${LUA_LIB_PATH}"
 fi
 
-if [[ -z "${LUA_INC_PATH}" ]]; then
+if [ -z "${LUA_INC_PATH}" ]; then
   LUA_INC="/usr/local/include/"
 else
   LUA_INC="${LUA_INC_PATH}"
