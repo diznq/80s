@@ -26,7 +26,7 @@ You can also define following environment variables before running the build to 
 - `JIT=true`: use LuaJIT instead of Lua
 - `DEBUG=true`: compile in debug mode
 
-i.e. `JIT=true CRYPTO=true WORKERS=8 ./build.sh`
+i.e. `JIT=true ./build.sh`
 
 ### Using VSCode devcontainer
 
