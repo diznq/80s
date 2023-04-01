@@ -6,7 +6,8 @@ struct kmp_result kmp(const char* haystack, size_t len, const char* pattern, siz
     ssize_t i, j, k;
     struct kmp_result result;
     int match = 0, KMP_T[256];
-    result.length = len;
+    result.offset = len;
+    result.length = 0;
 
     if (len == 0 || pattern_len == 0) {
         return result;
@@ -17,6 +18,7 @@ struct kmp_result kmp(const char* haystack, size_t len, const char* pattern, siz
         pattern = (const char*)memchr((const void*)haystack, pattern[0], len);
         if (pattern) {
             result.offset = (size_t)(pattern - haystack);
+            result.length = 1;
         }
         return result;
     }

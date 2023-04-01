@@ -345,7 +345,7 @@ LUALIB_API int luaopen_net(lua_State *L) {
         {"listdir", l_net_listdir},
         {"inotify_init", l_net_inotify_init},
         {"inotify_add", l_net_inotify_add},
-        {"inotify_remoev", l_net_inotify_remove},
+        {"inotify_remove", l_net_inotify_remove},
         {"inotify_read", l_net_inotify_read},
         {"partscan", l_net_partscan},
         {"clock", l_net_clock},
