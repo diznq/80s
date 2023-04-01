@@ -78,6 +78,9 @@ local ormtypes = {
             if type(value) == "string" then
                 return value
             end
+            if type(value) == "number" then
+                value = os.date("*t", value)
+            end
             if type(value) ~= "table" then
                 value = os.date("*t")
             end
