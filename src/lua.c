@@ -1,6 +1,7 @@
 #include "80s.h"
 #include "lua_codec.h"
 #include "lua_crypto.h"
+#include "algo.h"
 
 #include <lauxlib.h>
 #include <lualib.h>
@@ -323,74 +324,14 @@ static int l_net_clock(lua_State *L) {
 }
 
 static int l_net_partscan(lua_State *L) {
-    ssize_t len, pattern_len, offset;
-    ssize_t i, j, k;
-    int match = 0, KMP_T[256];
-    const char *haystack = lua_tolstring(L, 1, (size_t *)&len);
-    const char *pattern = lua_tolstring(L, 2, (size_t *)&pattern_len);
+    size_t len, pattern_len, offset;
+    const char *haystack = lua_tolstring(L, 1, &len);
+    const char *pattern = lua_tolstring(L, 2, &pattern_len);
     offset = ((size_t)lua_tointeger(L, 3)) - 1;
 
-    if (len == 0 || pattern_len == 0) {
-        lua_pushinteger(L, (lua_Integer)len + 1);
-        lua_pushinteger(L, 0);
-        return 2;
-    }
-
-    // if pattern is single character, we can afford to just use memchr for this
-    if (pattern_len == 1) {
-        pattern = (const char*)memchr((const void*)haystack, pattern[0], len);
-        if (pattern) {
-            lua_pushinteger(L, (lua_Integer)(pattern - haystack) + 1);
-            lua_pushinteger(L, 1);
-            return 2;
-        } else {
-            lua_pushinteger(L, (lua_Integer)len + 1);
-            lua_pushinteger(L, 0);
-            return 2;
-        }
-    }
-
-    // use Knuth-Morris-Pratt algorithm to find a partial substring in haystack with O(m+n) complexity
-    KMP_T[0] = -1;
-    j = 0;
-    i = 1;
-    while (i < pattern_len) {
-        if (pattern[i] == pattern[j]) {
-            KMP_T[i] = KMP_T[j];
-        } else {
-            KMP_T[i] = j;
-            while (j >= 0 && pattern[i] != pattern[j]) {
-                j = KMP_T[j];
-            }
-        }
-        i++, j++;
-    }
-    KMP_T[i] = j;
-
-    j = offset;
-    k = 0;
-    while (j < len) {
-        if (pattern[k] == haystack[j]) {
-            j++;
-            k++;
-            if (k == pattern_len) {
-                lua_pushinteger(L, (lua_Integer)(j - k + 1));
-                lua_pushinteger(L, (lua_Integer)k);
-                return 2;
-            }
-        } else if (j == len) {
-            break;
-        } else {
-            k = KMP_T[k];
-            if (k < 0) {
-                j++;
-                k++;
-            }
-        }
-    }
-
-    lua_pushinteger(L, (lua_Integer)(j - k + 1));
-    lua_pushinteger(L, (lua_Integer)k);
+    struct kmp_result result = kmp(haystack, len, pattern, pattern_len, offset);
+    lua_pushinteger(L, (lua_Integer)(result.offset + 1));
+    lua_pushinteger(L, (lua_Integer)result.length);
     return 2;
 }
 

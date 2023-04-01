@@ -60,7 +60,7 @@ echo "Flags: $FLAGS"
 echo "Lua include directory: $LUA_INC"
 echo "Lua library directory: $LUA_LIB"
 
-$CC src/80s.c src/80s_common.c src/dynstr.c \
+$CC src/80s.c src/80s_common.c src/dynstr.c src/algo.c \
     src/lua.c src/lua_codec.c src/lua_crypto.c \
     src/serve.epoll.c src/serve.kqueue.c src/serve.port.c \
     "$LUA_LIB" \
