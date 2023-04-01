@@ -6,9 +6,10 @@ local mysql = require("server.mysql")
 --- @field field string
 --- @field type ormtype
 
---- @alias ormcount fun(...): fun(on_resolved: fun(result: integer|nil, error: string|nil))
---- @alias ormone fun(...): fun(on_resolved: fun(result: table|nil, error: string|nil))
---- @alias ormall fun(...): fun(on_resolved: fun(result: table[]|nil, error: string|nil))
+--- @alias ormerror {error: string}
+--- @alias ormcount fun(...): fun(on_resolved: fun(result: integer|nil|ormerror))
+--- @alias ormone fun(...): fun(on_resolved: fun(result: table|nil|ormerror))
+--- @alias ormall fun(...): fun(on_resolved: fun(result: table[]|nil|ormerror))
 --- @alias orminsert fun(...): fun(on_resolved: fun(result: mysqlerror|mysqlok|mysqleof))
 --- @alias ormrepo {all: {[string]: ormall}, one: {[string]: ormone}, count: {[string]: ormcount}, entity: ormentity, source: string, insert: orminsert, update: ormupdate}
 --- @alias ormupdate fun(self, entity: {[string]: any}, update: {[string]: any}): fun(on_resolved: fun(result: mysqlerror|mysqlok|mysqleof))
@@ -281,7 +282,8 @@ function orm:create_method(sql, query, types, decoders, single, count, parent)
             -- or (obj) for single result that has been found
             -- or (obj[]) for multi-result
             if not rows then
-                on_resolved(nil, errorOrColumns)
+                ---@diagnostic disable-next-line: need-check-nil, param-type-mismatch
+                on_resolved(make_error(errorOrColumns["error"] or "select error"))
             else
                 local results = {}
                 for _, row in ipairs(rows) do
@@ -310,9 +312,9 @@ function orm:create_method(sql, query, types, decoders, single, count, parent)
                     local result = nil
                     if #results == 1 then result = results[1] end
                     if count then result = result.c end
-                    on_resolved(result, nil)
+                    on_resolved(result)
                 else
-                    on_resolved(results, nil)
+                    on_resolved(results)
                 end
             end
         end)

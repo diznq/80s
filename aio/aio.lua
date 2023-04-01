@@ -65,6 +65,32 @@ WORKERID = WORKERID or nil
 
 unpack = unpack or table.unpack
 
+--- Check whether value is error
+---@param value any
+---@return boolean
+function iserror(value)
+    return value and type(value) == "table" and value.error
+end
+
+--- Check whether result(s) contains data and is not error
+---@param ... any
+---@return boolean
+function ispresent(...)
+    local ok = true
+    for _, value in ipairs({...}) do
+        ok = value ~= nil and not iserror(value)
+        if not ok then return false end
+    end
+    return true
+end
+
+--- Create error result
+---@param message string
+---@return table
+function make_error(message)
+    return { error = message }
+end
+
 --- AIOsocket class
 --- Provides easy wrapper to receive events per object instead of globally
 ---
