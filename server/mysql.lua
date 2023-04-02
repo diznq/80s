@@ -179,6 +179,55 @@ function mysql_decoder:lenint()
     end
 end
 
+local mysql_pool = {}
+function mysql_pool:new(size)
+    local connections = {}
+    local utilization = {}
+    for i=1, size do
+        table.insert(connections, mysql:new())
+        table.insert(utilization, 0)
+    end
+
+    local pick = function()
+        local least = nil
+        local least_conn = nil
+        local least_i = nil
+        for i, v in ipairs(connections) do
+            local cbs = #v.callbacks + (v.active_callback and 1 or 0)
+            if least == nil or cbs < least then
+                least = cbs
+                least_conn = v
+                least_i = i
+            end
+        end
+        utilization[least_i] = utilization[least_i] + 1
+        return least_conn
+    end
+
+    local connect = function(self, ...)
+        local promises = {}
+        for _, conn in ipairs(connections) do
+            table.insert(promises, conn:connect(...))
+        end
+        return aio:gather(unpack(promises))
+    end
+
+    local mt = {
+        __index = function(t, k)
+            if k == "connect" then return connect
+            elseif k == "pick" then return pick
+            else
+                local conn = pick()
+                return function(self, ...)
+                    return conn[k](conn, ...)
+                end
+            end
+        end
+    }
+
+    return setmetatable({}, mt)
+end
+
 --- Initialize new MySQL instance
 ---@return mysql instance
 function mysql:new()
@@ -194,6 +243,15 @@ function mysql:new()
     self.__index = self
     instance:reset()
     return instance
+end
+
+--- Create MySQL pool
+---@param size integer pool size, default 1
+function mysql:new_pool(size)
+    size = size or 1
+    if size == 1 then return mysql:new() end
+    local pool = mysql_pool:new(size)
+    return pool
 end
 
 function mysql:reset()
