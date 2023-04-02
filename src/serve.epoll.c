@@ -124,7 +124,7 @@ void *serve(void *vparams) {
                         on_receive(ctx, elfd, childfd, buf, readlen);
                     }
                 }
-                if ((events[n].events & EPOLLHUP) == EPOLLHUP) {
+                if ((events[n].events & (EPOLLERR | EPOLLHUP))) {
                     ev.events = EPOLLIN;
                     ev.data.fd = childfd;
                     if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {

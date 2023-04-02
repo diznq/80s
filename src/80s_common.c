@@ -214,11 +214,10 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
     }
     
     //              parent r / w          child  w / r
-    int pipes[4] = {piperd[0], pipewr[0], pipewr[1], piperd[1]};
-    for(i=0; i<4; i++) {
+    int pipes[4] = {piperd[0], pipewr[1], pipewr[0], piperd[1]};
+    for(i=0; i<2; i++) {
         childfd = pipes[i];
         fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
-        if(i >= 2) continue;
         pipes_out[i] = childfd;
 #ifdef USE_EPOLL
         // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
@@ -248,12 +247,12 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
         dup2(piperd[1], STDOUT_FILENO);
         dup2(piperd[1], STDERR_FILENO);
 
-        close(pipes[0]);
-        close(pipes[1]);
+        close(pipewr[1]);
+        close(piperd[0]);
         _exit(execvp(command, args));
     } else {
-        close(pipes[2]);
-        close(pipes[3]);
+        close(pipewr[0]);
+        close(piperd[1]);
     }
     return 0;
 }
