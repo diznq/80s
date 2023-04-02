@@ -1,5 +1,5 @@
-#ifndef __80S_LUA_crypto_H__
-#define __80S_LUA_crypto_H__
+#ifndef __80S_LUA_CRYPTO_H__
+#define __80S_LUA_CRYPTO_H__
 #include <lua.h>
 
 // Lua cryptography extensions
