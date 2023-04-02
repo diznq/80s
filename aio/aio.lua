@@ -25,6 +25,7 @@ net = net or {}
 --- @class crypto
 --- @field sha1 fun(data: string): string perform sha1(data), returns bytestring with raw data
 --- @field sha256 fun(data: string): string perform sha256(data), returns bytestring with raw data
+--- @field hmac_sha256 fun(data: string, key: string): string perform HMAC SHA256, returns bytestring with raw data
 --- @field cipher fun(data: string, key: string, iv: boolean, encrypt: boolean): result: string?, error: string perform encryption/decryption, if iv is false, iv is all zeros and not inserted to result, key must be at least 128 bits
 --- @field to64 fun(data: string): string encode to base64
 --- @field from64 fun(data: string): string decode from base64

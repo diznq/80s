@@ -35,6 +35,20 @@ static int l_crypto_sha256(lua_State *L) {
     return 1;
 }
 
+static int l_crypto_hmac_sha256(lua_State* L) {
+    if(lua_gettop(L) != 2 || lua_type(L, 1) != LUA_TSTRING || lua_type(L, 2) != LUA_TSTRING) {
+        return luaL_error(L, "expecting 2 argument: text (string), key (string)");
+    }
+    size_t len, key_len;
+    unsigned int hmac_len = 32;
+    const char *data = lua_tolstring(L, 1, &len);
+    const char *key = lua_tolstring(L, 2, &key_len);
+    char signature[32];
+    HMAC(EVP_sha256(), (const void *)key, (int)key_len, (const unsigned char *)(data), len, (unsigned char *)signature, &hmac_len);
+    lua_pushlstring(L, signature, 32);
+    return 1;  
+}
+
 static int l_crypto_cipher(lua_State *L) {
     if(lua_gettop(L) != 4 || lua_type(L, 1) != LUA_TSTRING || lua_type(L, 2) != LUA_TSTRING || lua_type(L, 3) != LUA_TBOOLEAN || lua_type(L, 4) != LUA_TBOOLEAN) {
         return luaL_error(L, "expecting 4 arguments: data (string), key (string), iv (bool), encrypt (bool)");
@@ -157,7 +171,7 @@ static int l_crypto_cipher(lua_State *L) {
 
         if (
             ok &&
-            EVP_CipherUpdate(ctx, (unsigned char *)(str.ptr + hmac_len + iv_len + 4), &out_len, (const unsigned char *)(data + offset), (int)len - offset) && EVP_CipherFinal(ctx, (unsigned char *)(str.ptr + out_len + hmac_len + iv_len + 4), &final_len)) {
+            EVP_CipherUpdate(ctx, (unsigned char *)(str.ptr + hmac_len + iv_len + 4), &out_len, (const unsigned char *)(data + offset), (int)len - offset) && EVP_CipherFinal_ex(ctx, (unsigned char *)(str.ptr + out_len + hmac_len + iv_len + 4), &final_len)) {
             if (encrypt) {
                 // when encrypting, compute signature over data[32:] and set it to data[0:32]
                 HMAC(EVP_sha256(), (const void *)key, (int)key_len, (const unsigned char *)(str.ptr + hmac_len), out_len + final_len + iv_len + 4, (unsigned char *)str.ptr, &hmac_len);
@@ -271,6 +285,7 @@ LUALIB_API int luaopen_crypto(lua_State *L) {
     const luaL_Reg netlib[] = {
         {"sha1", l_crypto_sha1},
         {"sha256", l_crypto_sha256},
+        {"hmac_sha256", l_crypto_hmac_sha256},
         {"cipher", l_crypto_cipher},
         {"to64", l_crypto_to64},
         {"from64", l_crypto_from64},
