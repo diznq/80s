@@ -221,16 +221,15 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
         pipes_out[i] = childfd;
 #ifdef USE_EPOLL
         // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
-        ev[0].events = EPOLLIN | EPOLLOUT;
+        ev[0].events = i == 0 ? EPOLLIN : EPOLLOUT;
         ev[0].data.fd = childfd;
         status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
 #elif defined(USE_KQUEUE)
         // subscribe for both read and write separately
-        EV_SET(ev, childfd, EVFILT_READ, EV_ADD, 0, 0, NULL);
-        EV_SET(ev + 1, childfd, EVFILT_WRITE, EV_ADD, 0, 0, NULL);
-        status = kevent(elfd, ev, 2, NULL, 0, NULL);
+        EV_SET(ev, childfd, i == 0 ? EVFILT_READ ? EVFILT_WRITE, EV_ADD, 0, 0, NULL);
+        status = kevent(elfd, ev, 1, NULL, 0, NULL);
 #elif defined(USE_PORT)
-        status = port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN | POLLOUT, NULL);
+        status = port_associate(elfd, PORT_SOURCE_FD, childfd, i == 0 ? POLLIN : POLLOUT, NULL);
 #endif
         if(status < 0) {
             for(j=0; j<=i; j++)
