@@ -20,6 +20,7 @@
 --- @field partscan fun(haystack: string, needle: string, offset: integer): pos: integer, length: integer find partial substring in a string
 --- @field sockname fun(fd: lightuserdata): ip: string, port: integer get ip and port of remote FD
 --- @field clock fun(): number return monotonic clock in seconds
+--- @field popen fun(elfd: lightuserdata, command: string, ...: string): read: lightuserdata|nil, write: lightuserdata|string process
 net = net or {}
 
 --- @class crypto
@@ -625,6 +626,24 @@ function aio:connect(elfd, host, port)
     end
     self.fds[sock] = aiosocket:new(elfd, sock, false)
     return self.fds[sock], nil
+end
+
+--- Open a process
+---@param elfd lightuserdata event loop
+---@param command string command
+---@param ... string args
+--- @return aiosocket|nil write
+--- @return string|aiosocket read
+function aio:popen(elfd, command, ...)
+    local args = self:map({...}, tostring)
+    local sock, err = net.popen(elfd, command, unpack(args))
+    if sock == nil or type(err) == "string" then
+        ---@diagnostic disable-next-line: return-type-mismatch
+        return nil, err
+    end
+    self.fds[sock] = aiosocket:new(elfd, sock, false)
+    self.fds[err] = aiosocket:new(elfd, err, false)
+    return self.fds[sock], self.fds[err]
 end
 
 

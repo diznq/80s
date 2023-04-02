@@ -280,6 +280,27 @@ static int l_net_partscan(lua_State *L) {
     return 2;
 }
 
+static int l_net_popen(lua_State *L) {
+    int i, status, pipes[2];
+    int elfd = (int)lua_touserdata(L, 1);
+    const char* args[lua_gettop(L) - 1];
+    const char* cmd = lua_tostring(L, 2);
+    args[0] = (const char*)NULL;
+    for(i=2; i<=lua_gettop(L); i++) {
+        args[i - 2] = lua_tostring(L, i);
+    }
+    args[i - 2] = (const char*)NULL;
+    status = s80_popen(elfd, pipes, cmd, (char* const*)args);
+    if(status < 0) {
+        lua_pushnil(L);
+        lua_pushstring(L, strerror(errno));
+        return 2;
+    }
+    lua_pushlightuserdata(L, (void*)pipes[0]);
+    lua_pushlightuserdata(L, (void*)pipes[1]);
+    return 2;
+}
+
 LUALIB_API int luaopen_net(lua_State *L) {
     const luaL_Reg netlib[] = {
         {"write", l_net_write},
@@ -294,6 +315,7 @@ LUALIB_API int luaopen_net(lua_State *L) {
         {"inotify_read", l_net_inotify_read},
         {"partscan", l_net_partscan},
         {"clock", l_net_clock},
+        {"popen", l_net_popen},
         {NULL, NULL}};
 #if LUA_VERSION_NUM > 501
     luaL_newlib(L, netlib);

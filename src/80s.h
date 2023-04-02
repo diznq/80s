@@ -46,6 +46,7 @@ int s80_connect(void *ctx, int elfd, const char *addr, int port);
 ssize_t s80_write(void *ctx, int elfd, int childfd, const char *data, ssize_t offset, size_t len);
 int s80_close(void *ctx, int elfd, int childfd);
 int s80_peername(int fd, char *buf, size_t bufsize, int *port);
+int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args);
 
 #ifdef DEBUG
 #define dbg(message) printf("%s: %s\n", message, strerror(errno))

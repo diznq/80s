@@ -124,6 +124,19 @@ void *serve(void *vparams) {
                         on_receive(ctx, elfd, childfd, buf, readlen);
                     }
                 }
+                if ((events[n].events & EPOLLHUP) == EPOLLHUP) {
+                    ev.events = EPOLLIN;
+                    ev.data.fd = childfd;
+                    if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
+                        dbg("serve: failed to remove hungup child");
+                        continue;
+                    }
+                    if (close(childfd) < 0) {
+                        dbg("serve: failed to close hungup child");
+                        continue;
+                    }
+                    on_close(ctx, elfd, childfd);
+                }
             }
         }
     }

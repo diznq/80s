@@ -196,3 +196,64 @@ int s80_peername(int fd, char *buf, size_t bufsize, int *port) {
         return 0;
     }
 }
+
+int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) {
+    struct event_t ev[2];
+    int piperd[2], pipewr[2];
+    int status, i, j, childfd, pid;
+
+    // create pipes for parent-child communication
+    status = pipe(pipewr);
+    if(status < 0) {
+        return -1;
+    }
+    status = pipe(piperd);
+    if(status < 0) {
+        for(i=0; i<2; i++) close(pipewr[i]);
+        return -1;
+    }
+    
+    //              parent r / w          child  w / r
+    int pipes[4] = {piperd[0], pipewr[0], pipewr[1], piperd[1]};
+    for(i=0; i<4; i++) {
+        childfd = pipes[i];
+        fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
+        if(i >= 2) continue;
+        pipes_out[i] = childfd;
+#ifdef USE_EPOLL
+        // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
+        ev[0].events = EPOLLIN | EPOLLOUT;
+        ev[0].data.fd = childfd;
+        status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
+#elif defined(USE_KQUEUE)
+        // subscribe for both read and write separately
+        EV_SET(ev, childfd, EVFILT_READ, EV_ADD, 0, 0, NULL);
+        EV_SET(ev + 1, childfd, EVFILT_WRITE, EV_ADD, 0, 0, NULL);
+        status = kevent(elfd, ev, 2, NULL, 0, NULL);
+#elif defined(USE_PORT)
+        status = port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN | POLLOUT, NULL);
+#endif
+        if(status < 0) {
+            for(j=0; j<=i; j++)
+                close(pipes[j]);
+            return status;
+        }
+    }
+    pid = fork();
+    if(pid < 0) {
+        for(i=0; i<4; i++) close(pipes[i]);
+        return -1;
+    } else if(pid == 0) {
+        dup2(pipewr[0], STDIN_FILENO);
+        dup2(piperd[1], STDOUT_FILENO);
+        dup2(piperd[1], STDERR_FILENO);
+
+        close(pipes[0]);
+        close(pipes[1]);
+        _exit(execvp(command, args));
+    } else {
+        close(pipes[2]);
+        close(pipes[3]);
+    }
+    return 0;
+}
