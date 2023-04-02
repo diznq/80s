@@ -66,7 +66,7 @@ end
 ---@param content string template file
 ---@param base string directory that current file is located in
 ---@return templatectx
-function templates:prepare(content, base)
+function templates:prepare(content, base, file_name)
     local context = { content = "", parts = {}, parallel = false }
     local depth, max_depth, matches = 0, 32, 1
 
@@ -100,7 +100,7 @@ function templates:prepare(content, base)
             table.insert(lines, line)
         end
         match = table.concat(lines, "\n") .. "\n"
-        local compiled, err = load("return function(fd, session, locals, headers, body, method, endpoint, query, write, escape, post_render, await, header, status, done, to_url)" .. match .. "end")
+        local compiled, err = load("--" .. file_name .. "\nreturn function(fd, session, locals, headers, body, method, endpoint, query, write, escape, post_render, await, header, status, done, to_url)" .. match .. "end")
         if not compiled then
             table.insert(context.parts, function (input, output, done)
                 done(err)

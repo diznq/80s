@@ -12,6 +12,9 @@
 #include <openssl/sha.h>
 
 static int l_crypto_sha1(lua_State *L) {
+    if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TSTRING) {
+        return luaL_error(L, "expecting 1 argument: text (string)");
+    }
     size_t len;
     unsigned char buffer[20];
     const char *data = lua_tolstring(L, 1, &len);
@@ -21,6 +24,9 @@ static int l_crypto_sha1(lua_State *L) {
 }
 
 static int l_crypto_sha256(lua_State *L) {
+    if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TSTRING) {
+        return luaL_error(L, "expecting 1 argument: text (string)");
+    }
     size_t len;
     unsigned char buffer[32];
     const char *data = lua_tolstring(L, 1, &len);
@@ -30,6 +36,9 @@ static int l_crypto_sha256(lua_State *L) {
 }
 
 static int l_crypto_cipher(lua_State *L) {
+    if(lua_gettop(L) != 4 || lua_type(L, 1) != LUA_TSTRING || lua_type(L, 2) != LUA_TSTRING || lua_type(L, 3) != LUA_TBOOLEAN || lua_type(L, 4) != LUA_TBOOLEAN) {
+        return luaL_error(L, "expecting 4 arguments: data (string), key (string), iv (bool), encrypt (bool)");
+    }
     EVP_CIPHER_CTX *ctx;
     size_t len, key_len, needed_size, i;
     int encrypt, ok, offset, use_iv, out_len, final_len;
@@ -176,12 +185,15 @@ static int l_crypto_cipher(lua_State *L) {
 }
 
 static int l_crypto_to64(lua_State *L) {
+    if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TSTRING) {
+        return luaL_error(L, "expecting 1 argument: text (string)");
+    }
     size_t len, target_len;
     struct dynstr str;
     char buffer[65536];
     const char *data = lua_tolstring(L, 1, &len);
-    target_len = 4 + 4 * ((len + 2) / 3);
 
+    target_len = 4 + 4 * ((len + 2) / 3);
     dynstr_init(&str, buffer, sizeof(buffer));
     if (!dynstr_check(&str, target_len)) {
         lua_pushnil(L);
@@ -202,6 +214,9 @@ static int l_crypto_to64(lua_State *L) {
 }
 
 static int l_crypto_from64(lua_State *L) {
+    if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TSTRING) {
+        return luaL_error(L, "expecting 1 argument: text (string)");
+    }
     size_t len;
     EVP_ENCODE_CTX *ctx;
     struct dynstr str;
@@ -241,6 +256,9 @@ static int l_crypto_from64(lua_State *L) {
 }
 
 static int l_crypto_random(lua_State *L) {
+    if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TNUMBER) {
+        return luaL_error(L, "expecting 1 argument: length (integer)");
+    }
     // generate max 65535 random bytes
     const size_t len = ((size_t)lua_tointeger(L, 1)) & 0xFFFF;
     char buf[len];

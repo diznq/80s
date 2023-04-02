@@ -12,7 +12,7 @@ local function create_endpoint(base, method, endpoint, mime, content, dynamic)
     --- @type table|nil
     local resp_headers = nil
     if dynamic then
-        ctx = templates:prepare(content, base)
+        ctx = templates:prepare(content, base, method .. " " .. endpoint)
     else
         resp_headers = {}
         resp_headers["content-type"] = mime
