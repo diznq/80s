@@ -125,7 +125,7 @@ void *serve(void *vparams) {
                     }
                 }
                 if ((events[n].events & (EPOLLERR | EPOLLHUP))) {
-                    ev.events = EPOLLIN;
+                    ev.events = EPOLLIN | EPOLLOUT;
                     ev.data.fd = childfd;
                     if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
                         dbg("serve: failed to remove hungup child");
