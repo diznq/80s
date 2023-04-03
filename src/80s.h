@@ -19,6 +19,7 @@ extern "C" {
 #define USE_INOTIFY
 #include <port.h>
 #include <sys/port.h>
+#include <sys/poll.h>
 #define event_t port_event
 #else
 #error unsupported platform

@@ -104,13 +104,12 @@ void *serve(void *vparams) {
                     buf[0] = 0;
                     readlen = read(childfd, buf, BUFSIZE);
                     // if length is <= 0, remove the socket from event loop
-                    if (readlen <= 0) {
+                    if (readlen <= 0 && (events[n].portev_events & POLLHUP) == 0) {
                         if (port_dissociate(elfd, PORT_SOURCE_FD, childfd) < 0) {
                             dbg("serve: failed to dissociate childfd");
                         }
                         if (close(childfd) < 0) {
                             dbg("serve: failed to close child socket");
-                            continue;
                         }
                         on_close(ctx, elfd, childfd);
                     } else {
@@ -120,6 +119,15 @@ void *serve(void *vparams) {
                         }
                         on_receive(ctx, elfd, childfd, buf, readlen);
                     }
+                }
+                if ((events[n].portev_events & (POLLHUP | POLLERR))) {
+                    if (port_dissociate(elfd, PORT_SOURCE_FD, childfd) < 0) {
+                        dbg("serve: failed to dissociate childfd");
+                    }
+                    if (close(childfd) < 0) {
+                        dbg("serve: failed to close child socket");
+                    }
+                    on_close(ctx, elfd, childfd);
                 }
             }
         }

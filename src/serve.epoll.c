@@ -23,7 +23,7 @@ union addr_common {
 };
 
 void *serve(void *vparams) {
-    int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id;
+    int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id, flags;
     socklen_t clientlen;
     unsigned accepts;
     void *ctx;
@@ -73,6 +73,7 @@ void *serve(void *vparams) {
 
         for (n = 0; n < nfds; ++n) {
             childfd = events[n].data.fd;
+            flags = events[n].events;
             if (childfd == parentfd) {
                 // only parent socket (server) can receive accept
                 childfd = accept(parentfd, (struct sockaddr *)&clientaddr, &clientlen);
@@ -94,46 +95,41 @@ void *serve(void *vparams) {
             } else {
                 // only this very thread is able to poll given childfd as it was assigned only to
                 // this thread and other event loops don't have it
-                if ((events[n].events & EPOLLOUT) == EPOLLOUT) {
+                if ((flags & EPOLLOUT) == EPOLLOUT) {
                     // we should receive this only after socket is writeable, after that we remove it from EPOLLOUT queue
                     ev.events = EPOLLIN;
                     ev.data.fd = childfd;
                     if (epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev) < 0) {
                         dbg("serve: failed to move child socket from out to in");
-                        continue;
                     }
                     on_write(ctx, elfd, childfd, 0);
                 }
-                if ((events[n].events & EPOLLIN) == EPOLLIN) {
+                if ((flags & EPOLLIN) == EPOLLIN) {
                     buf[0] = 0;
                     readlen = read(childfd, buf, BUFSIZE);
                     // if length is <= 0, remove the socket from event loop
-                    if (readlen <= 0) {
+                    if (readlen <= 0 && (flags & EPOLLHUP) == 0) {
                         ev.events = EPOLLIN;
                         ev.data.fd = childfd;
                         if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
                             dbg("serve: failed to remove child socket on readlen < 0");
-                            continue;
                         }
                         if (close(childfd) < 0) {
                             dbg("serve: failed to close child socket");
-                            continue;
                         }
                         on_close(ctx, elfd, childfd);
                     } else {
                         on_receive(ctx, elfd, childfd, buf, readlen);
                     }
                 }
-                if ((events[n].events & (EPOLLERR | EPOLLHUP))) {
+                if ((flags & (EPOLLERR | EPOLLHUP))) {
                     ev.events = EPOLLIN | EPOLLOUT;
                     ev.data.fd = childfd;
                     if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
                         dbg("serve: failed to remove hungup child");
-                        continue;
                     }
                     if (close(childfd) < 0) {
                         dbg("serve: failed to close hungup child");
-                        continue;
                     }
                     on_close(ctx, elfd, childfd);
                 }

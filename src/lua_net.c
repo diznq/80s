@@ -159,7 +159,7 @@ static int l_net_inotify_remove(lua_State *L) {
 }
 
 static int l_net_inotify_read(lua_State *L) {
-#ifdef USE_EPOLL
+#ifdef USE_INOTIFY
     const char *data;
     size_t i, length;
     struct timespec tp;
