@@ -646,6 +646,23 @@ function aio:popen(elfd, command, ...)
     return self.fds[sock], self.fds[err]
 end
 
+--- Open a process and read it's entire stdout
+---@param elfd lightuserdata event loop
+---@param command string command
+---@param ... string args
+---@return fun(resolve: fun(contents: string|nil)) promise
+function aio:popen_read(elfd, command, ...)
+    local resolve, resolver = self:prepare_promise()
+    local rd, _ = self:popen(elfd, command, ...)
+    if rd == nil then
+        resolve(nil)
+    else
+        self:read_stream(rd)(function (result)
+            resolve(result)
+        end)
+    end
+    return resolver
+end
 
 --- Watch for changes in file or directory
 ---@param elfd lightuserdata epoll handle
@@ -942,6 +959,20 @@ end
 --- @return aiothen
 function aio:cor(target, callback)
     return self:cor2(target, "on_data", "on_close", callback)
+end
+
+--- Read stream until end
+---@param target aiosocket fd to be read fully
+---@return fun(on_resolved: fun(result: string)|thread)
+function aio:read_stream(target)
+    return self:cor(target, function (stream, resolve)
+        local data = {}
+        for chunk in stream do
+            table.insert(data, chunk)
+            coroutine.yield()    
+        end
+        resolve(table.concat(data))
+    end)
 end
 
 
