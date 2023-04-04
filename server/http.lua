@@ -4,6 +4,7 @@ local http_client = require("server.http_client")
 
 HTTP = http_client
 MASTER_KEY = os.getenv("MASTER_KEY") or nil
+NO_STATIC = (os.getenv("NO_STATIC") or "false") == "true"
 
 aio:set_master_key(MASTER_KEY)
 
@@ -50,7 +51,7 @@ local function init_dir(root, base, prefix)
     for _, file in pairs(net.listdir(base)) do
         if file:match("/$") then
             -- all folders that begin with i. will be ignored, i.e. they might contain large files
-            local ignore = file:match("i%.") or file:match("^%.")
+            local ignore = file:match("i%.") or file:match("^%.") or (NO_STATIC and file == "static/")
             if not ignore then
                 -- treat files in public_html/ as in root /
                 local found_dirs = {}
@@ -84,7 +85,7 @@ local function init_dir(root, base, prefix)
 
                 --- if file contains .dyn., it will be ran through template engine in later stage
                 --- see process_dynamic for example
-                if file:match("%.dyn%..*$") then
+                if file:match("%.dyn%..*$") or (#content < 1000000 and content:match("<%?lua?.+%?>")) then
                     dynamic = true
                 end
                 -- if file is inside /static/ folder, it should never be rendered as dynamic file
