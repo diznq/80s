@@ -85,7 +85,7 @@ local function init_dir(root, base, prefix)
 
                 --- if file contains .dyn., it will be ran through template engine in later stage
                 --- see process_dynamic for example
-                if file:match("%.dyn%..*$") or (#content < 1000000 and content:match("<%?lua?.+%?>")) then
+                if file:match("%.dyn%..*$") or (#content < 1000000 and (content:match("<%?lua?.+%?>") or content:match("<%?include.+%?>"))) then
                     dynamic = true
                 end
                 -- if file is inside /static/ folder, it should never be rendered as dynamic file
