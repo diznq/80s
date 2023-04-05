@@ -107,7 +107,13 @@ static void lua_encode(lua_State *L, struct dynstr *out) {
     dynstr_putc(out, '{');
     while (lua_next(L, idx) != 0) {
         type = lua_type(L, -1);
-        is_empty = 0;
+        if (is_empty) {
+            is_empty = 0;
+            is_array = lua_type(L, -2) == LUA_TNUMBER;
+            if (is_array) {
+                out->ptr[out->length - 1] = '[';
+            }
+        }
         if (!is_array) {
             key = lua_tolstring(L, -2, &value_len);
             dynstr_putc(out, '[');
