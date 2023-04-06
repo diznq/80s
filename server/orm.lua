@@ -11,7 +11,7 @@ local mysql = require("server.mysql")
 --- @alias ormone fun(...): fun(on_resolved: fun(result: table|nil|ormerror))
 --- @alias ormall fun(...): fun(on_resolved: fun(result: table[]|nil|ormerror))
 --- @alias orminsert fun(...): fun(on_resolved: fun(result: mysqlerror|mysqlok|mysqleof))
---- @alias ormrepo {all: {[string]: ormall}, one: {[string]: ormone}, count: {[string]: ormcount}, entity: ormentity, source: string, insert: orminsert, update: ormupdate}
+--- @alias ormrepo {all: {[string]: ormall}, one: {[string]: ormone}, count: {[string]: ormcount}, entity: ormentity, source: string, insert: orminsert, replace: orminsert, update: ormupdate}
 --- @alias ormupdate fun(self, entity: {[string]: any}, update: {[string]: any}): fun(on_resolved: fun(result: mysqlerror|mysqlok|mysqleof))
 --- @class ormtype
 local ormtype = {
@@ -62,14 +62,14 @@ local ormtypes = {
     datetime = {
         format = function() return "%s" end,
         fromstring = function(text)
-            local Y,M,D,H,I,s = text:match("^(%d-)%-(%d-)%-(%d-) (%d-):(%d-):(%d-)")
+            local Y,M,D,H,I,s = text:match("^(%d-)%-(%d-)%-(%d-) (%d-):(%d-):(%d+)")
             if Y and M and D and H and I and s then
                 return {
                     year = tonumber(Y),
                     month = tonumber(M),
                     day = tonumber(D),
                     hour = tonumber(H),
-                    min = tonumber(M),
+                    min = tonumber(I),
                     sec = tonumber(s)
                 }
             end
@@ -124,7 +124,7 @@ function orm:create(sql, repo)
         end
     end
 
-    local insert_base_query = string.format("INSERT INTO %s (%s) VALUES ", source, table.concat(insert_fields, ","))
+    local insert_base_query = string.format(" INTO %s (%s) VALUES ", source, table.concat(insert_fields, ","))
     local update_base_query = string.format("UPDATE %s SET %%s WHERE %%s LIMIT 1",source)
     
     repo.sql = sql
@@ -132,7 +132,7 @@ function orm:create(sql, repo)
     repo.all = {}
     repo.count = {}
 
-    repo.insert = function(self, ...)
+    local inserter = function(self, kw, ...)
         local tuples = {}
         local params = {}
         for i, item in ipairs({...}) do
@@ -153,8 +153,16 @@ function orm:create(sql, repo)
             end
             table.insert(tuples, "(" .. table.concat(values, ",") .. ")" )
         end
-        local final_query = insert_base_query .. " " ..  table.concat(tuples, ",")
+        local final_query = kw .. insert_base_query .. " " ..  table.concat(tuples, ",")
         return sql:exec(final_query, unpack(params))
+    end
+
+    repo.insert = function (self, ...)
+        return inserter(self, "INSERT", ...)
+    end
+
+    repo.replace = function(self, ...)
+        return inserter(self, "REPLACE", ...)
     end
 
     repo.update = function(self, object, update)

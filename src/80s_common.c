@@ -178,7 +178,7 @@ int s80_close(void *ctx, int elfd, int childfd) {
 
 int s80_peername(int fd, char *buf, size_t bufsize, int *port) {
     union addr_common addr;
-    socklen_t clientlen;
+    socklen_t clientlen = sizeof(addr);
 
     if (getsockname(fd, (struct sockaddr *)&addr, &clientlen) < 0) {
         return 0;
