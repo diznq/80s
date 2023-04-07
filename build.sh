@@ -16,7 +16,7 @@ FLAGS="-s -O2"
 OUT="${OUT:-bin/80s}"
 CC="${CC:-gcc}"
 
-if [ "${JIT}" == "true" ]; then
+if [ "$JIT" = "true" ]; then
 
     if [ -z "${LUA_JIT_LIB_PATH}" ]; then
       LUA_LIB="/usr/local/lib/libluajit-5.1.a"
@@ -45,11 +45,11 @@ mkdir -p bin
 DEFINES=""
 LIBS="-lm -ldl -lpthread -lcrypto"
 
-if [ $(uname) == "SunOS" ]; then
+if [ $(uname) = "SunOS" ]; then
   LIBS="$LIBS -lsocket -lnsl"
 fi
 
-if [ "$DEBUG" == "true" ]; then
+if [ "$DEBUG" = "true" ]; then
     DEFINES="$DEFINES -DDEBUG=1"
     FLAGS="-O0 -g"
 fi
