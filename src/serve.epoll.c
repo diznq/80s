@@ -108,7 +108,7 @@ void *serve(void *vparams) {
                     buf[0] = 0;
                     readlen = read(childfd, buf, BUFSIZE);
                     // if length is <= 0, remove the socket from event loop
-                    if (readlen <= 0 && (flags & EPOLLHUP) == 0) {
+                    if (readlen <= 0 && (flags & (EPOLLHUP | EPOLLERR)) == 0) {
                         ev.events = EPOLLIN;
                         ev.data.fd = childfd;
                         if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
@@ -118,7 +118,7 @@ void *serve(void *vparams) {
                             dbg("serve: failed to close child socket");
                         }
                         on_close(ctx, elfd, childfd);
-                    } else {
+                    } else if(readlen > 0) {
                         on_receive(ctx, elfd, childfd, buf, readlen);
                     }
                 }

@@ -111,7 +111,7 @@ void *serve(void *vparams) {
                             continue;
                         }
                         on_close(ctx, elfd, childfd);
-                    } else {
+                    } else if(readlen > 0) {
                         on_receive(ctx, elfd, childfd, buf, readlen);
                     }
                     break;

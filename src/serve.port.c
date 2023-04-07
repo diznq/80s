@@ -104,7 +104,7 @@ void *serve(void *vparams) {
                     buf[0] = 0;
                     readlen = read(childfd, buf, BUFSIZE);
                     // if length is <= 0, remove the socket from event loop
-                    if (readlen <= 0 && (events[n].portev_events & POLLHUP) == 0) {
+                    if (readlen <= 0 && (events[n].portev_events & (POLLHUP | POLLERR)) == 0) {
                         if (port_dissociate(elfd, PORT_SOURCE_FD, childfd) < 0) {
                             dbg("serve: failed to dissociate childfd");
                         }
@@ -112,7 +112,7 @@ void *serve(void *vparams) {
                             dbg("serve: failed to close child socket");
                         }
                         on_close(ctx, elfd, childfd);
-                    } else {
+                    } else if(readlen > 0) {
                         // reassociate with port only on success
                         if (port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN, NULL) < 0) {
                             dbg("serve: failed to reassociate child socket");
