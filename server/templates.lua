@@ -14,7 +14,7 @@ local templates = {}
 --- @class templateoutput
 --- @field headers table
 --- @field status string
---- @field post_render (fun(response: string): string)[]
+--- @field post_render (fun(locals: table, response: string): string)[]
 
 --- @class templatectx
 --- @field content string
@@ -220,7 +220,7 @@ function templates:render(fd, session, headers, body, method, endpoint, query, m
             end)
             if #output.post_render > 0 then
                 for _, handler in ipairs(output.post_render) do
-                    response = handler(response)
+                    response = handler(input.locals, response)
                 end
             end
             on_resolved({
@@ -244,7 +244,7 @@ function templates:render(fd, session, headers, body, method, endpoint, query, m
 
             if #output.post_render > 0 then
                 for _, handler in ipairs(output.post_render) do
-                    response = handler(response)
+                    response = handler(input.locals, response)
                 end
             end
 
