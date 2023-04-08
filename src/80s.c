@@ -72,14 +72,23 @@ static int get_cpus(int argc, const char **argv) {
 
 int main(int argc, const char **argv) {
     const int workers = get_cpus(argc, argv);
+    char resolved[100];
     int elfd, parentfd, optval, i,
         portno = get_arg("-p", 8080, 0, argc, argv),
         v6 = get_arg("-6", 0, 1, argc, argv);
     union addr_common serveraddr;
     const char *entrypoint;
+    const char *addr = v6 ? "::" : "0.0.0.0";
     struct serve_params params[workers];
     pthread_t handles[workers];
     int els[workers];
+
+    for(i=1; i < argc - 1; i++) {
+        if(!strcmp(argv[i], "-h")) {
+            addr = argv[i + 1];
+            break;
+        }
+    }
 
     setlocale(LC_ALL, "en_US.UTF-8");
 
@@ -89,8 +98,6 @@ int main(int argc, const char **argv) {
     }
 
     entrypoint = argv[1];
-
-    printf("port: %d, cpus: %d, v6: %d\n", portno, workers, !!v6);
 
     parentfd = socket(v6 ? AF_INET6 : AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
@@ -104,11 +111,18 @@ int main(int argc, const char **argv) {
     if (v6) {
         serveraddr.v6.sin6_family = AF_INET6;
         serveraddr.v6.sin6_port = htons((unsigned short)portno);
+        if(inet_pton(AF_INET6, addr, &serveraddr.v6.sin6_addr) <= 0) {
+            error("failed to resolve bind IP address");
+        }
+        inet_ntop(AF_INET6, &serveraddr.v6.sin6_addr, resolved, sizeof(serveraddr.v6));
     } else {
         serveraddr.v4.sin_family = AF_INET;
-        serveraddr.v4.sin_addr.s_addr = htonl(INADDR_ANY);
+        serveraddr.v4.sin_addr.s_addr = inet_addr(addr);
         serveraddr.v4.sin_port = htons((unsigned short)portno);
+        inet_ntop(AF_INET, &serveraddr.v4.sin_addr, resolved, sizeof(serveraddr.v4));
     }
+
+    printf("ip: %s, port: %d, cpus: %d, v6: %d\n", resolved, portno, workers, !!v6);
 
     if (bind(parentfd, (struct sockaddr *)(v6 ? (void *)&serveraddr.v6 : (void *)&serveraddr.v4), v6 ? sizeof(serveraddr.v6) : sizeof(serveraddr.v4)) < 0)
         error("main: failed to bind server socket");
