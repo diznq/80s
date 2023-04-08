@@ -3,4 +3,5 @@
 bin/
 private/
 crymp/
+gsemu/
 *.env.sh
