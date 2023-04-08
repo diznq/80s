@@ -611,7 +611,7 @@ end
 ---@return string|nil result decrypted data
 function aio:decrypt(data, key, raw)
     raw = raw or false
-    if type(data) ~= "string" then
+    if type(data) ~= "string" or type(key) ~= "string" then
         return nil
     end
     if not raw then data = crypto.from64(data) end
