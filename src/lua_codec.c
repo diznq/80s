@@ -32,7 +32,7 @@ static void encode_string(struct dynstr *out, const char *value, size_t value_le
             dynstr_puts(out, "\\0", 2);
             break;
         default:
-            if(*value < 32) {
+            if(*value < 32 && *value > 0) {
                 dynstr_puts(out, "\\x", 2);
                 dynstr_putc(out, "0123456789ABCDEF"[(*value >> 4) & 15]);
                 dynstr_putc(out, "0123456789ABCDEF"[(*value) & 15]);
