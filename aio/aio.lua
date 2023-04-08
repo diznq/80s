@@ -437,7 +437,7 @@ function aio:create_query(params, private_key, ordered, iv)
     end
     local result = table.concat(values, "&")
     if type(private_key) == "string" then
-        return self:cached("url", result, function()
+        return self:cached(private_key, result, function()
             local encrypted = self:encrypt(result, self:create_key(private_key), iv, false)
             if not encrypted then
                 encrypted = "nil"
@@ -466,9 +466,18 @@ end
 ---@param cache_name string cache name
 ---@param key string caching key
 ---@param callback fun(): T producer if item is not found
----@param condition boolean|nil if false, no cache is performed
+---@param condition boolean|integer|nil if false, no cache is performed, if number, considered expire
+---@param expire integer|nil expiry in seconds
 ---@return T value
-function aio:cached(cache_name, key, callback, condition)
+function aio:cached(cache_name, key, callback, condition, expire)
+    if expire or type(condition) == "number" then
+        if not expire then
+            expire = net.clock() + condition
+            condition = nil
+        else
+            expire = net.clock() + expire
+        end
+    end
     if condition == false then
         return callback()
     end
@@ -478,7 +487,9 @@ function aio:cached(cache_name, key, callback, condition)
         cache = self.cache[cache_name]
     end
     local hit = cache[key]
-    if hit then return hit end
+    if hit and (hit.expire == nil or net.clock() <= hit.expire) then
+        return hit.data
+    end
     if self.max_cache_size == nil or self.max_cache_size == 0 then
         return callback()
     end
@@ -492,15 +503,33 @@ function aio:cached(cache_name, key, callback, condition)
     -- in case callback is a promise, cache the value once it is resolved
     if type(hit) == "function" then
         local resolve, resolver = aio:prepare_promise()
+        local requesters = {resolve}
+        local result = {}
+        local ready = false
+        cache[key] = {
+            data = function (cb)
+                if not ready then
+                    table.insert(requesters, cb)
+                else
+                    cb(result.value)
+                end
+            end,
+            expire = expire
+        }
         hit(function (value)
-            cache[key] = function(cb)
+            ready = true
+            result.value = value
+            for _, cb in ipairs(requesters) do
                 cb(value)
             end
-            resolve(value)
+            requesters = nil
         end)
         return resolver
     else
-        cache[key] = hit
+        cache[key] = {
+            expire = expire,
+            data = hit
+        }
     end
     return hit
 end
