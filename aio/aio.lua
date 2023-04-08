@@ -78,12 +78,12 @@ end
 ---@param ... any
 ---@return boolean
 function ispresent(...)
-    local ok = true
     for _, value in ipairs({...}) do
-        ok = value ~= nil and not iserror(value)
-        if not ok then return false end
+        if value == nil or iserror(value) then
+            return false
+        end
     end
-    return true
+    return #{...} > 0
 end
 
 --- Create error result

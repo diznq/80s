@@ -3,15 +3,16 @@ local mysql = require("server.mysql")
 --- @alias ormentity {[string]: ormfield}
 
 --- @class ormfield
---- @field field string
+--- @field field string|nil
 --- @field type ormtype
 
 --- @alias ormerror {error: string}
 --- @alias ormcount fun(...): fun(on_resolved: fun(result: integer|nil|ormerror))
 --- @alias ormone fun(...): fun(on_resolved: fun(result: table|nil|ormerror))
---- @alias ormall fun(...): fun(on_resolved: fun(result: table[]|nil|ormerror))
+--- @alias ormall fun(...): fun(on_resolved: fun(result: table[]|ormerror))
 --- @alias orminsert fun(...): fun(on_resolved: fun(result: mysqlerror|mysqlok|mysqleof))
---- @alias ormrepo {all: {[string]: ormall}, one: {[string]: ormone}, count: {[string]: ormcount}, entity: ormentity, source: string, insert: orminsert, replace: orminsert, update: ormupdate}
+--- @alias ormdelete fun(...): fun(on_resolved: fun(result: mysqlerror|mysqlok|mysqleof))
+--- @alias ormrepo {all: {[string]: ormall}, one: {[string]: ormone}, deleteOne: {[string]: ormdelete}, deleteAll: {[string]: ormdelete}, count: {[string]: ormcount}, entity: ormentity, source: string, insert: orminsert, replace: orminsert, update: ormupdate, sql: mysql}
 --- @alias ormupdate fun(self, entity: {[string]: any}, update: {[string]: any}): fun(on_resolved: fun(result: mysqlerror|mysqlok|mysqleof))
 --- @class ormtype
 local ormtype = {
@@ -118,6 +119,7 @@ function orm:create(sql, repo)
     local decoders = {}
     for field, def in pairs(entity) do
         if type(def) == "table" then
+            def.field = def.field or field
             decoders[def.field] = {dest = field, decode = def.type.fromstring}
             table.insert(insert_fields, def.field)
             table.insert(insert_order, field)
@@ -130,6 +132,8 @@ function orm:create(sql, repo)
     repo.sql = sql
     repo.one = {}
     repo.all = {}
+    repo.deleteOne = {}
+    repo.deleteAll = {}
     repo.count = {}
 
     local inserter = function(self, kw, ...)
@@ -156,6 +160,8 @@ function orm:create(sql, repo)
         local final_query = kw .. insert_base_query .. " " ..  table.concat(tuples, ",")
         return sql:exec(final_query, unpack(params))
     end
+
+    repo.sql = sql
 
     repo.insert = function (self, ...)
         return inserter(self, "INSERT", ...)
@@ -232,6 +238,8 @@ function orm:create(sql, repo)
             method = method:gsub("findB", "b")
             repo.all[method] = self:create_method(sql, query, types, decoders, false, false, repo.all)
             repo.one[method] = self:create_method(sql, query, types, decoders, true, false, repo.one)
+            repo.deleteAll[method] = self:create_method(sql, query:gsub("^SELECT %*", "DELETE"), types, decoders, false, false, repo.all, true)
+            repo.deleteOne[method] = self:create_method(sql, query:gsub("^SELECT %*", "DELETE"), types, decoders, true, false, repo.one, true)
             repo.count[method] = self:create_method(sql, query:gsub("^SELECT %*", "SELECT COUNT(*) AS c"), types, decoders, true, true, repo.count)
         end
     end
@@ -248,8 +256,9 @@ end
 ---@param single boolean
 ---@param count boolean
 ---@param parent table
+---@param delete boolean|nil
 ---@return ormone|ormall|ormcount
-function orm:create_method(sql, query, types, decoders, single, count, parent)
+function orm:create_method(sql, query, types, decoders, single, count, parent, delete)
     return function(...)
         local treated = {}
         local extras = {}
@@ -284,6 +293,12 @@ function orm:create_method(sql, query, types, decoders, single, count, parent)
             table.insert(extras, "LIMIT 1")
         end
         local final_query = query .. " " .. table.concat(extras, " ")
+        if delete == true then
+            sql:exec(final_query, unpack(treated))(function (result)
+                on_resolved(result)
+            end)
+            return resolver
+        end
         sql:select(final_query, unpack(treated))(function (rows, errorOrColumns)
             -- this function returns either (nil, str_error)
             -- or (nil, nil) for single result that has not been found

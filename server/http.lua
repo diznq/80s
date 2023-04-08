@@ -1,8 +1,6 @@
 require("aio.aio")
 local templates = require("server.templates")
-local http_client = require("server.http_client")
 
-HTTP = http_client
 MASTER_KEY = os.getenv("MASTER_KEY") or nil
 NO_STATIC = (os.getenv("NO_STATIC") or "false") == "true"
 
