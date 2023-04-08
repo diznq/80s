@@ -30,6 +30,11 @@ local function create_endpoint(base, method, endpoint, mime, content, dynamic)
             local session = {}
             local parsed_query = aio:parse_query(query, aio.master_key and endpoint or nil)
             templates:render(self, session, headers, body, method, endpoint, parsed_query, mime, ctx)(function (result)
+                local code = result.status:sub(1, 3)
+                -- in case of redirects, prevent any kind of output
+                if code == "301" or code == "302" then
+                    result.content = ""
+                end
                 self:http_response(result.status, result.headers, result.content)
             end)
         else
