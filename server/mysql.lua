@@ -497,7 +497,7 @@ function mysql:raw_exec(query, ...)
             end
             ok, command = pcall(string.format, query, unpack(params))
             if not ok then
-                on_resolved({error="string format failed: " .. command})
+                on_resolved(nil, {error="string format failed: " .. command .. ", query: " .. query})
                 return
             end
         end
@@ -526,9 +526,13 @@ end
 ---@return fun(on_resolved: fun(result: mysqlerror|mysqlok|mysqleof))
 function mysql:exec(query, ...)
     local on_resolved, resolve_event = aio:prepare_promise()
-    self:raw_exec(query, ...)(function (_, response)
-        local response = self:decode_packet(response)
-        on_resolved(response)
+    self:raw_exec(query, ...)(function (seq, response)
+        if not seq and type(response) == "table" and response.error then
+            on_resolved(response)
+        else
+            local response = self:decode_packet(response)
+            on_resolved(response)
+        end
     end)
     return resolve_event
 end

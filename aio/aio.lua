@@ -62,8 +62,8 @@ WORKERID = WORKERID or nil
 --- @alias aiowritebuf {d: string, o: integer}
 --- @alias aiohttpquery {[string]: string, e: {[string]: string}}
 
---- @generic T : string
---- @alias aiopromise fun(on_resolved: fun(result: T)) AIO promise
+--- @generic V : string
+--- @alias aiopromise<V> fun(on_resolved: fun(result: V)) AIO promise
 
 unpack = unpack or table.unpack
 
