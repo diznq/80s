@@ -4,18 +4,4 @@
     <img src="/assets/srgen.jpg">
 
     <p><a href="/posts/">Read posts</a></p>
-
-    <p>w3.org response:</p>
-    <pre><?lua
-        header("X-Server-Time", os.time())
-        locals.w3 = "None"
-        if query.w3 then
-            locals.w3 = await(HTTP:GET("www.w3.org", "/", "text/html"))
-            | #[[locals.w3]]
-            done()
-        else
-            | w3 was not requested
-            done()
-        end
-    ?></pre>
 <?include footer.priv.html ?>
