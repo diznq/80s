@@ -44,17 +44,19 @@ end
 local function transform_to_code(match)
     local args = {}
     match = match:gsub("%s*[\r\n]%s*", "")
-    match = match:gsub("[%%]", "%%%%")
-    match = match:gsub("%#%[%[(.-)%]%]", function(format_item)
-        local format_type = "s"
-        local item, maybe_type = format_item:match("^(.+):([.sfd0-9]+)$")
-        if item and maybe_type then
-            format_item = maybe_type
-            format_item = item
-        end
-        table.insert(args, format_item)
-        return "%" .. format_type
-    end)
+    if match:match("%#%[%[(.-)%]%]") then
+        match = match:gsub("[%%]", "%%%%")
+        match = match:gsub("%#%[%[(.-)%]%]", function(format_item)
+            local format_type = "s"
+            local item, maybe_type = format_item:match("^(.+):([.sfd0-9]+)$")
+            if item and maybe_type then
+                format_item = maybe_type
+                format_item = item
+            end
+            table.insert(args, format_item)
+            return "%" .. format_type
+        end)
+    end
     if #args == 0 then
         return " write([[" .. match .. "]])"
     else
