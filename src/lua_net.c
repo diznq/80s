@@ -11,6 +11,10 @@
 
 #include <dirent.h>
 
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
 #ifdef USE_INOTIFY
 #include <sys/inotify.h>
 #endif
@@ -223,10 +227,31 @@ static int l_net_listdir(lua_State *L) {
     char buf[1000];
     const char *dir_name = lua_tostring(L, 1);
 
-    n = scandir(dir_name, &eps, NULL, alphasort);
 
+#ifdef _WIN32
+    WIN32_FIND_DATAA data;
+    HANDLE hFind = FindFirstFileA(dir_name, &data);
+    if(hFind == INVALID_HANDLE_VALUE) {
+        return 1;
+    }
+
+    i = 0;
+    
+    do {
+        if(!strcmp(data.cFileName, ".") || !strcmp(data.cFileName, ".."))
+            continue;
+        if(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            strncpy(buf, data.cFileName, 996);
+            strncat(buf, "/", 996);
+            lua_pushstring(L, buf);
+        } else {
+            lua_pushstring(L, data.cFileName);
+        }
+        lua_rawseti(L, -2, ++i);
+    } while(FindNextFileA(hFind, &data));
+#else
     lua_newtable(L);
-
+    n = scandir(dir_name, &eps, NULL, alphasort);
     while (n >= 0 && n--) {
         if (!strcmp(eps[n]->d_name, ".") || !strcmp(eps[n]->d_name, "..")) {
             continue;
@@ -251,6 +276,7 @@ static int l_net_listdir(lua_State *L) {
         }
         lua_rawseti(L, -2, ++i);
     }
+#endif
 
     if (eps != NULL) {
         free(eps);

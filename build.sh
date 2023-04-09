@@ -32,8 +32,13 @@ if [ "$JIT" = "true" ]; then
 fi
 
 if [ ! -f "$LUA_INC/lua.h" ]; then
-  LUA_INC="/run/host$LUA_INC"
-  LUA_LIB="/run/host$LUA_LIB"
+  OS="$(uname -o)"
+  if [ "$OS" = "Msys" ]; then
+    LUA_INC="/c/Users/$USER/vcpkg/packages/lua_x64-windows/include"
+  else
+    LUA_INC="/run/host$LUA_INC"
+    LUA_LIB="/run/host$LUA_LIB"
+  fi
   if [ ! -f "$LUA_INC/lua.h" ]; then
     echo "failed to locate lua.h in $LUA_INC"
     exit 1

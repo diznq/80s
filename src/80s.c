@@ -6,12 +6,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <WinSock2.h>
+#include <Windows.h>
+#include <Ws2TcpIp.h>
+#else
 #include <dirent.h>
 #include <fcntl.h>
-#include <netdb.h>
 #include <pthread.h>
 #include <strings.h>
 #include <unistd.h>
+#include <netdb.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -19,6 +24,7 @@
 
 #include <sys/socket.h>
 #include <sys/types.h>
+#endif
 
 union addr_common {
     struct sockaddr_in6 v6;
@@ -80,7 +86,11 @@ int main(int argc, const char **argv) {
     const char *entrypoint;
     const char *addr = v6 ? "::" : "0.0.0.0";
     struct serve_params params[workers];
+    #ifdef _WIN32
+    HANDLE handles[workers];
+    #else
     pthread_t handles[workers];
+    #endif
     int els[workers];
 
     for(i=1; i < argc - 1; i++) {
@@ -99,6 +109,14 @@ int main(int argc, const char **argv) {
 
     entrypoint = argv[1];
 
+    #ifdef _WIN32
+    WSADATA wsa;
+    if(WSAStartup(0x202, &wsa) != 0) {
+        error("main: WSA startup failed");
+        exit(1);
+    }
+    #endif
+
     parentfd = socket(v6 ? AF_INET6 : AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
     if (parentfd < 0)
@@ -106,7 +124,7 @@ int main(int argc, const char **argv) {
 
     optval = 1;
     setsockopt(parentfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
-    bzero((void *)&serveraddr, sizeof(serveraddr));
+    memset((void *)&serveraddr, 0, sizeof(serveraddr));
 
     if (v6) {
         serveraddr.v6.sin6_family = AF_INET6;
@@ -138,14 +156,26 @@ int main(int argc, const char **argv) {
         params[i].entrypoint = entrypoint;
 
         if (i > 0) {
+            #ifdef _WIN32
+            handles[i] = CreateThread(NULL, 1 << 17, (LPTHREAD_START_ROUTINE)serve, (void*)&params[i], 0, NULL);
+            if(handles[i] == INVALID_HANDLE_VALUE) {
+                error("main: failed to create thread");
+            }
+            #else
             if (pthread_create(&handles[i], NULL, serve, (void *)&params[i]) != 0) {
                 error("main: failed to create thread");
             }
+            #endif
         }
     }
 
     serve((void *)&params[0]);
 
+    #ifdef _WIN32
+    for (i = 1; i < workers; i++)
+        WaitForSingleObject(handles[i], INFINITE);
+    #else
     for (i = 1; i < workers; i++)
         pthread_join(handles[i], NULL);
+    #endif
 }

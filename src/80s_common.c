@@ -4,6 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <WinSock2.h>
+#include <Ws2TcpIp.h>
+#else
 #include <fcntl.h>
 #include <netdb.h>
 #include <strings.h>
@@ -14,6 +18,7 @@
 
 #include <sys/socket.h>
 #include <sys/types.h>
+#endif
 
 union addr_common {
     struct sockaddr_in6 v6;
@@ -40,8 +45,8 @@ int s80_connect(void *ctx, int elfd, const char *addr, int portno) {
         return -1;
     }
 
-    bzero((void *)&ipv4addr, sizeof(ipv4addr));
-    bzero((void *)&ipv6addr, sizeof(ipv6addr));
+    memset((void *)&ipv4addr, 0, sizeof(ipv4addr));
+    memset((void *)&ipv6addr, 0, sizeof(ipv6addr));
 
     ipv4addr.sin_family = AF_INET;
     ipv4addr.sin_port = htons((unsigned short)portno);
