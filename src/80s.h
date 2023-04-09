@@ -9,11 +9,13 @@ extern "C" {
 #define USE_KQUEUE
 #include <sys/event.h>
 #define event_t kevent
+#define NixAlike
 #elif defined(__linux__) || defined(SOLARIS_EPOLL)
 #define USE_EPOLL
 #define USE_INOTIFY
 #include <sys/epoll.h>
 #define event_t epoll_event
+#define NixAlike
 #elif defined(__sun)
 #define USE_PORT
 #define USE_INOTIFY
@@ -21,6 +23,7 @@ extern "C" {
 #include <sys/port.h>
 #include <sys/poll.h>
 #define event_t port_event
+#define NixAlike
 #else
 #error unsupported platform
 #endif
