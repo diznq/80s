@@ -12,6 +12,7 @@
 #include <netdb.h>
 #include <strings.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -248,6 +249,8 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
         for(i=0; i<4; i++) close(pipes[i]);
         return -1;
     } else if(pid == 0) {
+        signal(SIGPIPE, SIG_DFL);
+        signal(SIGCHLD, SIG_DFL);
         dup2(pipewr[0], STDIN_FILENO);
         dup2(piperd[1], STDOUT_FILENO);
         dup2(piperd[1], STDERR_FILENO);
