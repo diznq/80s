@@ -190,11 +190,11 @@ int s80_peername(int fd, char *buf, size_t bufsize, int *port) {
     }
 
     if (clientlen == sizeof(struct sockaddr_in)) {
-        inet_ntop(AF_INET6, &addr.v4.sin_addr, buf, clientlen);
+        inet_ntop(AF_INET, &addr.v4.sin_addr, buf, clientlen);
         *port = ntohs(addr.v4.sin_port);
         return 1;
     } else if (clientlen == sizeof(struct sockaddr_in6)) {
-        inet_ntop(AF_INET, &addr.v6.sin6_addr, buf, clientlen);
+        inet_ntop(AF_INET6, &addr.v6.sin6_addr, buf, clientlen);
         *port = ntohs(addr.v6.sin6_port);
         return 1;
     } else {
