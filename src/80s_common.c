@@ -203,7 +203,7 @@ int s80_peername(int fd, char *buf, size_t bufsize, int *port) {
 }
 
 int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) {
-#ifdef NixAlke
+#ifdef NixAlike
     struct event_t ev[2];
     int piperd[2], pipewr[2];
     int status, i, j, childfd, pid;
