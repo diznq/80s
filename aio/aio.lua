@@ -401,7 +401,7 @@ function aio:parse_query(query, private_key)
     params.e={} -- reserved for encrypted query
     query = "&" .. query
     -- match everything where first part doesn't contain = and second part doesn't contain &
-    for key, value in query:gmatch("%&([^=]+)=?([^&]*)") do
+    for key, value in query:gmatch("%&([^=&]+)=?([^&]*)") do
         if key == "e" and private_key ~= nil then
             local value = self:decrypt(codec.url_decode(value), self:create_key(private_key))
             if value then
