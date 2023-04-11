@@ -120,9 +120,6 @@ static void lua_encode(lua_State *L, struct dynstr *out) {
         if (is_empty) {
             is_empty = 0;
             is_array = lua_type(L, -2) == LUA_TNUMBER;
-            if (is_array) {
-                out->ptr[out->length - 1] = '[';
-            }
         }
         if (!is_array) {
             key = lua_tolstring(L, -2, &value_len);
@@ -165,7 +162,7 @@ static void lua_encode(lua_State *L, struct dynstr *out) {
             dynstr_puts(out, "{}", 2);
         }
     } else if (out->length > 0) {
-        out->ptr[out->length - 1] = is_array ? ']' : '}';
+        out->ptr[out->length - 1] = '}';
     } else {
         dynstr_putc(out, '}');
     }

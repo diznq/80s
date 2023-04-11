@@ -1,5 +1,13 @@
 local mysql = require("server.mysql")
 
+--- Convert to integer
+---@param x string|number|nil
+---@return integer|nil
+local function tointeger(x)
+    local num = tonumber(x)
+    if num ~= nil then return math.floor(num) end
+end
+
 --- @alias ormentity {[string]: ormfield}
 
 --- @class ormfield
@@ -36,8 +44,8 @@ local ormtypes = {
     },
     int = {
         format = function() return "%d" end,
-        fromstring = function(text) return tonumber(text) end,
-        toformat = function(value) return tonumber(value) end
+        fromstring = function(text) return tointeger(text) end,
+        toformat = function(value) return tointeger(value) end
     },
     double = {
         format = function() return "%f" end,
