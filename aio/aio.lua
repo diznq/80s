@@ -61,6 +61,8 @@ WORKERID = WORKERID or nil
 --- @alias aiohttphandler fun(self: aiosocket, query: string, headers: {[string]: string}, body: string) AIO HTTP handler
 --- @alias aiowritebuf {d: string, o: integer}
 --- @alias aiohttpquery {[string]: string, e: {[string]: string}}
+--- @alias aiomatches fun(data: string): boolean Matcher function
+--- @alias aiohandler fun(fd: aiosocket) Handler function
 
 --- @generic V : string
 --- @alias aiopromise<V> fun(on_resolved: fun(result: V)) AIO promise
@@ -288,7 +290,8 @@ if not aio then
             --- @type {[string]: aiohttphandler}
             POST={}
         },
-        cors = 0,
+        -- protocol handlers
+        protocols = {},
         -- master key
         master_key = nil,
         ---@type {size: integer, data: table}
@@ -316,7 +319,24 @@ function aio:on_data(elfd, childfd, data, len)
     -- detect the protocol and add correct handler
     if is_http[initial] then
         self:handle_as_http(elfd, childfd, data, len)
+    else
+        for _, handler in pairs(self.protocols) do
+            if handler.matches(data) then
+                local fd = aiosocket:new(elfd, childfd, true)
+                self.fds[childfd] = fd
+                handler.handle(fd)
+                fd:on_data(elfd, childfd, data, len)
+                break
+            end
+        end
     end
+end
+
+--- Add new protocol handler for unknown protocols
+---@param name string unique name of protocol
+---@param handler {matches: aiomatches, handler: aiohandler} protocol handler
+function aio:add_protocol_handler(name, handler)
+    self.protocols[name] = handler
 end
 
 --- Create new HTTP handler for network stream
