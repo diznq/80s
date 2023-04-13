@@ -128,7 +128,9 @@ void *serve(void *vparams) {
                     }
                     break;
                 case EVFILT_PROC:
-                    while((events[n].fflags & NOTE_EXIT) && waitpid(-1, NULL, WNOHANG) > 0);
+                    if(waitpid(childfd, NULL, WNOHANG) < 0) {
+                        dbg("serve: failed to wait pid");
+                    }
                     break;
                 }
             }
