@@ -15,6 +15,7 @@
 #include <signal.h>
 
 #include <sys/socket.h>
+#include <signal.h>
 
 union addr_common {
     struct sockaddr_in6 v6;
@@ -129,7 +130,7 @@ void *serve(void *vparams) {
                     }
                     break;
                 case EVFILT_PROC:
-
+                    while((events[n].fflags & NOTE_EXIT) && waitpid(-1, NULL, WNOHANG) > 0);
                     break;
                 }
             }
