@@ -261,6 +261,10 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
     } else {
         close(pipewr[0]);
         close(piperd[1]);
+        EV_SET(ev, pid, EVFILT_PROC, EV_ADD, 0, 0, (void*)S80_FD_OTHER);
+        if(kevent(elfd, ev, 1, NULL, 0, NULL) < 0) {
+            dbg("s80_popen: failed to monitor pid");
+        }
     }
     return 0;
 #else
