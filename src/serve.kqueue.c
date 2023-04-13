@@ -9,13 +9,13 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <signal.h>
 
 #include <sys/socket.h>
-#include <signal.h>
+#include <sys/wait.h>
 
 union addr_common {
     struct sockaddr_in6 v6;
