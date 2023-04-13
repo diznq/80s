@@ -53,7 +53,7 @@ void *serve(void *vparams) {
         }
     }
 
-    ctx = create_lua(elfd, id, params->entrypoint);
+    ctx = create_context(elfd, id, params->entrypoint);
 
     if (ctx == NULL) {
         error("failed to initialize context");
