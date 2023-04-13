@@ -26,6 +26,8 @@ union addr_common {
     struct sockaddr_in v4;
 };
 
+static int cleanup_pipes(int elfd, int* pipes_out, int allocated);
+
 int s80_connect(void *ctx, int elfd, const char *addr, int portno) {
     struct event_t ev[2];
     struct sockaddr_in ipv4addr;
@@ -239,14 +241,19 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
         status = port_associate(elfd, PORT_SOURCE_FD, childfd, i == 0 ? POLLIN : POLLOUT, NULL);
 #endif
         if(status < 0) {
-            for(j=0; j<=i; j++)
+            cleanup_pipes(elfd, i - 1, pipes);
+            for(j=0; j < 4; j++) {
                 close(pipes[j]);
+            }
             return status;
         }
     }
     pid = fork();
     if(pid < 0) {
-        for(i=0; i<4; i++) close(pipes[i]);
+        cleanup_pipes(elfd, 2, pipes);
+        for(i=0; i<4; i++){
+            close(pipes[i]);
+        }
         return -1;
     } else if(pid == 0) {
         signal(SIGPIPE, SIG_DFL);
@@ -259,17 +266,43 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
         close(piperd[0]);
         _exit(execvp(command, args));
     } else {
-        close(pipewr[0]);
-        close(piperd[1]);
 #ifdef USE_KQUEUE
         EV_SET(ev, pid, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, (void*)S80_FD_OTHER);
         if(kevent(elfd, ev, 1, NULL, 0, NULL) < 0) {
             dbg("s80_popen: failed to monitor pid");
         }
 #endif
+        close(pipewr[0]);
+        close(piperd[1]);
     }
     return 0;
 #else
     return -1;
 #endif
+}
+
+static int cleanup_pipes(int elfd, int *pipes, int allocated) {
+#ifdef UNIX_BASED
+    struct event_t ev[2];
+    int i, childfd, err = errno;
+    for(i=0; i<allocated; i++) {
+        childfd = pipes[i];
+        if(i < 2) {
+#ifdef USE_EPOLL
+            // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
+            ev[0].events = i == 0 ? EPOLLIN : EPOLLOUT;
+            ev[0].data.fd = childfd;
+            epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
+#elif defined(USE_KQUEUE)
+            // subscribe for both read and write separately
+            EV_SET(ev, childfd, i == 0 ? EVFILT_READ : EVFILT_WRITE, EV_ADD, 0, 0, (void*)S80_FD_PIPE);
+            kevent(elfd, ev, 1, NULL, 0, NULL);
+#elif defined(USE_PORT)
+            port_associate(elfd, PORT_SOURCE_FD, childfd, i == 0 ? POLLIN : POLLOUT, NULL);
+#endif
+        }
+    }
+    errno = err;
+#endif
+    return -1;
 }
