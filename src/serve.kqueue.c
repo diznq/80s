@@ -94,13 +94,11 @@ void *serve(void *vparams) {
                 // this thread and other event loops don't have it
                 switch (events[n].filter) {
                 case EVFILT_WRITE:
-                    if(events[n].udata == (void*)S80_FD_PIPE && (events[n].flags & (EV_EOF | EV_ERROR)) == 0) {
-                        EV_SET(&ev, childfd, EVFILT_WRITE, EV_ADD, (EV_EOF | EV_ERROR), 0, events[n].udata);
-                    } else {
+                    if(events[n].udata != (void*)S80_FD_PIPE || (events[n].flags & (EV_EOF | EV_ERROR)) != 0) {
                         EV_SET(&ev, childfd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
-                    }
-                    if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
-                        dbg("serve: failed to modify kqueue write socket");
+                        if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
+                            dbg("serve: failed to modify kqueue write socket");
+                        }
                     }
                     if (events[n].flags & (EV_EOF | EV_ERROR)) {
                         if(close(childfd) < 0) {
