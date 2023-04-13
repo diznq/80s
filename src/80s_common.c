@@ -26,7 +26,7 @@ union addr_common {
     struct sockaddr_in v4;
 };
 
-static int cleanup_pipes(int elfd, int* pipes_out, int allocated);
+static int cleanup_pipes(int elfd, int* pipes, int allocated);
 
 int s80_connect(void *ctx, int elfd, const char *addr, int portno) {
     struct event_t ev[2];
@@ -241,7 +241,7 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
         status = port_associate(elfd, PORT_SOURCE_FD, childfd, i == 0 ? POLLIN : POLLOUT, NULL);
 #endif
         if(status < 0) {
-            cleanup_pipes(elfd, i - 1, pipes);
+            cleanup_pipes(elfd, pipes, i - 1);
             for(j=0; j < 4; j++) {
                 close(pipes[j]);
             }
@@ -250,11 +250,11 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
     }
     pid = fork();
     if(pid < 0) {
-        cleanup_pipes(elfd, 2, pipes);
+        cleanup_pipes(elfd, pipes, 2);
         for(i=0; i<4; i++){
             close(pipes[i]);
         }
-        return -1;
+        return pid;
     } else if(pid == 0) {
         signal(SIGPIPE, SIG_DFL);
         signal(SIGCHLD, SIG_DFL);
@@ -292,13 +292,13 @@ static int cleanup_pipes(int elfd, int *pipes, int allocated) {
             // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
             ev[0].events = i == 0 ? EPOLLIN : EPOLLOUT;
             ev[0].data.fd = childfd;
-            epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
+            epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, ev);
 #elif defined(USE_KQUEUE)
             // subscribe for both read and write separately
-            EV_SET(ev, childfd, i == 0 ? EVFILT_READ : EVFILT_WRITE, EV_ADD, 0, 0, (void*)S80_FD_PIPE);
+            EV_SET(ev, childfd, i == 0 ? EVFILT_READ : EVFILT_WRITE, EV_DELETE, 0, 0, (void*)S80_FD_PIPE);
             kevent(elfd, ev, 1, NULL, 0, NULL);
 #elif defined(USE_PORT)
-            port_associate(elfd, PORT_SOURCE_FD, childfd, i == 0 ? POLLIN : POLLOUT, NULL);
+            port_dissociate(elfd, PORT_SOURCE_FD, childfd, i == 0 ? POLLIN : POLLOUT);
 #endif
         }
     }
