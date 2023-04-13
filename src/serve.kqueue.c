@@ -15,7 +15,6 @@
 #include <signal.h>
 
 #include <sys/socket.h>
-#include <sys/types.h>
 
 union addr_common {
     struct sockaddr_in6 v6;

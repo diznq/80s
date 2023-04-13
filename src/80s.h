@@ -4,26 +4,30 @@
 extern "C" {
 #endif
 #include <stdint.h>
+#include <stddef.h>
 
 #if defined(__FreeBSD__) || defined(__APPLE__)
 #define USE_KQUEUE
+#include <sys/types.h>
 #include <sys/event.h>
 #define event_t kevent
-#define NixAlike
+#define UNIX_BASED
 #elif defined(__linux__) || defined(SOLARIS_EPOLL)
 #define USE_EPOLL
 #define USE_INOTIFY
+#include <sys/types.h>
 #include <sys/epoll.h>
 #define event_t epoll_event
-#define NixAlike
+#define UNIX_BASED
 #elif defined(__sun)
 #define USE_PORT
 #define USE_INOTIFY
 #include <port.h>
+#include <sys/types.h>
 #include <sys/port.h>
 #include <sys/poll.h>
 #define event_t port_event
-#define NixAlike
+#define UNIX_BASED
 #else
 #error unsupported platform
 #endif

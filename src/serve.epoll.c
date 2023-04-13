@@ -15,7 +15,6 @@
 #include <signal.h>
 
 #include <sys/socket.h>
-#include <sys/types.h>
 #include <sys/signalfd.h>
 #include <sys/wait.h>
 
