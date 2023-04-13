@@ -233,7 +233,7 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
         status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
 #elif defined(USE_KQUEUE)
         // subscribe for both read and write separately
-        EV_SET(ev, childfd, i == 0 ? EVFILT_READ : EVFILT_WRITE, EV_ADD, 0, 0, (void*)S80_FD_PIPE);
+        EV_SET(ev, childfd, i == 0 ? EVFILT_READ : EVFILT_WRITE, EV_ADD, i == 0 ? 0 : (EV_EOF | EV_ERROR), 0, (void*)S80_FD_PIPE);
         status = kevent(elfd, ev, 1, NULL, 0, NULL);
 #elif defined(USE_PORT)
         status = port_associate(elfd, PORT_SOURCE_FD, childfd, i == 0 ? POLLIN : POLLOUT, NULL);
