@@ -106,8 +106,9 @@ void *serve(void *vparams) {
                             dbg("serve: failed to close write socket");
                         }
                         on_close(ctx, elfd, childfd);
+                    } else if(events[n].data > 0) {
+                        on_write(ctx, elfd, childfd, 0);
                     }
-                    on_write(ctx, elfd, childfd, 0);
                     break;
                 case EVFILT_READ:
                     buf[0] = 0;
@@ -126,6 +127,9 @@ void *serve(void *vparams) {
                         }
                         on_close(ctx, elfd, childfd);
                     }
+                    break;
+                case EVFILT_PROC:
+
                     break;
                 }
             }
