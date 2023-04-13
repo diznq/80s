@@ -101,7 +101,7 @@ void *serve(void *vparams) {
                     if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
                         dbg("serve: failed to modify kqueue write socket");
                     }
-                    if (events[n].flags & (EV_EOF | EV_ERROR) && close(fd) < 0) {
+                    if (events[n].flags & (EV_EOF | EV_ERROR) && close(childfd) < 0) {
                         dbg("serve: failed to close write socket");
                     }
                     on_write(ctx, elfd, childfd, 0);
