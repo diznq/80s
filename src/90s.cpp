@@ -37,7 +37,7 @@ auto make_cor(holder *hld, void *ctx, int elfd, int childfd) {
             size_t pos;
             while ((pos = data.find("\r\n\r\n")) != std::string::npos) {
                 std::string response = "HTTP/1.1 200 OK\r\nConnecton: keep-alive\r\nContent-length: " + std::to_string(pos) + "\r\n\r\n" + data.substr(0, pos);
-                s80_write(ctx, el, fd, response.c_str(), 0, response.length());
+                s80_write(ctx, el, fd, S80_FD_SOCKET, response.c_str(), 0, response.length());
                 data = data.substr(pos + 4);
             }
             co_yield h->data.length();

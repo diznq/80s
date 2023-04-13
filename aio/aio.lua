@@ -8,8 +8,8 @@
 --- @field clock number time since start of program
 
 --- @class net
---- @field write fun(elfd: lightuserdata, childfd: lightuserdata, data: string, offset: integer): boolean write data to file descriptor
---- @field close fun(elfd: lightuserdata, childfd: lightuserdata): boolean close a file descriptor
+--- @field write fun(elfd: lightuserdata, childfd: lightuserdata, fdtype: lightuserdata, data: string, offset: integer): boolean write data to file descriptor
+--- @field close fun(elfd: lightuserdata, childfd: lightuserdata, fdtype: lightuserdata): boolean close a file descriptor
 --- @field connect fun(elfd: lightuserdata, host: string, port: integer): fd: lightuserdata|nil, err: string|nil open a new network connection
 --- @field reload fun() reload server
 --- @field listdir fun(dir: string): string[] list files in directory
@@ -104,6 +104,8 @@ local aiosocket = {
     childfd = nil,
     --- @type lightuserdata event loop file descriptor
     elfd = nil,
+    --- @type lightuserdata fd type
+    fdtype = nil,
     --- @type boolean true if close after write
     cw = false,
     --- @type boolean true if socket is connected
@@ -129,7 +131,7 @@ function aiosocket:write(data, close)
         return true
     end
     local to_write = #data
-    local ok, written = net.write(self.elfd, self.childfd, data, 0)
+    local ok, written = net.write(self.elfd, self.childfd, self.fdtype, data, 0)
     if not ok then
         self:close()
         return false
@@ -152,7 +154,7 @@ end
 function aiosocket:close()
     if self.closed then return true end
     self.buf = {}
-    return net.close(self.elfd, self.childfd)
+    return net.close(self.elfd, self.childfd, self.fdtype)
 end
 
 --- Write HTTP respose
@@ -241,7 +243,7 @@ function aiosocket:on_write(elfd, childfd, n_written)
         end
         -- only write if there actually is something to write
         if to_write > 0 then
-            ok, written = net.write(elfd, childfd, item.d, item.o)
+            ok, written = net.write(elfd, childfd, self.fdtype, item.d, item.o)
         end
         if not ok then
             -- if sending failed completly, i.e. socket was closed, end
@@ -265,10 +267,18 @@ end
 ---
 --- @param elfd lightuserdata
 --- @param childfd lightuserdata
+--- @param fdtype lightuserdata
 --- @param connected boolean
 --- @return aiosocket
-function aiosocket:new(elfd, childfd, connected)
-    local socket = { elfd = elfd, childfd = childfd, cw = false, co = connected or false, wr = connected or false }
+function aiosocket:new(elfd, childfd, fdtype, connected)
+    local socket = { 
+        elfd = elfd, 
+        childfd = childfd, 
+        fdtype = fdtype,
+        cw = false, 
+        co = connected or false, 
+        wr = connected or false 
+    }
     setmetatable(socket, self)
     self.__index = self
     return socket
@@ -304,9 +314,10 @@ end
 ---
 --- @param elfd lightuserdata epoll handle
 --- @param childfd lightuserdata socket handle
+--- @param fdtype lightuserdata fd type
 --- @param data string incoming stream data
 --- @param len integer length of data
-function aio:on_data(elfd, childfd, data, len)
+function aio:on_data(elfd, childfd, fdtype, data, len)
     local fd = self.fds[childfd]
     if fd ~= nil then
         fd:on_data(elfd, childfd, data, len)
@@ -318,11 +329,11 @@ function aio:on_data(elfd, childfd, data, len)
     local initial = data:sub(1, 1)
     -- detect the protocol and add correct handler
     if is_http[initial] then
-        self:handle_as_http(elfd, childfd, data, len)
+        self:handle_as_http(elfd, childfd, fdtype, data, len)
     else
         for _, handler in pairs(self.protocols) do
             if handler.matches(data) then
-                local fd = aiosocket:new(elfd, childfd, true)
+                local fd = aiosocket:new(elfd, childfd, fdtype, true)
                 self.fds[childfd] = fd
                 handler.handle(fd)
                 fd:on_data(elfd, childfd, data, len)
@@ -343,10 +354,11 @@ end
 ---
 --- @param elfd lightuserdata epoll handle
 --- @param childfd lightuserdata socket handle
+--- @param fdtype lightuserdata fd type
 --- @param data string incoming stream data
 --- @param len integer length of data
-function aio:handle_as_http(elfd, childfd, data, len)
-    local fd = aiosocket:new(elfd, childfd, true)
+function aio:handle_as_http(elfd, childfd, fdtype, data, len)
+    local fd = aiosocket:new(elfd, childfd, fdtype, true)
     self.fds[childfd] = fd
 
     self:buffered_cor(fd, function (resolve)
@@ -673,7 +685,7 @@ function aio:connect(elfd, host, port)
     if sock == nil then
         return nil, err
     end
-    self.fds[sock] = aiosocket:new(elfd, sock, false)
+    self.fds[sock] = aiosocket:new(elfd, sock, S80_FD_SOCKET, false)
     return self.fds[sock], nil
 end
 
@@ -690,8 +702,8 @@ function aio:popen(elfd, command, ...)
         ---@diagnostic disable-next-line: return-type-mismatch
         return nil, err
     end
-    self.fds[sock] = aiosocket:new(elfd, sock, false)
-    self.fds[err] = aiosocket:new(elfd, err, false)
+    self.fds[sock] = aiosocket:new(elfd, sock, S80_FD_PIPE, false)
+    self.fds[err] = aiosocket:new(elfd, err, S80_FD_PIPE, false)
     return self.fds[sock], self.fds[err]
 end
 
@@ -721,7 +733,7 @@ end
 function aio:watch(elfd, targets, on_change)
     local fd, err = net.inotify_init(elfd)
     if fd ~= nil then
-        local sock = aiosocket:new(elfd, fd, true)
+        local sock = aiosocket:new(elfd, fd, S80_FD_OTHER, true)
         sock.watching = {}
         sock.on_data = function (self, elfd, childfd, data, length)
             local events = net.inotify_read(data)
@@ -794,10 +806,11 @@ function aio:start()
     --- Data handler
     --- @param elfd lightuserdata
     --- @param childfd lightuserdata
+    --- @param fdtype lightuserdata
     --- @param data string
     --- @param len integer
-    _G.on_data = function(elfd, childfd, data, len)
-        aio:on_data(elfd, childfd, data, len)
+    _G.on_data = function(elfd, childfd, fdtype, data, len)
+        aio:on_data(elfd, childfd, fdtype, data, len)
     end
     
     --- Close handler

@@ -122,7 +122,7 @@ int s80_connect(void *ctx, int elfd, const char *addr, int portno) {
     return -1;
 }
 
-ssize_t s80_write(void *ctx, int elfd, int childfd, const char *data, ssize_t offset, size_t len) {
+ssize_t s80_write(void *ctx, int elfd, int childfd, int fdtype, const char *data, ssize_t offset, size_t len) {
     struct event_t ev;
     int status;
     size_t writelen = write(childfd, data + offset, len - offset);
@@ -137,7 +137,7 @@ ssize_t s80_write(void *ctx, int elfd, int childfd, const char *data, ssize_t of
             ev.data.fd = childfd;
             status = epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev);
 #elif defined(USE_KQUEUE)
-            EV_SET(&ev, childfd, EVFILT_WRITE, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
+            EV_SET(&ev, childfd, EVFILT_WRITE, EV_ADD, 0, 0, (void*)fdtype);
             status = kevent(elfd, &ev, 1, NULL, 0, NULL);
 #elif defined(USE_PORT)
             status = port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN | POLLOUT, NULL);
@@ -151,7 +151,7 @@ ssize_t s80_write(void *ctx, int elfd, int childfd, const char *data, ssize_t of
     }
 }
 
-int s80_close(void *ctx, int elfd, int childfd) {
+int s80_close(void *ctx, int elfd, int childfd, int fdtype) {
     struct event_t ev;
     int status;
 #ifdef USE_EPOLL

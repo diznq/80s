@@ -27,9 +27,10 @@ static int l_net_write(lua_State *L) {
     size_t len;
     int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
-    const char *data = lua_tolstring(L, 3, &len);
-    ssize_t offset = (ssize_t)lua_tointeger(L, 4);
-    ssize_t writelen = s80_write((void *)L, elfd, childfd, data, offset, len);
+    int fdtype = (int)lua_touserdata(L, 3);
+    const char *data = lua_tolstring(L, 4, &len);
+    ssize_t offset = (ssize_t)lua_tointeger(L, 5);
+    ssize_t writelen = s80_write((void *)L, elfd, childfd, fdtype, data, offset, len);
     if (writelen < 0) {
         lua_pushboolean(L, 0);
         lua_pushstring(L, strerror(errno));
@@ -43,7 +44,8 @@ static int l_net_write(lua_State *L) {
 static int l_net_close(lua_State *L) {
     int elfd = (int)lua_touserdata(L, 1);
     int childfd = (int)lua_touserdata(L, 2);
-    int status = s80_close((void *)L, elfd, childfd);
+    int fdtype = (int)lua_touserdata(L, 3);
+    int status = s80_close((void *)L, elfd, childfd, fdtype);
     lua_pushboolean(L, status >= 0);
     return 1;
 }

@@ -56,8 +56,8 @@ void on_write(void *ctx, int elfd, int childfd, int written);
 void on_init(void *ctx, int elfd, int parentfd);
 
 int s80_connect(void *ctx, int elfd, const char *addr, int port);
-ssize_t s80_write(void *ctx, int elfd, int childfd, const char *data, ssize_t offset, size_t len);
-int s80_close(void *ctx, int elfd, int childfd);
+ssize_t s80_write(void *ctx, int elfd, int childfd, int fdtype, const char *data, ssize_t offset, size_t len);
+int s80_close(void *ctx, int elfd, int childfd, int fdtype);
 int s80_peername(int fd, char *buf, size_t bufsize, int *port);
 int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args);
 

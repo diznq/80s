@@ -93,25 +93,35 @@ void *serve(void *vparams) {
                 // this thread and other event loops don't have it
                 switch (events[n].filter) {
                 case EVFILT_WRITE:
-                    EV_SET(&ev, childfd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+                    if(events[n].udata == (void*)S80_FD_PIPE && (events[n].flags & (EV_EOF | EV_ERROR)) == 0) {
+                        EV_SET(&ev, childfd, EVFILT_WRITE, EV_ADD, (EV_EOF | EV_ERROR), 0, events[n].udata);
+                    } else {
+                        EV_SET(&ev, childfd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+                    }
                     if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
-                        dbg("serve: failed to move child socket from out to in");
-                        continue;
+                        dbg("serve: failed to modify kqueue write socket");
+                    }
+                    if (events[n].flags & (EV_EOF | EV_ERROR) && close(fd) < 0) {
+                        dbg("serve: failed to close write socket");
                     }
                     on_write(ctx, elfd, childfd, 0);
                     break;
                 case EVFILT_READ:
                     buf[0] = 0;
                     readlen = read(childfd, buf, BUFSIZE);
-                    // if length is <= 0, remove the socket from event loop
-                    if (readlen <= 0) {
+                    if(readlen > 0) {
+                        on_receive(ctx, elfd, childfd, buf, readlen);
+                    }
+                    // if length is <= 0 or error happens, remove the socket from event loop
+                    if (readlen <= 0 || (events[n].flags & (EV_EOF | EV_ERROR))) {
+                        EV_SET(&ev, childfd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+                        if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
+                            dbg("serve: failed to remove fd from kqueue");
+                        }
                         if (close(childfd) < 0) {
                             dbg("serve: failed to close child socket");
-                            continue;
                         }
                         on_close(ctx, elfd, childfd);
-                    } else if(readlen > 0) {
-                        on_receive(ctx, elfd, childfd, buf, readlen);
                     }
                     break;
                 }

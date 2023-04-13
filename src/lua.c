@@ -17,14 +17,15 @@ void close_context(void *ctx) {
     lua_close((lua_State *)ctx);
 }
 
-void on_receive(void *ctx, int elfd, int childfd, const char *buf, int readlen) {
+void on_receive(void *ctx, int elfd, int childfd, int fdtype, const char *buf, int readlen) {
     lua_State *L = (lua_State *)ctx;
     lua_getglobal(L, "on_data");
     lua_pushlightuserdata(L, (void *)elfd);
     lua_pushlightuserdata(L, (void *)childfd);
+    lua_pushlightuserdata(L, (void *)fdtype);
     lua_pushlstring(L, buf, readlen);
     lua_pushinteger(L, readlen);
-    if (lua_pcall(L, 4, 0, 0) != 0) {
+    if (lua_pcall(L, 5, 0, 0) != 0) {
         printf("on_receive: error running on_data: %s\n", lua_tostring(L, -1));
     }
 }
@@ -90,6 +91,15 @@ static lua_State *create_lua(int elfd, int id, const char *entrypoint) {
 
     lua_pushlightuserdata(L, (void *)elfd);
     lua_setglobal(L, "ELFD");
+
+    lua_pushlightuserdata(L, (void *)S80_FD_SOCKET);
+    lua_setglobal(L, "S80_FD_SOCKET");
+    lua_pushlightuserdata(L, (void *)S80_FD_KTLS_SOCKET);
+    lua_setglobal(L, "S80_FD_KTLS_SOCKET");
+    lua_pushlightuserdata(L, (void *)S80_FD_PIPE);
+    lua_setglobal(L, "S80_FD_PIPE");
+    lua_pushlightuserdata(L, (void *)S80_FD_OTHER);
+    lua_setglobal(L, "S80_FD_OTHER");
 
     status = luaL_dofile(L, entrypoint);
 
