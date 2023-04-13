@@ -50,7 +50,7 @@ void *serve(void *vparams);
 
 void *create_context(int elfd, int id, const char *entrypoint);
 void close_context(void *ctx);
-void on_receive(void *ctx, int elfd, int childfd, const char *buf, int readlen);
+void on_receive(void *ctx, int elfd, int childfd, int fdtype, const char *buf, int readlen);
 void on_close(void *ctx, int elfd, int childfd);
 void on_write(void *ctx, int elfd, int childfd, int written);
 void on_init(void *ctx, int elfd, int parentfd);

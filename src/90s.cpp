@@ -87,7 +87,7 @@ extern "C" void *create_context(int elfd, int id, const char *entrypoint) {
 extern "C" void close_context(void *ctx) {
 }
 
-extern "C" void on_receive(void *ctx, int elfd, int childfd, const char *buf, int readlen) {
+extern "C" void on_receive(void *ctx, int elfd, int childfd, int fdtype, const char *buf, int readlen) {
     Context *context = (Context *)ctx;
     context->on_receive(childfd, buf, readlen);
 }

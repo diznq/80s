@@ -116,7 +116,7 @@ void *serve(void *vparams) {
                         if (port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN, NULL) < 0) {
                             dbg("serve: failed to reassociate child socket");
                         }
-                        on_receive(ctx, elfd, childfd, buf, readlen);
+                        on_receive(ctx, elfd, childfd, S80_FD_SOCKET, buf, readlen);
                     }
                 }
                 if ((events[n].portev_events & (POLLHUP | POLLERR))) {
