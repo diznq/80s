@@ -6,20 +6,26 @@ extern "C" {
 #include <stdint.h>
 #include <stddef.h>
 
+#define S80_FD_SOCKET 0
+#define S80_FD_KTLS_SOCKET 1
+#define S80_FD_PIPE 2
+#define S80_FD_OTHER 3
+
 #if defined(__FreeBSD__) || defined(__APPLE__)
+#define UNIX_BASED
 #define USE_KQUEUE
 #include <sys/types.h>
 #include <sys/event.h>
 #define event_t kevent
-#define UNIX_BASED
 #elif defined(__linux__) || defined(SOLARIS_EPOLL)
+#define UNIX_BASED
 #define USE_EPOLL
 #define USE_INOTIFY
 #include <sys/types.h>
 #include <sys/epoll.h>
 #define event_t epoll_event
-#define UNIX_BASED
 #elif defined(__sun)
+#define UNIX_BASED
 #define USE_PORT
 #define USE_INOTIFY
 #include <port.h>
@@ -27,7 +33,6 @@ extern "C" {
 #include <sys/port.h>
 #include <sys/poll.h>
 #define event_t port_event
-#define UNIX_BASED
 #else
 #error unsupported platform
 #endif

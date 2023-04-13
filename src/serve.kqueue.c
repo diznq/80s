@@ -47,7 +47,7 @@ void *serve(void *vparams) {
 
     // only one thread can poll on server socket and accept others!
     if (id == 0) {
-        EV_SET(&ev, parentfd, EVFILT_READ, EV_ADD, 0, 0, NULL);
+        EV_SET(&ev, parentfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
         if (kevent(elfd, &ev, 1, NULL, 0, NULL) == -1) {
             error("serve: failed to add server socket to kqueue");
         }
@@ -79,7 +79,7 @@ void *serve(void *vparams) {
                 }
                 // set non blocking flag to the newly created child socket
                 fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
-                EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, NULL);
+                EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
                 // add the child socket to the event loop it belongs to based on modulo
                 // with number of workers, to balance the load to other threads
                 if (kevent(els[accepts++], &ev, 1, NULL, 0, NULL) < 0) {
