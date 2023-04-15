@@ -53,6 +53,15 @@ ELFD = ELFD or nil
 --- @type integer
 WORKERID = WORKERID or nil
 
+--- @type lightuserdata
+S80_FD_SOCKET = S80_FD_SOCKET or nil
+--- @type lightuserdata
+S80_FD_KTLS_SOCKET = S80_FD_KTLS_SOCKET or nil
+--- @type lightuserdata
+S80_FD_PIPE = S80_FD_PIPE or nil
+--- @type lightuserdata
+S80_FD_OTHER = S80_FD_OTHER or nil
+
 --- Aliases to be defined here
 --- @alias aiostream fun() : any ... AIO input stream
 --- @alias aiocor fun(stream: aiostream, resolve?: fun(value: any)|thread): nil AIO coroutine
@@ -734,6 +743,7 @@ function aio:watch(elfd, targets, on_change)
     local fd, err = net.inotify_init(elfd)
     if fd ~= nil then
         local sock = aiosocket:new(elfd, fd, S80_FD_OTHER, true)
+        self.fds[fd] = sock
         sock.watching = {}
         sock.on_data = function (self, elfd, childfd, data, length)
             local events = net.inotify_read(data)
@@ -750,7 +760,6 @@ function aio:watch(elfd, targets, on_change)
             end
             on_change(events)
         end
-        self.fds[fd] = sock
         for _, target in ipairs(targets) do
             local wd = net.inotify_add(elfd, fd, target)
             if wd ~= nil then

@@ -167,7 +167,7 @@ static int l_net_inotify_remove(lua_State *L) {
 static int l_net_inotify_read(lua_State *L) {
 #ifdef USE_INOTIFY
     const char *data;
-    size_t i, length;
+    size_t i = 0, length;
     struct timespec tp;
     int c = 1;
     double t;
