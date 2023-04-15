@@ -24,7 +24,7 @@ union addr_common {
 };
 
 void *serve(void *vparams) {
-    int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id, flags;
+    int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id, flags, fdtype;
     int sigfd;
     sigset_t sigmask;
     struct signalfd_siginfo siginfo;
@@ -35,6 +35,10 @@ void *serve(void *vparams) {
     struct epoll_event ev, events[MAX_EVENTS];
     struct serve_params *params;
     char buf[BUFSIZE];
+
+    if(sizeof(struct fd_holder) != sizeof(uint64_t)) {
+        error("serve: sizeof(fdholder) != sizeof(uint64_t)");
+    }
 
     accepts = 0;
     params = (struct serve_params *)vparams;
@@ -53,7 +57,7 @@ void *serve(void *vparams) {
     // only one thread can poll on server socket and accept others!
     if (id == 0) {
         ev.events = EPOLLIN;
-        ev.data.fd = parentfd;
+        SET_FD_HOLDER(&ev.data, S80_FD_SOCKET, parentfd);
         if (epoll_ctl(elfd, EPOLL_CTL_ADD, parentfd, &ev) < 0) {
             error("serve: failed to add server socket to epoll");
         }
@@ -70,7 +74,7 @@ void *serve(void *vparams) {
         }
         
         ev.events = EPOLLIN;
-        ev.data.fd = sigfd;
+        SET_FD_HOLDER(&ev.data, S80_FD_OTHER, sigfd);
         if (epoll_ctl(elfd, EPOLL_CTL_ADD, sigfd, &ev) < 0) {
             error("serve: failed to add signal fd to epoll");
         }
@@ -85,6 +89,7 @@ void *serve(void *vparams) {
     }
 
     on_init(ctx, elfd, parentfd);
+    int closed = 0;
 
     for (;;) {
         // wait for new events
@@ -95,8 +100,11 @@ void *serve(void *vparams) {
         }
 
         for (n = 0; n < nfds; ++n) {
-            childfd = events[n].data.fd;
+            childfd = FD_HOLDER_FD(&events[n].data);
+            fdtype = FD_HOLDER_TYPE(&events[n].data);
             flags = events[n].events;
+            closed = 0;
+
             if (id == 0 && childfd == sigfd && (flags & EPOLLIN)) {
                 readlen = read(childfd, (void*)&siginfo, sizeof(siginfo));
                 while(siginfo.ssi_signo == SIGCHLD && waitpid(-1, NULL, WNOHANG) > 0);
@@ -109,7 +117,7 @@ void *serve(void *vparams) {
                 // set non blocking flag to the newly created child socket
                 fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
                 ev.events = EPOLLIN;
-                ev.data.fd = childfd;
+                SET_FD_HOLDER(&ev.data, S80_FD_SOCKET, childfd);
                 // add the child socket to the event loop it belongs to based on modulo
                 // with number of workers, to balance the load to other threads
                 if (epoll_ctl(els[accepts++], EPOLL_CTL_ADD, childfd, &ev) < 0) {
@@ -123,10 +131,12 @@ void *serve(void *vparams) {
                 // this thread and other event loops don't have it
                 if ((flags & EPOLLOUT) == EPOLLOUT) {
                     // we should receive this only after socket is writeable, after that we remove it from EPOLLOUT queue
-                    ev.events = EPOLLIN;
-                    ev.data.fd = childfd;
-                    if (epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev) < 0) {
-                        dbg("serve: failed to move child socket from out to in");
+                    if(fdtype != S80_FD_PIPE) {
+                        ev.events = EPOLLIN;
+                        SET_FD_HOLDER(&ev.data, fdtype, childfd);
+                        if (epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev) < 0) {
+                            dbg("serve: failed to move child socket from out to in");
+                        }
                     }
                     on_write(ctx, elfd, childfd, 0);
                 }
@@ -134,9 +144,9 @@ void *serve(void *vparams) {
                     buf[0] = 0;
                     readlen = read(childfd, buf, BUFSIZE);
                     // if length is <= 0, remove the socket from event loop
-                    if (readlen <= 0 && (flags & (EPOLLHUP | EPOLLERR)) == 0) {
-                        ev.events = EPOLLIN;
-                        ev.data.fd = childfd;
+                    if (readlen <= 0) {
+                        ev.events = EPOLLIN | EPOLLOUT;
+                        SET_FD_HOLDER(&ev.data, S80_FD_SOCKET, childfd);
                         if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
                             dbg("serve: failed to remove child socket on readlen < 0");
                         }
@@ -144,13 +154,14 @@ void *serve(void *vparams) {
                             dbg("serve: failed to close child socket");
                         }
                         on_close(ctx, elfd, childfd);
+                        closed = 1;
                     } else if(readlen > 0) {
-                        on_receive(ctx, elfd, childfd, S80_FD_SOCKET, buf, readlen);
+                        on_receive(ctx, elfd, childfd, fdtype, buf, readlen);
                     }
                 }
-                if ((flags & (EPOLLERR | EPOLLHUP))) {
+                if (!closed && (flags & (EPOLLERR | EPOLLHUP))) {
                     ev.events = EPOLLIN | EPOLLOUT;
-                    ev.data.fd = childfd;
+                    SET_FD_HOLDER(&ev.data, fdtype, childfd);
                     if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
                         dbg("serve: failed to remove hungup child");
                     }
@@ -158,6 +169,7 @@ void *serve(void *vparams) {
                         dbg("serve: failed to close hungup child");
                     }
                     on_close(ctx, elfd, childfd);
+                    break;
                 }
             }
         }

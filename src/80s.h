@@ -45,6 +45,19 @@ struct serve_params {
     const char *entrypoint;
 };
 
+struct fd_holder {
+    int type;
+    int fd;
+};
+
+#define SET_FD_HOLDER(ptr, Type, Fd) do {\
+    ((struct fd_holder*)ptr)->type = Type;\
+    ((struct fd_holder*)ptr)->fd = Fd;\
+} while(0)
+
+#define FD_HOLDER_TYPE(ptr) ((struct fd_holder*)ptr)->type
+#define FD_HOLDER_FD(ptr) ((struct fd_holder*)ptr)->fd
+
 void error(const char *msg);
 void *serve(void *vparams);
 

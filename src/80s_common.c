@@ -103,7 +103,7 @@ int s80_connect(void *ctx, int elfd, const char *addr, int portno) {
 #ifdef USE_EPOLL
         // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
         ev[0].events = EPOLLIN | EPOLLOUT;
-        ev[0].data.fd = childfd;
+        SET_FD_HOLDER(&ev[0].data, S80_FD_SOCKET, childfd);
         status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
 #elif defined(USE_KQUEUE)
         // subscribe for both read and write separately
@@ -136,7 +136,7 @@ ssize_t s80_write(void *ctx, int elfd, int childfd, int fdtype, const char *data
         if (writelen < len) {
 #ifdef USE_EPOLL
             ev.events = EPOLLIN | EPOLLOUT;
-            ev.data.fd = childfd;
+            SET_FD_HOLDER(&ev.data, fdtype, childfd);
             status = epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev);
 #elif defined(USE_KQUEUE)
             EV_SET(&ev, childfd, EVFILT_WRITE, EV_ADD, 0, 0, (void*)fdtype);
@@ -158,7 +158,7 @@ int s80_close(void *ctx, int elfd, int childfd, int fdtype) {
     int status;
 #ifdef USE_EPOLL
     ev.events = EPOLLIN | EPOLLOUT;
-    ev.data.fd = childfd;
+    SET_FD_HOLDER(&ev.data, fdtype, childfd);
     status = epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev);
 #elif defined(USE_KQUEUE)
     // ignore first kevent result as socket might be in write mode, we don't care if it was not
@@ -174,7 +174,6 @@ int s80_close(void *ctx, int elfd, int childfd, int fdtype) {
         dbg("l_net_close: failed to remove child from epoll");
         return status;
     }
-
     status = close(childfd);
     if (status < 0) {
         dbg("l_net_close: failed to close childfd");
@@ -231,7 +230,7 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
 #ifdef USE_EPOLL
         // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
         ev[0].events = i == 0 ? EPOLLIN : EPOLLOUT;
-        ev[0].data.fd = childfd;
+        SET_FD_HOLDER(&ev[0].data, S80_FD_PIPE, childfd);
         status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
 #elif defined(USE_KQUEUE)
         // subscribe for both read and write separately
@@ -291,7 +290,7 @@ static int cleanup_pipes(int elfd, int *pipes, int allocated) {
 #ifdef USE_EPOLL
             // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
             ev[0].events = i == 0 ? EPOLLIN : EPOLLOUT;
-            ev[0].data.fd = childfd;
+            SET_FD_HOLDER(&ev[0].data, S80_FD_PIPE, childfd);
             epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, ev);
 #elif defined(USE_KQUEUE)
             // subscribe for both read and write separately
