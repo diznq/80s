@@ -196,7 +196,7 @@ function orm:create(sql, repo)
     end
 
     for method, params in pairs(repo) do
-        if method:match("^find.*") then
+        if method:match("^find.*") or method:match("^by.*") then
             local token = method
             local args = {}
             --- @type ormtype[]
@@ -289,10 +289,16 @@ function orm:create_method(sql, query, types, decoders, single, count, parent, d
                 if i ~= 1 or v ~= parent then
                     local type_def = types[real_i]
                     if type_def ~= nil then
-                        table.insert(treated, type_def.toformat(v))
+                        local result = type_def.toformat(v)
+                        if result == nil then
+                            print("Value #" .. real_i .. ":" .. tostring(v) .. "resolves to nil on query: " .. query)
+                            print(debug.traceback())
+                        end
+                        table.insert(treated, result)
                         real_i = real_i + 1
                     else
                         table.insert(treated, v)
+                        real_i = real_i + 1
                     end
                 end
             end
