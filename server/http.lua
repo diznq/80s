@@ -30,7 +30,7 @@ local function create_endpoint(base, method, endpoint, mime, content, dynamic)
             local session = {}
             local parsed_query = aio:parse_query(query, aio.master_key and endpoint or nil)
             if type(on_before_http) == "function" then
-                on_before_http(method, endpoint, session)
+                pcall(on_before_http, method, endpoint, session)
             end
             templates:render(self, session, headers, body, method, endpoint, parsed_query, mime, ctx)(function (result)
                 local code = result.status:sub(1, 3)
@@ -39,7 +39,7 @@ local function create_endpoint(base, method, endpoint, mime, content, dynamic)
                     result.content = ""
                 end
                 if type(on_after_http) == "function" then
-                    on_after_http(method, endpoint, session)
+                    pcall(on_after_http, method, endpoint, session)
                 end    
                 self:http_response(result.status, result.headers, result.content)
             end)
