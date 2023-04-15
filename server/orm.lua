@@ -291,12 +291,16 @@ function orm:create_method(sql, query, types, decoders, single, count, parent, d
                     if type_def ~= nil then
                         local result = type_def.toformat(v)
                         if result == nil then
-                            print("Value #" .. real_i .. ":" .. tostring(v) .. "resolves to nil on query: " .. query)
-                            print(debug.traceback())
+                            on_resolved(make_error("invalid value: " .. tostring(v)))
+                            return resolver
                         end
                         table.insert(treated, result)
                         real_i = real_i + 1
                     else
+                        if v == nil then
+                            on_resolved(make_error("nil passed to select as argument"))
+                            return resolver
+                        end
                         table.insert(treated, v)
                         real_i = real_i + 1
                     end

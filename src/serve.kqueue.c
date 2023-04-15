@@ -23,7 +23,7 @@ union addr_common {
 };
 
 void *serve(void *vparams) {
-    int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id;
+    int *els, elfd, parentfd, nfds, childfd, flags, fdtype, status, n, readlen, workers, id;
     socklen_t clientlen;
     unsigned accepts;
     void *ctx;
@@ -67,11 +67,14 @@ void *serve(void *vparams) {
         nfds = kevent(elfd, NULL, 0, events, MAX_EVENTS, NULL);
 
         if (nfds < 0) {
-            error("serve: error on epoll_wait");
+            error("serve: error on kevent");
         }
 
         for (n = 0; n < nfds; ++n) {
             childfd = (int)events[n].ident;
+            flags = (int)events[n].flags;
+            fdtype = (int)events[n].udata;
+
             if (childfd == parentfd) {
                 // only parent socket (server) can receive accept
                 childfd = accept(parentfd, (struct sockaddr *)&clientaddr, &clientlen);
@@ -92,15 +95,15 @@ void *serve(void *vparams) {
             } else {
                 // only this very thread is able to poll given childfd as it was assigned only to
                 // this thread and other event loops don't have it
-                switch (events[n].filter) {
+                switch (filter) {
                 case EVFILT_WRITE:
-                    if(events[n].udata != (void*)S80_FD_PIPE || (events[n].flags & (EV_EOF | EV_ERROR)) == EV_ERROR) {
+                    if(fdtype != S80_FD_PIPE || (flags & (EV_EOF | EV_ERROR)) == EV_ERROR) {
                         EV_SET(&ev, childfd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
                         if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
                             dbg("serve: failed to modify kqueue write socket");
                         }
                     }
-                    if (events[n].flags & (EV_EOF | EV_ERROR)) {
+                    if (flags & (EV_EOF | EV_ERROR)) {
                         if(close(childfd) < 0) {
                             dbg("serve: failed to close write socket");
                         }
@@ -113,10 +116,10 @@ void *serve(void *vparams) {
                     buf[0] = 0;
                     readlen = read(childfd, buf, BUFSIZE);
                     if(readlen > 0) {
-                        on_receive(ctx, elfd, childfd, (int)events[n].udata, buf, readlen);
+                        on_receive(ctx, elfd, childfd, fdtype, buf, readlen);
                     }
                     // if length is <= 0 or error happens, remove the socket from event loop
-                    if (readlen <= 0 || (events[n].flags & (EV_EOF | EV_ERROR))) {
+                    if (readlen <= 0 || (flags & (EV_EOF | EV_ERROR))) {
                         EV_SET(&ev, childfd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
                         if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
                             dbg("serve: failed to remove fd from kqueue");

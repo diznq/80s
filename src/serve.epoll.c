@@ -146,7 +146,7 @@ void *serve(void *vparams) {
                     // if length is <= 0, remove the socket from event loop
                     if (readlen <= 0) {
                         ev.events = EPOLLIN | EPOLLOUT;
-                        SET_FD_HOLDER(&ev.data, S80_FD_SOCKET, childfd);
+                        SET_FD_HOLDER(&ev.data, fdtype, childfd);
                         if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
                             dbg("serve: failed to remove child socket on readlen < 0");
                         }

@@ -107,7 +107,7 @@ static int l_net_inotify_init(lua_State *L) {
 
 #ifdef USE_EPOLL
     ev.events = EPOLLIN;
-    ev.data.fd = childfd;
+    SET_FD_HOLDER(&ev.data, S80_FD_OTHER, childfd);
     status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, &ev);
 #elif defined(USE_PORT)
     status = port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN, NULL);
