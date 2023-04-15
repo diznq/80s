@@ -15,7 +15,7 @@ local function create_endpoint(base, method, endpoint, mime, content, dynamic)
     else
         resp_headers = {}
         resp_headers["content-type"] = mime
-        if endpoint:match("/static/") then
+        if endpoint:match("/static/") or endpoint:match("%.ico$") then
             resp_headers["cache-control"] = "public, max-age=604800, immutable"
         end
         if endpoint:match("%.gz$") then
@@ -119,6 +119,8 @@ local function init_dir(root, base, prefix)
                     mime = "text/html"
                 elseif file_sanitized:match("%.jpg$") then
                     mime = "image/jpeg"
+                elseif file_sanitized:match("%.png$") or file_sanitized:match("%.ico$") then
+                    mime = "image/png"
                 elseif file_sanitized:match("%.js$") then
                     mime = "application/javascript; charset=utf-8"
                 elseif file_sanitized:match("%.json$") then
