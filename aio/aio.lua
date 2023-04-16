@@ -313,7 +313,7 @@ if not aio then
         protocols = {},
         -- master key
         master_key = nil,
-        ---@type {[string]: {size: integer, data: table}}
+        ---@type {[string]: {size: integer, data: {[string]: {expire: integer|nil, data: any}}}}
         cache = {},
         max_cache_size = 10000
     }
@@ -535,8 +535,10 @@ function aio:cached(cache_name, key, callback, condition, expire)
         return callback()
     end
     if cache.size == self.max_cache_size then
-        local k, v = next(cache.data)
-        cache.data[k] = nil
+        local k = next(cache.data)
+        if k ~= nil then
+            cache.data[k] = nil
+        end
     else
         cache.size = cache.size + 1
     end
