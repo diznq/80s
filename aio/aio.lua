@@ -142,7 +142,11 @@ function aiosocket:write(data, close)
     local to_write = #data
     local ok, written = net.write(self.elfd, self.childfd, self.fdtype, data, 0)
     if not ok then
-        self:close()
+        if not self.closed then
+            self.closed = true
+            self.buf = {}
+            self:on_close()
+        end
         return false
     elseif written < to_write then
         self.wr = false
@@ -256,7 +260,11 @@ function aiosocket:on_write(elfd, childfd, n_written)
         end
         if not ok then
             -- if sending failed completly, i.e. socket was closed, end
-            self:close()
+            if not self.closed then
+                self.closed = true
+                self.buf = {}
+                self:on_close()
+            end
         elseif written < to_write then
             -- if we were able to send only part of data due to full buffer, equeue it for later
             self.wr = false

@@ -75,6 +75,10 @@ void *serve(void *vparams) {
             flags = (int)events[n].flags;
             fdtype = (int)events[n].udata;
 
+            #ifdef DEBUG
+            printf("#%d/%d, fd: %d, t: %d, filt: %s, flags: %d\n", n + 1, nfds, childfd, fdtype, events[n].filter == EVFILT_READ ? "READ" : (events[n].filter == EVFILT_PROC ? "PROC" : "WRITE"), flags);
+            #endif
+
             if (childfd == parentfd) {
                 // only parent socket (server) can receive accept
                 childfd = accept(parentfd, (struct sockaddr *)&clientaddr, &clientlen);
