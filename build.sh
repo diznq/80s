@@ -48,7 +48,7 @@ fi
 mkdir -p bin
 
 DEFINES=""
-LIBS="-lm -ldl -lpthread -lcrypto"
+LIBS="-lm -ldl -lpthread -lcrypto -lssl"
 
 if [ $(uname) = "SunOS" ]; then
   LIBS="$LIBS -lsocket -lnsl"
