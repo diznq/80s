@@ -316,6 +316,12 @@ static int l_crypto_ssl_new_server(lua_State *L) {
     }
 
     SSL_CTX_set_options(ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
+    if(!SSL_CTX_set_cipher_list(ctx, "ECDH-ECDSA-AES128-GCM-SHA256")) {
+        SSL_CTX_free(ctx);
+        lua_pushnil(L);
+        lua_pushstring(L, "device doesn't support cipher mode");
+        return 2;
+    }
     lua_pushlightuserdata(L, (void*)ctx);
     return 1;
 }
