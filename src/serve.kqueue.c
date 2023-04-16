@@ -95,7 +95,7 @@ void *serve(void *vparams) {
             } else {
                 // only this very thread is able to poll given childfd as it was assigned only to
                 // this thread and other event loops don't have it
-                switch (filter) {
+                switch (events[n].filter) {
                 case EVFILT_WRITE:
                     if(fdtype != S80_FD_PIPE || (flags & (EV_EOF | EV_ERROR)) == EV_ERROR) {
                         EV_SET(&ev, childfd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
