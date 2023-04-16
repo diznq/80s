@@ -101,17 +101,13 @@ void *serve(void *vparams) {
                 // this thread and other event loops don't have it
                 switch (events[n].filter) {
                 case EVFILT_WRITE:
-                    if(fdtype != S80_FD_PIPE || (flags & (EV_EOF | EV_ERROR)) == EV_ERROR) {
-                        EV_SET(&ev, childfd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
-                        if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
-                            dbg("serve: failed to modify kqueue write socket");
-                        }
-                    }
                     if (flags & (EV_EOF | EV_ERROR)) {
-                        if(close(childfd) < 0) {
-                            dbg("serve: failed to close write socket");
+                        if(fdtype == S80_FD_PIPE) {
+                            if(close(childfd) < 0) {
+                                dbg("serve: failed to close write socket");
+                            }
+                            on_close(ctx, elfd, childfd);
                         }
-                        on_close(ctx, elfd, childfd);
                     } else if(events[n].data > 0) {
                         on_write(ctx, elfd, childfd, 0);
                     }
@@ -124,10 +120,6 @@ void *serve(void *vparams) {
                     }
                     // if length is <= 0 or error happens, remove the socket from event loop
                     if (readlen <= 0 || (flags & (EV_EOF | EV_ERROR))) {
-                        EV_SET(&ev, childfd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
-                        if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
-                            dbg("serve: failed to remove fd from kqueue");
-                        }
                         if (close(childfd) < 0) {
                             dbg("serve: failed to close child socket");
                         }
