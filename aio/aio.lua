@@ -313,7 +313,7 @@ if not aio then
         protocols = {},
         -- master key
         master_key = nil,
-        ---@type {size: integer, data: table}
+        ---@type {[string]: {size: integer, data: table}}
         cache = {},
         max_cache_size = 10000
     }
@@ -527,7 +527,7 @@ function aio:cached(cache_name, key, callback, condition, expire)
         self.cache[cache_name] = {size = 0, data = {}}
         cache = self.cache[cache_name]
     end
-    local hit = cache[key]
+    local hit = cache.data[key]
     if hit and (hit.expire == nil or net.clock() <= hit.expire) then
         return hit.data
     end
@@ -535,8 +535,8 @@ function aio:cached(cache_name, key, callback, condition, expire)
         return callback()
     end
     if cache.size == self.max_cache_size then
-        local k, v = next(cache)
-        cache[k] = nil
+        local k, v = next(cache.data)
+        cache.data[k] = nil
     else
         cache.size = cache.size + 1
     end
@@ -547,7 +547,7 @@ function aio:cached(cache_name, key, callback, condition, expire)
         local requesters = {resolve}
         local result = {}
         local ready = false
-        cache[key] = {
+        cache.data[key] = {
             data = function (cb)
                 if not ready then
                     table.insert(requesters, cb)
@@ -567,7 +567,7 @@ function aio:cached(cache_name, key, callback, condition, expire)
         end)
         return resolver
     else
-        cache[key] = {
+        cache.data[key] = {
             expire = expire,
             data = hit
         }
