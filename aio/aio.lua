@@ -535,7 +535,7 @@ function aio:cached(cache_name, key, callback, condition, expire)
         return callback()
     end
     if cache.size == self.max_cache_size then
-        local k, v = next(cache.data)
+        local k, v = next(cache)
         cache[k] = nil
     else
         cache.size = cache.size + 1
