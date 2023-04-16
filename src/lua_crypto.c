@@ -431,7 +431,7 @@ LUALIB_API int luaopen_crypto(lua_State *L) {
         {"to64", l_crypto_to64},
         {"from64", l_crypto_from64},
         {"random", l_crypto_random},
-        {"ssl_new_server_context", l_crypto_ssl_new_server_context},
+        {"ssl_new_server", l_crypto_ssl_new_server},
         {"ssl_new_bio", l_crypto_ssl_new_bio},
         {"ssl_release_bio", l_crypto_ssl_release_bio},
         {"ssl_bio_write", l_crypto_ssl_bio_write},
