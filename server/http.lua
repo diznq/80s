@@ -169,7 +169,7 @@ if (os.getenv("RELOAD") or "false") == "true" then
                 end
                 for _, evt in ipairs(events) do
                     if evt.create and evt.dir and LIVE_RELOAD_ACTIVE ~= nil then
-                        net.inotify_add(ELFD, LIVE_RELOAD_ACTIVE.childfd, evt.name)
+                        net.inotify_add(ELFD, LIVE_RELOAD_ACTIVE.fd, evt.name)
                         print("Added ", evt.name, " to watch list")
                     end
                 end

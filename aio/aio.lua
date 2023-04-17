@@ -110,11 +110,11 @@ end
 --- @class aiosocket
 local aiosocket = {
     --- @type lightuserdata socket file scriptor
-    childfd = nil,
+    fd = nil,
     --- @type lightuserdata event loop file descriptor
     elfd = nil,
     --- @type lightuserdata fd type
-    fdtype = nil,
+    ft = nil,
     --- @type boolean true if close after write
     cw = false,
     --- @type boolean true if socket is connected
@@ -140,7 +140,7 @@ function aiosocket:write(data, close)
         return true
     end
     local to_write = #data
-    local ok, written = net.write(self.elfd, self.childfd, self.fdtype, data, 0)
+    local ok, written = net.write(self.elfd, self.fd, self.ft, data, 0)
     if not ok then
         if not self.closed then
             self.closed = true
@@ -167,7 +167,7 @@ end
 function aiosocket:close()
     if self.closed then return true end
     self.buf = {}
-    return net.close(self.elfd, self.childfd, self.fdtype)
+    return net.close(self.elfd, self.fd, self.ft)
 end
 
 --- Write HTTP respose
@@ -256,7 +256,7 @@ function aiosocket:on_write(elfd, childfd, n_written)
         end
         -- only write if there actually is something to write
         if to_write > 0 then
-            ok, written = net.write(elfd, childfd, self.fdtype, item.d, item.o)
+            ok, written = net.write(elfd, childfd, self.ft, item.d, item.o)
         end
         if not ok then
             -- if sending failed completly, i.e. socket was closed, end
@@ -290,8 +290,8 @@ end
 function aiosocket:new(elfd, childfd, fdtype, connected)
     local socket = { 
         elfd = elfd, 
-        childfd = childfd, 
-        fdtype = fdtype,
+        fd = childfd, 
+        ft = fdtype,
         cw = false, 
         co = connected or false, 
         wr = connected or false 
@@ -477,7 +477,7 @@ end
 ---@return string ip address
 ---@return integer port port
 function aio:get_ip(sock, headers)
-    local fd = sock.childfd
+    local fd = sock.fd
     local ip, port = net.sockname(fd)
     if headers ~= nil then
         if headers["x-real-ip"] then

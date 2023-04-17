@@ -15,7 +15,7 @@ aio:http_get("/headers", function (fd, query, headers, body)
 end)
 
 aio:http_get("/ip", function (fd, query, headers, body)
-    local ip, port = net.sockname(fd.childfd)
+    local ip, port = net.sockname(fd.fd)
     fd:http_response("200 OK", "text/plain", string.format("%s:%d", ip, port))
 end)
 
