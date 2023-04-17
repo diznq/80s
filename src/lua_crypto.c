@@ -314,14 +314,7 @@ static int l_crypto_ssl_new_server(lua_State *L) {
         lua_pushstring(L, "keys do not match");
         return 2;
     }
-
     SSL_CTX_set_options(ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
-    if(!SSL_CTX_set_cipher_list(ctx, "ECDH-ECDSA-AES128-GCM-SHA256")) {
-        SSL_CTX_free(ctx);
-        lua_pushnil(L);
-        lua_pushstring(L, "device doesn't support cipher mode");
-        return 2;
-    }
     lua_pushlightuserdata(L, (void*)ctx);
     return 1;
 }
@@ -358,6 +351,11 @@ static int l_crypto_ssl_release_bio(lua_State *L) {
         return luaL_error(L, "expecting 1 argument: bio (lightuserdata)");
     }
     struct ssl_nb_context* ctx = (struct ssl_nb_context*)lua_touserdata(L, 1);
+    SSL_free(ctx->ssl);
+    BIO_free(ctx->rdbio);
+    BIO_free(ctx->wrbio);
+    free(ctx);
+    return 0;
 }
 
 static int l_crypto_ssl_bio_write(lua_State *L) {
@@ -390,6 +388,39 @@ static int l_crypto_ssl_bio_read(lua_State *L) {
     return 1;
 }
 
+static int l_crypto_ssl_write(lua_State *L) {
+    if(lua_gettop(L) != 2 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TSTRING) {
+        return luaL_error(L, "expecting 2 arguments: bio (lightuserdata), data (string)");
+    }
+    size_t len;
+    struct ssl_nb_context *ctx = (struct ssl_nb_context*)lua_touserdata(L, 1);
+    const char *data = lua_tolstring(L, 2, &len);
+    int n = SSL_write(ctx->ssl, data, len);
+    lua_pushinteger(L, n);
+    return 1;
+}
+
+static int l_crypto_ssl_read(lua_State *L) {
+    if(lua_gettop(L) != 1) {
+        return luaL_error(L, "expecting 1 argument: bio (lightuserdata)");
+    }
+    char buf[4096];
+    struct ssl_nb_context *ctx = (struct ssl_nb_context*)lua_touserdata(L, 1);
+    int n = SSL_read(ctx->ssl, buf, sizeof(buf));
+    int err = SSL_get_error(ctx->ssl, n);
+    if(n < 0) {
+        lua_pushnil(L);    
+    } else if(n == 0) {
+        lua_pushstring(L, "");
+    } else {
+        lua_pushlstring(L, buf, n);
+    }
+    if(err == SSL_ERROR_NONE) lua_pushboolean(L, 0);
+    else if(err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ) lua_pushboolean(L, 1);
+    else lua_pushnil(L);
+    return 2;
+}
+
 static int l_crypto_ssl_init_finished(lua_State *L) {
     if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TLIGHTUSERDATA) {
         return luaL_error(L, "expecting 1 argument: bio (lightuserdata)");
@@ -405,6 +436,23 @@ static int l_crypto_ssl_accept(lua_State *L) {
     }
     struct ssl_nb_context *ctx = (struct ssl_nb_context*)lua_touserdata(L, 1);
     int n = SSL_accept(ctx->ssl);
+    int err = SSL_get_error(ctx->ssl, n);
+    if(err == SSL_ERROR_NONE) {
+        lua_pushboolean(L, 0);
+    } else if(err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ) {
+        lua_pushboolean(L, 1);
+    } else {
+        lua_pushnil(L);
+    }
+    return 1;
+}
+
+static int l_crypto_ssl_requests_io(lua_State *L) {
+    if(lua_gettop(L) != 2 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TNUMBER) {
+        return luaL_error(L, "expecting 2 arguments: bio (lightuserdata), n (integer)");
+    }
+    struct ssl_nb_context *ctx = (struct ssl_nb_context*)lua_touserdata(L, 1);
+    int n = lua_tointeger(L, 2);
     int err = SSL_get_error(ctx->ssl, n);
     if(err == SSL_ERROR_NONE) {
         lua_pushboolean(L, 0);
@@ -445,8 +493,14 @@ LUALIB_API int luaopen_crypto(lua_State *L) {
         {"ssl_bio_read", l_crypto_ssl_bio_read},
         {"ssl_accept", l_crypto_ssl_accept},
         {"ssl_init_finished", l_crypto_ssl_init_finished},
+        {"ssl_read", l_crypto_ssl_read},
+        {"ssl_write", l_crypto_ssl_write},
+        {"ssl_requests_io", l_crypto_ssl_requests_io},
         {NULL, NULL}};
-    OPENSSL_add_all_algorithms_conf();
+
+    SSL_library_init();
+    OpenSSL_add_all_algorithms();
+    OpenSSL_add_ssl_algorithms();
 #if LUA_VERSION_NUM > 501
     luaL_newlib(L, netlib);
 #else

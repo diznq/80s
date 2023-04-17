@@ -346,7 +346,10 @@ function aio:on_data(elfd, childfd, fdtype, data, len)
     local initial = data:sub(1, 1)
     -- detect the protocol and add correct handler
     if is_http[initial] then
-        self:handle_as_http(elfd, childfd, fdtype, data, len)
+        local fd = aiosocket:new(elfd, childfd, fdtype, true)
+        self.fds[childfd] = fd        
+        self:handle_as_http(fd)
+        fd:on_data(elfd, childfd, data, len)
     else
         for _, handler in pairs(self.protocols) do
             if handler.matches(data) then
@@ -369,15 +372,9 @@ end
 
 --- Create new HTTP handler for network stream
 ---
---- @param elfd lightuserdata epoll handle
---- @param childfd lightuserdata socket handle
---- @param fdtype lightuserdata fd type
---- @param data string incoming stream data
---- @param len integer length of data
-function aio:handle_as_http(elfd, childfd, fdtype, data, len)
-    local fd = aiosocket:new(elfd, childfd, fdtype, true)
-    self.fds[childfd] = fd
-
+--- @param fd aiosocket AIO socket to be handled
+--- @return aiosockeet fd stream
+function aio:handle_as_http(fd)
     self:buffered_cor(fd, function (resolve)
         while true do
             local header = coroutine.yield("\r\n\r\n")
@@ -403,9 +400,75 @@ function aio:handle_as_http(elfd, childfd, fdtype, data, len)
             end
         end
     end)
+    return fd
+end
 
-    -- provide data event
-    fd:on_data(elfd, childfd, data, len)
+--- Wrap FD into TLS streama
+---
+--- @param fd aiosocket AIO socket to be handled
+--- @param ssl lightuserdata global SSL context
+function aio:wrap_tls(fd, ssl)
+    local on_data = fd.on_data
+    local on_close = fd.on_close
+    local raw_write = fd.write
+    fd.on_data = function(self, elfd, childfd, data, length)
+        if self.closed then return end
+        if not self.bio then
+            self.bio = crypto.ssl_new_bio(ssl)
+            self.finished = false
+        end
+        crypto.ssl_bio_write(self.bio, data)
+        if not self.finished then 
+            self.finished = crypto.ssl_init_finished(self.bio) 
+            if not self.finished then
+                local ok = crypto.ssl_accept(self.bio)
+                if ok then
+                    while true do
+                        local rd = crypto.ssl_bio_read(self.bio)
+                        if not rd or #rd == 0 then break end
+                        raw_write(self, rd)
+                    end
+                end
+                self.finished = crypto.ssl_init_finished(self.bio)
+            end
+        end
+        if self.finished then
+            local ok = true
+            while ok do
+                local rd, wr = crypto.ssl_read(self.bio)
+                if not rd or #rd == 0 then
+                    ok = false
+                else
+                    on_data(self, elfd, childfd, rd, #rd)
+                end
+                if wr == true then
+                    while true do
+                        local rd = crypto.ssl_bio_read(self.bio)
+                        if not rd or #rd == 0 then break end
+                        raw_write(self, rd)
+                    end
+                end
+            end
+        end
+    end
+    fd.write = function(self, data, ...)
+        if not self.finished then return raw_write(self, data, ...) end
+        local wr = crypto.ssl_write(self.bio, data)
+        while true do
+            local rd = crypto.ssl_bio_read(self.bio)
+            if not rd or #rd == 0 then break end
+            raw_write(self, rd)
+        end
+    end
+    fd.on_close = function(self)
+        if self.closed then return end
+        on_close(self)
+        self.closed = true
+        if self.bio then
+            crypto.ssl_release_bio(self.bio)
+            self.bio = nil
+        end
+    end
 end
 
 ---Get IP address of a socket
@@ -960,16 +1023,17 @@ function aio:cor2(target, event_handler, close_handler, callback)
         return unpack(data)
     end
 
-    local running, ended = false, false
+    local running, ended, dead = false, false, false
 
     -- main event handler that resumes coroutine as events arrive and provides data for iterator
     target[event_handler] = function(self, epfd, chdfd, ...)
+        if dead then return end
         data = {...}
 
         -- if coroutine finished it's job, unsubscribe the event handler
         local status = coroutine.status(cor)
         if status == "dead" then
-            target[event_handler] = function () end
+            dead = true
             return
         end
 
@@ -997,9 +1061,10 @@ function aio:cor2(target, event_handler, close_handler, callback)
     -- closing event handler that sends nil signal to coroutine to terminate the iterator
     if close_handler ~= nil then
         target[close_handler] = function(self, ...)
+            if dead then return end
             local status = coroutine.status(cor)
             if status == "dead" then
-                target[close_handler] = function () end
+                dead = true
                 return
             end
 
