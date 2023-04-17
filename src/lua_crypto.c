@@ -13,6 +13,10 @@
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 
+#ifdef USE_KTLS
+#include <sys/ktls.h>
+#endif
+
 // ssl non-blocking context for bio
 struct ssl_nb_context {
     SSL *ssl;
