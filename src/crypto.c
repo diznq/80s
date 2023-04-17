@@ -221,3 +221,29 @@ void aes_128_dec(const char *data, const char *key, char *out)
         }
     }
 }
+
+void aes_128_cbc_enc(const char *data, size_t len, const char *key, const char *iv, char *out) {
+    size_t i = 0, j = 0;
+    char buf[16];
+    memcpy(buf, iv, 16);
+    for(i = 0; i < len; i += 16) {
+        for(j = 0; j < 16; j++) {
+            buf[j] = buf[j] ^ data[i + j];
+        }
+        aes_128_enc(buf, key, out + i);
+    }
+}
+
+void aes_128_cbc_dec(const char *data, size_t len, const char *key, const char *iv, char *out) {
+    size_t i = 0, j = 0;
+    char buf[16], t;
+    memcpy(buf, iv, 16);
+    for(i = 0; i < len; i += 16) {
+        aes_128_dec(data + i, key, out + i);
+        for(j = 0; j < 16; j++) {
+            t = out[j + i];
+            out[j + i] = out[j + i] ^ buf[j];
+            buf[j] = t;
+        }
+    }
+}
