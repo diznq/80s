@@ -13,10 +13,14 @@
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 
+// ssl non-blocking context for bio
 struct ssl_nb_context {
     SSL *ssl;
     BIO *rdbio;
     BIO *wrbio;
+    #ifdef USE_KTLS
+    struct tls_enable en;
+    #endif
 };
 
 static int l_crypto_sha1(lua_State *L) {
@@ -462,6 +466,19 @@ static int l_crypto_ssl_requests_io(lua_State *L) {
         lua_pushnil(L);
     }
     return 1;
+}
+
+static int l_crypto_ssl_ktls(lua_State *L) {
+    if(lua_gettop(L) != 3 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TLIGHTUSERDATA || lua_type(L, 3) != LUA_TLIGHTUSERDATA) {
+        return luaL_error(L, "expecting 3 arguments: bio (lightuserdata), elfd (lightuserdata), childfd (lightuserdata)");
+    }
+    #ifdef USE_KTLS
+    struct ssl_nb_context *ctx = (struct ssl_nb_context*)lua_touserdata(L, 1);
+    int elfd = (int)lua_touserdata(L, 2);
+    int childfd = (int)lua_touserdata(L, 3); 
+    #else
+    return 0;
+    #endif
 }
 
 static int l_crypto_random(lua_State *L) {

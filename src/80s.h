@@ -17,6 +17,9 @@ extern "C" {
 #include <sys/types.h>
 #include <sys/event.h>
 #define event_t kevent
+#ifdef __FreeBSD__
+#define USE_KTLS
+#endif
 #elif defined(__linux__) || defined(SOLARIS_EPOLL)
 #define UNIX_BASED
 #define USE_EPOLL
