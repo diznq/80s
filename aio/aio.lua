@@ -31,6 +31,17 @@ net = net or {}
 --- @field to64 fun(data: string): string encode to base64
 --- @field from64 fun(data: string): string decode from base64
 --- @field random fun(n: integer): string generate n random bytes
+--- @field ssl_new_server fun(pubkey: string, privkey: string): lightuserdata|nil initialize new global SSL context
+--- @field ssl_release fun(ssl: lightuserdata) release SSL context
+--- @field ssl_new_bio fun(ssl: lightuserdata): lightuserdata|nil initialize new non-blocking SSL BIO context
+--- @field ssl_release_bio fun(bio: lightuserdata) release BIO context
+--- @field ssl_bio_write fun(bio: lightuserdata, data: string): integer write to BIO, returns written bytes, <0 if error
+--- @field ssl_bio_read fun(bio: lightuserdata): string|nil read from BIO, nil if error
+--- @field ssl_accept fun(bio: lightuserdata): boolean|nil perform SSL accept, nil if error, true if IO request, false otherwise
+--- @field ssl_init_finished fun(bio: lightuserdata): boolean true if SSL accept is finished
+--- @field ssl_read fun(bio: lightuserdata): string|nil, integer|nil read from SSL, returns decrypted data or nil on error, return true if write is requested
+--- @field ssl_write fun(bio: lightuserdata, data: string): integer write data to SSL, encrypted data can be retrieved using bio_read later
+--- @field ssl_requests_io fun(bio: lightuserdata): boolean|nil nil if error, true if IO request, false otherwise
 crypto = crypto or {}
 
 --- @class codec
@@ -77,6 +88,8 @@ S80_FD_OTHER = S80_FD_OTHER or nil
 --- @alias aiopromise<V> fun(on_resolved: fun(result: V)) AIO promise
 
 unpack = unpack or table.unpack
+on_before_http = on_before_http or nil
+on_after_http = on_after_http or nil
 
 --- Check whether value is error
 ---@param value any
@@ -145,7 +158,7 @@ function aiosocket:write(data, close)
         if not self.closed then
             self.closed = true
             self.buf = {}
-            self:on_close()
+            self:on_close(self.elfd,self.fd)
         end
         return false
     elseif written < to_write then
@@ -263,7 +276,7 @@ function aiosocket:on_write(elfd, childfd, n_written)
             if not self.closed then
                 self.closed = true
                 self.buf = {}
-                self:on_close()
+                self:on_close(self.elfd, self.fd)
             end
         elseif written < to_write then
             -- if we were able to send only part of data due to full buffer, equeue it for later
@@ -373,7 +386,7 @@ end
 --- Create new HTTP handler for network stream
 ---
 --- @param fd aiosocket AIO socket to be handled
---- @return aiosockeet fd stream
+--- @return aiosocket fd stream
 function aio:handle_as_http(fd)
     self:buffered_cor(fd, function (resolve)
         while true do
@@ -462,7 +475,7 @@ function aio:wrap_tls(fd, ssl)
     end
     fd.on_close = function(self)
         if self.closed then return end
-        on_close(self)
+        on_close(self, fd.elfd, fd.fd)
         self.closed = true
         if self.bio then
             crypto.ssl_release_bio(self.bio)
