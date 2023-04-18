@@ -160,6 +160,12 @@ void *serve(void *vparams) {
                     }
                 }
                 if (!closed && (flags & (EPOLLERR | EPOLLHUP))) {
+                    // read the remaining contents in pipe
+                    while(fdtype == S80_FD_PIPE) {
+                        readlen = read(chldfd, buf, BUFSIZE);
+                        if(readlen <= 0) break;
+                        on_receive(ctx, elfd, childfd, fdtype, buf, readlen);
+                    }
                     ev.events = EPOLLIN | EPOLLOUT;
                     SET_FD_HOLDER(&ev.data, fdtype, childfd);
                     if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
