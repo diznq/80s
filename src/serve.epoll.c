@@ -162,7 +162,7 @@ void *serve(void *vparams) {
                 if (!closed && (flags & (EPOLLERR | EPOLLHUP))) {
                     // read the remaining contents in pipe
                     while(fdtype == S80_FD_PIPE) {
-                        readlen = read(chldfd, buf, BUFSIZE);
+                        readlen = read(childfd, buf, BUFSIZE);
                         if(readlen <= 0) break;
                         on_receive(ctx, elfd, childfd, fdtype, buf, readlen);
                     }
