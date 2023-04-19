@@ -101,6 +101,11 @@ static lua_State *create_lua(int elfd, int id, const char *entrypoint) {
     lua_pushlightuserdata(L, (void *)S80_FD_OTHER);
     lua_setglobal(L, "S80_FD_OTHER");
 
+    #ifdef USE_KTLS
+    lua_pushboolean(L, 1);
+    lua_setglobal(L, "KTLS");
+    #endif
+
     status = luaL_dofile(L, entrypoint);
 
     if (status) {

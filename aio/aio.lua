@@ -33,7 +33,7 @@ net = net or {}
 --- @field random fun(n: integer): string generate n random bytes
 --- @field ssl_new_server fun(pubkey: string, privkey: string): lightuserdata|nil initialize new global SSL context
 --- @field ssl_release fun(ssl: lightuserdata) release SSL context
---- @field ssl_new_bio fun(ssl: lightuserdata): lightuserdata|nil initialize new non-blocking SSL BIO context
+--- @field ssl_new_bio fun(ssl: lightuserdata, elfd: lightuserdata, childfd: lightuserdata): lightuserdata|nil initialize new non-blocking SSL BIO context
 --- @field ssl_release_bio fun(bio: lightuserdata) release BIO context
 --- @field ssl_bio_write fun(bio: lightuserdata, data: string): integer write to BIO, returns written bytes, <0 if error
 --- @field ssl_bio_read fun(bio: lightuserdata): string|nil read from BIO, nil if error
@@ -72,6 +72,9 @@ S80_FD_KTLS_SOCKET = S80_FD_KTLS_SOCKET or nil
 S80_FD_PIPE = S80_FD_PIPE or nil
 --- @type lightuserdata
 S80_FD_OTHER = S80_FD_OTHER or nil
+
+--- @type boolean
+KTLS = KTLS or false
 
 --- Aliases to be defined here
 --- @alias aiostream fun() : any ... AIO input stream
@@ -427,25 +430,26 @@ function aio:wrap_tls(fd, ssl)
     fd.on_data = function(self, elfd, childfd, data, length)
         if self.closed then return end
         if not self.bio then
-            self.bio = crypto.ssl_new_bio(ssl)
+            self.bio = crypto.ssl_new_bio(ssl, elfd, childfd)
             self.finished = false
         end
         crypto.ssl_bio_write(self.bio, data)
         if not self.finished then 
-            self.finished = crypto.ssl_init_finished(self.bio) 
-            if not self.finished then
-                local ok = crypto.ssl_accept(self.bio)
-                if ok then
-                    while true do
-                        local rd = crypto.ssl_bio_read(self.bio)
-                        if not rd or #rd == 0 then break end
-                        raw_write(self, rd)
-                    end
+            local ok = crypto.ssl_accept(self.bio)
+            if ok then
+                while true do
+                    local rd = crypto.ssl_bio_read(self.bio)
+                    if not rd or #rd == 0 then break end
+                raw_write(self, rd)
                 end
-                self.finished = crypto.ssl_init_finished(self.bio)
             end
-        end
-        if self.finished then
+            self.finished = crypto.ssl_init_finished(self.bio)
+            if self.finished and KTLS then
+                self.ktls = true
+            end
+        elseif KTLS and self.ktls then
+            on_data(self, elfd, childfd, data, length)
+        else
             local ok = true
             while ok do
                 local rd, wr = crypto.ssl_read(self.bio)
@@ -465,9 +469,12 @@ function aio:wrap_tls(fd, ssl)
         end
     end
     fd.write = function(self, data, ...)
-        if not self.finished then return raw_write(self, data, ...) end
+        if not self.finished or (KTLS and self.ktls) then 
+            return raw_write(self, data, ...) 
+        end
+
         local wr = crypto.ssl_write(self.bio, data)
-        while true do
+        while wr >= 0 and true do
             local rd = crypto.ssl_bio_read(self.bio)
             if not rd or #rd == 0 then break end
             raw_write(self, rd)

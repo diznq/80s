@@ -12,9 +12,17 @@
 #include <openssl/sha.h>
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
+#include <errno.h>
 
 #ifdef USE_KTLS
 #include <sys/ktls.h>
+#include <netinet/tcp.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <openssl/kdf.h>
+
+static void ssl_secret_callback(const SSL* ssl, const char *line);
 #endif
 
 // ssl non-blocking context for bio
@@ -23,7 +31,11 @@ struct ssl_nb_context {
     BIO *rdbio;
     BIO *wrbio;
     #ifdef USE_KTLS
-    struct tls_enable en;
+    int elfd;
+    int fd;
+    struct tls_enable wren, rden;
+    char wriv[16], rdiv[16];
+    char wrkey[16], rdkey[16];
     #endif
 };
 
@@ -299,7 +311,6 @@ static int l_crypto_ssl_new_server(lua_State *L) {
         lua_pushstring(L, "failed to allocate ssl ctx");
         return 2;
     }
-    
     status = SSL_CTX_use_certificate_file(ctx, pubkey, SSL_FILETYPE_PEM);
     if(!status) {
         SSL_CTX_free(ctx);
@@ -323,6 +334,15 @@ static int l_crypto_ssl_new_server(lua_State *L) {
         return 2;
     }
     SSL_CTX_set_options(ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
+    if(!SSL_CTX_set_cipher_list(ctx, "ECDHE-ECDSA-AES128-GCM-SHA256") || !SSL_CTX_set_ciphersuites(ctx, "TLS_AES_128_GCM_SHA256")) {
+        SSL_CTX_free(ctx);
+        lua_pushnil(L);
+        lua_pushstring(L, "device doesn't support cipher mode");
+        return 2;
+    }
+    #ifdef USE_KTLS
+    SSL_CTX_set_keylog_callback(ctx, ssl_secret_callback);
+    #endif
     lua_pushlightuserdata(L, (void*)ctx);
     return 1;
 }
@@ -337,17 +357,23 @@ static int l_crypto_ssl_release(lua_State *L) {
 }
 
 static int l_crypto_ssl_new_bio(lua_State *L) {
-    if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TLIGHTUSERDATA) {
-        return luaL_error(L, "expecting 1 argument: ssl context (lightuserdata)");
+    if(lua_gettop(L) != 3 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TLIGHTUSERDATA || lua_type(L, 3) != LUA_TLIGHTUSERDATA) {
+        return luaL_error(L, "expecting 1 argument: ssl context (lightuserdata), elfd (lightuserdata), childfd (lightuserdata)");
     }
     struct ssl_nb_context *ctx = (struct ssl_nb_context*)malloc(sizeof(struct ssl_nb_context));
     if(!ctx) {
         return 0;
     }
+    memset(ctx, 0, sizeof(struct ssl_nb_context));
     SSL_CTX* ssl_ctx = (SSL_CTX*)lua_touserdata(L, 1);
+    #ifdef USE_KTLS
+    ctx->elfd = (int)lua_touserdata(L, 2);
+    ctx->fd = (int)lua_touserdata(L, 3);
+    #endif
     ctx->rdbio = BIO_new(BIO_s_mem());
     ctx->wrbio = BIO_new(BIO_s_mem());
     ctx->ssl = SSL_new(ssl_ctx);
+    SSL_set_ex_data(ctx->ssl, 0, (void*)ctx);
     SSL_set_accept_state(ctx->ssl);
     SSL_set_bio(ctx->ssl, ctx->rdbio, ctx->wrbio);
     lua_pushlightuserdata(L, (void*)ctx);
@@ -472,18 +498,133 @@ static int l_crypto_ssl_requests_io(lua_State *L) {
     return 1;
 }
 
-static int l_crypto_ssl_ktls(lua_State *L) {
-    if(lua_gettop(L) != 3 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TLIGHTUSERDATA || lua_type(L, 3) != LUA_TLIGHTUSERDATA) {
-        return luaL_error(L, "expecting 3 arguments: bio (lightuserdata), elfd (lightuserdata), childfd (lightuserdata)");
+#ifdef USE_KTLS
+int hkdf_expand(const EVP_MD *md,   const unsigned char *secret,
+                const char *label,  size_t labellen,
+                const char *data,   size_t datalen,
+                unsigned char *out, size_t outlen)
+{
+    static char label_prefix[] = "tls13 ";
+    EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, NULL);
+    int ret;
+    size_t hashlen;
+    char hkdflabel[512];
+    struct dynstr hkdf;
+    if (pctx == NULL)
+        return 0;
+    hashlen = EVP_MD_size(md);
+
+    dynstr_init(&hkdf, hkdflabel, sizeof(hkdflabel));
+    dynstr_putc(&hkdf, (outlen >> 8) & 255);
+    dynstr_putc(&hkdf, outlen & 255);
+    dynstr_putc(&hkdf, 6 + labellen);
+    dynstr_puts(&hkdf, label_prefix, 6);
+    dynstr_puts(&hkdf, label, labellen);
+    dynstr_putc(&hkdf, data == NULL ? 0 : datalen);
+    if(data != NULL)
+        dynstr_puts(&hkdf, data, datalen);
+
+
+    ret =      EVP_PKEY_derive_init(pctx) <= 0
+            || EVP_PKEY_CTX_hkdf_mode(pctx, EVP_PKEY_HKDEF_MODE_EXPAND_ONLY) <= 0
+            || EVP_PKEY_CTX_set_hkdf_md(pctx, md) <= 0
+            || EVP_PKEY_CTX_set1_hkdf_key(pctx, secret, hashlen) <= 0
+            || EVP_PKEY_CTX_add1_hkdf_info(pctx, hkdf.ptr, hkdf.length) <= 0
+            || EVP_PKEY_derive(pctx, out, &outlen) <= 0;
+
+    EVP_PKEY_CTX_free(pctx);
+
+    dynstr_release(&hkdf);
+
+    if (ret != 0) {
+        return 0;
     }
-    #ifdef USE_KTLS
-    struct ssl_nb_context *ctx = (struct ssl_nb_context*)lua_touserdata(L, 1);
-    int elfd = (int)lua_touserdata(L, 2);
-    int childfd = (int)lua_touserdata(L, 3); 
-    #else
-    return 0;
-    #endif
+
+    return ret == 0;
 }
+
+void dbghex(const char* hdr, unsigned char* a, size_t n) {
+    printf("%s: ", hdr);
+    for(size_t i=0; i<n; i++) printf("%02X ", a[i]);
+    printf("\n");
+}
+
+static void ssl_secret_callback(const SSL* ssl, const char* line) {
+    struct ssl_nb_context* ctx = (struct ssl_nb_context*)SSL_get_ex_data(ssl, 0);
+    if(!ctx) return;
+    struct event_t ev;
+    const char *original = line;
+    struct tls_enable *rden = &ctx->rden, *wren = &ctx->wren, *en = NULL;
+    unsigned char secret[32], *key, *iv, b;
+    int n = 0, elfd = ctx->elfd, childfd = ctx->fd, status;
+    if(strstr(line, "SERVER_TRAFFIC_SECRET_0") == line) {
+    en = wren;
+    key = ctx->wrkey;
+    iv = ctx->wriv;
+    } else if(strstr(line, "CLIENT_TRAFFIC_SECRET_0") == line) {
+    en = rden;
+    key = ctx->rdkey;
+    iv = ctx->rdiv;
+    } else {
+        return;
+    }
+    while(*line) {
+        if(*line == '\0') break;
+        if(*line == ' ') n++;
+        line++;
+        if(n == 2) break;
+    }
+
+    if(n != 2) return;
+    n = 0, b = 0;
+    while(*line && n < 64) {
+        if(*line=='\0') break;
+        if(*line >= '0' && *line <='9') b |= (*line - '0') << ((n & 1) ? 0 : 4);
+        if(*line >= 'a' && *line <= 'f') b |= (*line - 'a' + 10) << ((n & 1) ? 0 : 4);
+        secret[n >> 1] = b;
+        line++;
+        n++;
+        if((n & 1) == 0) b = 0;
+    }
+
+    hkdf_expand(EVP_sha256(), secret, "key", 3, NULL, 0, key, 16);
+    hkdf_expand(EVP_sha256(), secret, "iv", 2, NULL, 0, iv, 12);
+
+#ifdef DEBUG
+    dbghex(en == &ctx->rden ? "client key" : "server key", key, 16);
+    dbghex(en == &ctx->rden ? "client iv" : "server iv", iv, 12);
+#endif
+
+    en->cipher_algorithm = 25;
+    en->cipher_key_len   = 16;
+    en->iv_len           = 12;
+
+    en->cipher_key = key;
+    en->iv         = iv;
+
+    en->tls_vmajor = TLS_MAJOR_VER_ONE;
+    en->tls_vminor = TLS_MINOR_VER_THREE;
+
+    if(rden->cipher_key_len > 0 && wren->cipher_key_len > 0) {
+        status = setsockopt(childfd, IPPROTO_TCP, TCP_TXTLS_ENABLE, wren, sizeof(struct tls_enable));
+        if(status < 0) {
+        dbg("ssl_callback: failed to set txtls");
+            return;
+        }
+
+    status = setsockopt(childfd, IPPROTO_TCP, TCP_RXTLS_ENABLE, rden, sizeof(struct tls_enable));
+    if(status < 0) {
+        dbg("ssl_callback: failed to set rxtls");
+        return;
+    }
+
+        EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_KTLS_SOCKET);
+        if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
+        dbg("ssl_callback: upgrade to ktls failed");
+        }
+    }
+}
+#endif
 
 static int l_crypto_random(lua_State *L) {
     if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TNUMBER) {
@@ -529,3 +670,4 @@ LUALIB_API int luaopen_crypto(lua_State *L) {
 #endif
     return 1;
 }
+

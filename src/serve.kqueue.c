@@ -109,12 +109,29 @@ void *serve(void *vparams) {
                             on_close(ctx, elfd, childfd);
                         }
                     } else if(events[n].data > 0) {
+                        if(fdtype != S80_FD_PIPE) {
+                            EV_SET(&ev, childfd, EVFILT_WRITE, EV_DELETE, 0, 0, (void*)fdtype);
+                            if(kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
+                                dbg("serve: failed to remove from kqueue");
+                            }
+                        }
                         on_write(ctx, elfd, childfd, 0);
                     }
                     break;
                 case EVFILT_READ:
                     buf[0] = 0;
-                    readlen = read(childfd, buf, BUFSIZE);
+                    if(fdtype == S80_FD_KTLS_SOCKET) {
+                        struct msghdr msg;
+                        struct iovec iov[1];
+                        iov[0].iov_base = buf;
+                        iov[0].iov_len = BUFSIZE;
+                        memset(&msg, 0, sizeof(msg));
+                        msg.msg_iov = iov;
+                        msg.msg_iovlen = 1;
+                        readlen = recvmsg(childfd, &msg, 0);
+                    } else {
+                        readlen = read(childfd, buf, BUFSIZE);
+                    }
                     if(readlen > 0) {
                         on_receive(ctx, elfd, childfd, fdtype, buf, readlen);
                     }
