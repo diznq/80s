@@ -33,7 +33,7 @@ net = net or {}
 --- @field random fun(n: integer): string generate n random bytes
 --- @field ssl_new_server fun(pubkey: string, privkey: string): lightuserdata|nil initialize new global SSL context
 --- @field ssl_release fun(ssl: lightuserdata) release SSL context
---- @field ssl_new_bio fun(ssl: lightuserdata, elfd: lightuserdata, childfd: lightuserdata): lightuserdata|nil initialize new non-blocking SSL BIO context
+--- @field ssl_new_bio fun(ssl: lightuserdata, elfd: lightuserdata, childfd: lightuserdata, ktls: boolean|nil): lightuserdata|nil initialize new non-blocking SSL BIO context
 --- @field ssl_release_bio fun(bio: lightuserdata) release BIO context
 --- @field ssl_bio_write fun(bio: lightuserdata, data: string): integer write to BIO, returns written bytes, <0 if error
 --- @field ssl_bio_read fun(bio: lightuserdata): string|nil read from BIO, nil if error
@@ -75,7 +75,7 @@ S80_FD_OTHER = S80_FD_OTHER or nil
 
 --- @type boolean
 KTLS = KTLS or false
-
+if KTLS and (os.getenv("KTLS") or "true") == "false" then KTLS = false end
 --- Aliases to be defined here
 --- @alias aiostream fun() : any ... AIO input stream
 --- @alias aiocor fun(stream: aiostream, resolve?: fun(value: any)|thread): nil AIO coroutine
@@ -430,7 +430,7 @@ function aio:wrap_tls(fd, ssl)
     fd.on_data = function(self, elfd, childfd, data, length)
         if self.closed then return end
         if not self.bio then
-            self.bio = crypto.ssl_new_bio(ssl, elfd, childfd)
+            self.bio = crypto.ssl_new_bio(ssl, elfd, childfd, KTLS)
             self.finished = false
         end
         crypto.ssl_bio_write(self.bio, data)

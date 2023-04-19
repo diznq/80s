@@ -23,6 +23,9 @@
 #include <openssl/kdf.h>
 
 static void ssl_secret_callback(const SSL* ssl, const char *line);
+enum KTLS_STATE {
+	KTLS_NONE, KTLS_INIT, KTLS_INITIALIZING, KTLS_DONE
+};
 #endif
 
 // ssl non-blocking context for bio
@@ -33,6 +36,7 @@ struct ssl_nb_context {
     #ifdef USE_KTLS
     int elfd;
     int fd;
+    enum KTLS_STATE ktls_state;
     struct tls_enable wren, rden;
     char wriv[16], rdiv[16];
     char wrkey[16], rdkey[16];
@@ -357,16 +361,18 @@ static int l_crypto_ssl_release(lua_State *L) {
 }
 
 static int l_crypto_ssl_new_bio(lua_State *L) {
-    if(lua_gettop(L) != 3 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TLIGHTUSERDATA || lua_type(L, 3) != LUA_TLIGHTUSERDATA) {
-        return luaL_error(L, "expecting 1 argument: ssl context (lightuserdata), elfd (lightuserdata), childfd (lightuserdata)");
+    if(lua_gettop(L) < 3 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TLIGHTUSERDATA || lua_type(L, 3) != LUA_TLIGHTUSERDATA) {
+        return luaL_error(L, "expecting 1 argument: ssl context (lightuserdata), elfd (lightuserdata), childfd (lightuserdata), ktls? (boolean)");
     }
     struct ssl_nb_context *ctx = (struct ssl_nb_context*)malloc(sizeof(struct ssl_nb_context));
+    int do_ktls = lua_gettop(L) == 4 && lua_type(L, 4) == LUA_TBOOLEAN ? lua_toboolean(L, 4) : 0;
     if(!ctx) {
         return 0;
     }
     memset(ctx, 0, sizeof(struct ssl_nb_context));
     SSL_CTX* ssl_ctx = (SSL_CTX*)lua_touserdata(L, 1);
     #ifdef USE_KTLS
+    ctx->ktls_state = do_ktls ? KTLS_INIT : KTLS_NONE;
     ctx->elfd = (int)lua_touserdata(L, 2);
     ctx->fd = (int)lua_touserdata(L, 3);
     #endif
@@ -551,7 +557,7 @@ void dbghex(const char* hdr, unsigned char* a, size_t n) {
 
 static void ssl_secret_callback(const SSL* ssl, const char* line) {
     struct ssl_nb_context* ctx = (struct ssl_nb_context*)SSL_get_ex_data(ssl, 0);
-    if(!ctx) return;
+    if(!ctx || ctx->ktls_state == KTLS_NONE || ctx->ktls_state == KTLS_DONE) return;
     struct event_t ev;
     const char *original = line;
     struct tls_enable *rden = &ctx->rden, *wren = &ctx->wren, *en = NULL;
@@ -595,6 +601,8 @@ static void ssl_secret_callback(const SSL* ssl, const char* line) {
     dbghex(en == &ctx->rden ? "client iv" : "server iv", iv, 12);
 #endif
 
+    ctx->ktls_state = KTLS_INITIALIZING;
+
     en->cipher_algorithm = 25;
     en->cipher_key_len   = 16;
     en->iv_len           = 12;
@@ -606,6 +614,7 @@ static void ssl_secret_callback(const SSL* ssl, const char* line) {
     en->tls_vminor = TLS_MINOR_VER_THREE;
 
     if(rden->cipher_key_len > 0 && wren->cipher_key_len > 0) {
+	ctx->ktls_state = KTLS_DONE;
         status = setsockopt(childfd, IPPROTO_TCP, TCP_TXTLS_ENABLE, wren, sizeof(struct tls_enable));
         if(status < 0) {
             dbg("ssl_callback: failed to set txtls");
@@ -670,4 +679,3 @@ LUALIB_API int luaopen_crypto(lua_State *L) {
 #endif
     return 1;
 }
-
