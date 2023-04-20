@@ -440,6 +440,7 @@ function aio:wrap_tls(fd, ssl)
             if bio then
                 self.bio = bio
                 self.tls = false
+            else
                 self.on_data = on_data
                 self.on_close = on_close
                 self.write = raw_write
