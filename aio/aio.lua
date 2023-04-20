@@ -141,6 +141,12 @@ local aiosocket = {
     buf = {},
     --- @type boolean closed
     closed = false,
+    --- @type lightuserdata SSL context
+    bio = nil,
+    --- @type boolean|nil true if TLS is ready
+    tls = nil,
+    --- @type boolean|nil true if KTLS is to be used
+    ktls = nil
 }
 
 --- Write data to network
@@ -430,8 +436,14 @@ function aio:wrap_tls(fd, ssl)
     fd.on_data = function(self, elfd, childfd, data, length)
         if self.closed then return end
         if not self.bio then
-            self.bio = crypto.ssl_bio_new(ssl, elfd, childfd, KTLS)
-            self.tls = false
+            local bio = crypto.ssl_bio_new(ssl, elfd, childfd, KTLS)
+            if bio then
+                self.bio = bio
+                self.tls = false
+                self.on_data = on_data
+                self.on_close = on_close
+                self.write = raw_write
+            end
         end
         if not self.tls then 
             crypto.ssl_bio_write(self.bio, data)
@@ -446,9 +458,9 @@ function aio:wrap_tls(fd, ssl)
             self.tls = crypto.ssl_init_finished(self.bio)
             if self.tls and KTLS then
                 self.ktls = true
+                fd.on_data = on_data
+                fd.write = raw_write
             end
-        elseif KTLS and self.ktls then
-            pcall(on_data, self, elfd, childfd, data, length)
         else
             crypto.ssl_bio_write(self.bio, data)
             local ok = true
@@ -470,7 +482,7 @@ function aio:wrap_tls(fd, ssl)
         end
     end
     fd.write = function(self, data, ...)
-        if not self.tls or (KTLS and self.ktls) then 
+        if not self.tls then 
             return raw_write(self, data, ...) 
         end
 
