@@ -360,9 +360,9 @@ static int l_crypto_ssl_release(lua_State *L) {
     return 0;
 }
 
-static int l_crypto_ssl_new_bio(lua_State *L) {
+static int l_crypto_ssl_bio_new(lua_State *L) {
     if(lua_gettop(L) < 3 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TLIGHTUSERDATA || lua_type(L, 3) != LUA_TLIGHTUSERDATA) {
-        return luaL_error(L, "expecting 1 argument: ssl context (lightuserdata), elfd (lightuserdata), childfd (lightuserdata), ktls? (boolean)");
+        return luaL_error(L, "expecting 3 arguments: ssl context (lightuserdata), elfd (lightuserdata), childfd (lightuserdata)[, ktls (boolean)]");
     }
     struct ssl_nb_context *ctx = (struct ssl_nb_context*)malloc(sizeof(struct ssl_nb_context));
     int do_ktls = lua_gettop(L) == 4 && lua_type(L, 4) == LUA_TBOOLEAN ? lua_toboolean(L, 4) : 0;
@@ -386,14 +386,12 @@ static int l_crypto_ssl_new_bio(lua_State *L) {
     return 1;
 }
 
-static int l_crypto_ssl_release_bio(lua_State *L) {
+static int l_crypto_ssl_bio_release(lua_State *L) {
     if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TLIGHTUSERDATA) {
         return luaL_error(L, "expecting 1 argument: bio (lightuserdata)");
     }
     struct ssl_nb_context* ctx = (struct ssl_nb_context*)lua_touserdata(L, 1);
     SSL_free(ctx->ssl);
-    BIO_free(ctx->rdbio);
-    BIO_free(ctx->wrbio);
     free(ctx);
     return 0;
 }
@@ -658,8 +656,8 @@ LUALIB_API int luaopen_crypto(lua_State *L) {
         {"random", l_crypto_random},
         {"ssl_new_server", l_crypto_ssl_new_server},
         {"ssl_release", l_crypto_ssl_release},
-        {"ssl_new_bio", l_crypto_ssl_new_bio},
-        {"ssl_release_bio", l_crypto_ssl_release_bio},
+        {"ssl_bio_new", l_crypto_ssl_bio_new},
+        {"ssl_bio_release", l_crypto_ssl_bio_release},
         {"ssl_bio_write", l_crypto_ssl_bio_write},
         {"ssl_bio_read", l_crypto_ssl_bio_read},
         {"ssl_accept", l_crypto_ssl_accept},
