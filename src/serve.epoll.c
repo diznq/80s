@@ -141,7 +141,6 @@ void *serve(void *vparams) {
                     on_write(ctx, elfd, childfd, 0);
                 }
                 if ((flags & EPOLLIN) == EPOLLIN) {
-                    buf[0] = 0;
                     readlen = read(childfd, buf, BUFSIZE);
                     // if length is <= 0, remove the socket from event loop
                     if (readlen <= 0) {

@@ -119,19 +119,7 @@ void *serve(void *vparams) {
                     }
                     break;
                 case EVFILT_READ:
-                    buf[0] = 0;
-                    if(fdtype == S80_FD_KTLS_SOCKET) {
-                        struct msghdr msg;
-                        struct iovec iov[1];
-                        iov[0].iov_base = buf;
-                        iov[0].iov_len = BUFSIZE;
-                        memset(&msg, 0, sizeof(msg));
-                        msg.msg_iov = iov;
-                        msg.msg_iovlen = 1;
-                        readlen = recvmsg(childfd, &msg, 0);
-                    } else {
-                        readlen = read(childfd, buf, BUFSIZE);
-                    }
+                    readlen = read(childfd, buf, BUFSIZE);
                     if(readlen > 0) {
                         on_receive(ctx, elfd, childfd, fdtype, buf, readlen);
                     }
