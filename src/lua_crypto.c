@@ -550,12 +550,6 @@ int hkdf_expand(const EVP_MD *md,   const unsigned char *secret,
     return ret == 0;
 }
 
-void dbghex(const char* hdr, unsigned char* a, size_t n) {
-    printf("%s: ", hdr);
-    for(size_t i=0; i<n; i++) printf("%02X ", a[i]);
-    printf("\n");
-}
-
 static void ssl_secret_callback(const SSL* ssl, const char* line) {
     struct ssl_nb_context* ctx = (struct ssl_nb_context*)SSL_get_ex_data(ssl, 0);
     if(!ctx || ctx->ktls_state == KTLS_NONE || ctx->ktls_state == KTLS_DONE) return;
@@ -596,11 +590,6 @@ static void ssl_secret_callback(const SSL* ssl, const char* line) {
 
     hkdf_expand(EVP_sha256(), secret, "key", 3, NULL, 0, key, 16);
     hkdf_expand(EVP_sha256(), secret, "iv", 2, NULL, 0, iv, 12);
-
-#ifdef DEBUG
-    dbghex(en == &ctx->rden ? "client key" : "server key", key, 16);
-    dbghex(en == &ctx->rden ? "client iv" : "server iv", iv, 12);
-#endif
 
     ctx->ktls_state = KTLS_INITIALIZING;
 
