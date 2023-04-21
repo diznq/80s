@@ -34,7 +34,7 @@ net = net or {}
 --- @field ssl_new_server fun(pubkey: string, privkey: string): lightuserdata|nil initialize new global SSL context
 --- @field ssl_release fun(ssl: lightuserdata) release SSL context
 --- @field ssl_bio_new fun(ssl: lightuserdata, elfd: lightuserdata, childfd: lightuserdata, ktls: boolean|nil): lightuserdata|nil initialize new non-blocking SSL BIO context
---- @field ssl_bio_release fun(bio: lightuserdata) release BIO context
+--- @field ssl_bio_release fun(bio: lightuserdata, flags: integer) release BIO context, flags, 1 to release just BIO, 2 to release just context
 --- @field ssl_bio_write fun(bio: lightuserdata, data: string): integer write to BIO, returns written bytes, <0 if error
 --- @field ssl_bio_read fun(bio: lightuserdata): string|nil read from BIO, nil if error
 --- @field ssl_accept fun(bio: lightuserdata): boolean|nil perform SSL accept, nil if error, true if IO request, false otherwise
@@ -459,6 +459,7 @@ function aio:wrap_tls(fd, ssl)
             self.tls = crypto.ssl_init_finished(self.bio)
             if self.tls and KTLS then
                 self.ktls = true
+                crypto.ssl_bio_release(self.bio, 1)
                 fd.on_data = on_data
                 fd.write = raw_write
             end
@@ -496,7 +497,7 @@ function aio:wrap_tls(fd, ssl)
     end
     fd.on_close = function(self)
         if self.bio then
-            crypto.ssl_bio_release(self.bio)
+            crypto.ssl_bio_release(self.bio, self.ktls and 2 or 3)
             self.bio = nil
         end
         if self.closed then return end

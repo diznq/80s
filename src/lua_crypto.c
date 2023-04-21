@@ -387,12 +387,15 @@ static int l_crypto_ssl_bio_new(lua_State *L) {
 }
 
 static int l_crypto_ssl_bio_release(lua_State *L) {
-    if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TLIGHTUSERDATA) {
-        return luaL_error(L, "expecting 1 argument: bio (lightuserdata)");
+    if(lua_gettop(L) != 2 || lua_type(L, 2) != LUA_TLIGHTUSERDATA) {
+        return luaL_error(L, "expecting 1 argument: bio (lightuserdata), flags (integer)");
     }
     struct ssl_nb_context* ctx = (struct ssl_nb_context*)lua_touserdata(L, 1);
-    SSL_free(ctx->ssl);
-    free(ctx);
+    int flags = lua_tointeger(L, 2);
+    if(flags & 1)
+        SSL_free(ctx->ssl);
+    if(flags & 2)
+        free(ctx);
     return 0;
 }
 
