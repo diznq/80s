@@ -155,7 +155,7 @@ ssize_t s80_write(void *ctx, int elfd, int childfd, int fdtype, const char *data
 
 int s80_close(void *ctx, int elfd, int childfd, int fdtype) {
     struct event_t ev;
-    int status;
+    int status = 0;
 #ifdef USE_EPOLL
     ev.events = EPOLLIN | EPOLLOUT;
     SET_FD_HOLDER(&ev.data, fdtype, childfd);

@@ -23,13 +23,15 @@ union addr_common {
 
 void *serve(void *vparams) {
     int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id;
-    socklen_t clientlen;
+    socklen_t clientlen = sizeof(union addr_common);
     unsigned accepts;
     void *ctx;
     union addr_common clientaddr;
     struct port_event ev, events[MAX_EVENTS];
     struct serve_params *params;
     char buf[BUFSIZE];
+    
+    memset(&clientaddr, 0, sizeof(clientaddr));
 
     accepts = 0;
     params = (struct serve_params *)vparams;

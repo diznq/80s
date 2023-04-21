@@ -27,14 +27,16 @@ void *serve(void *vparams) {
     int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id, flags, fdtype;
     int sigfd;
     sigset_t sigmask;
+    socklen_t clientlen = sizeof(union addr_common);
     struct signalfd_siginfo siginfo;
-    socklen_t clientlen;
     unsigned accepts;
     void *ctx;
     union addr_common clientaddr;
     struct epoll_event ev, events[MAX_EVENTS];
     struct serve_params *params;
     char buf[BUFSIZE];
+
+    memset(&clientaddr, 0, sizeof(clientaddr));
 
     if(sizeof(struct fd_holder) != sizeof(uint64_t)) {
         error("serve: sizeof(fdholder) != sizeof(uint64_t)");
