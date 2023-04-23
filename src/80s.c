@@ -69,7 +69,7 @@ static int get_cpus() {
 }
 
 int main(int argc, const char **argv) {
-    const int workers = get_arg("-c", get_cpus(argc, argv), 0, argc, argv);
+    const int workers = get_arg("-c", get_cpus(), 0, argc, argv);
     char resolved[100];
     int elfd, parentfd, optval, i,
         portno = get_arg("-p", 8080, 0, argc, argv),
