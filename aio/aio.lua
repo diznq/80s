@@ -316,7 +316,9 @@ function aiosocket:new(elfd, childfd, fdtype, connected)
         ft = fdtype,
         cw = false, 
         co = connected or false, 
-        wr = connected or false 
+        wr = connected or false ,
+        buf = {},
+        closed = false
     }
     setmetatable(socket, self)
     self.__index = self
@@ -369,7 +371,7 @@ function aio:on_data(elfd, childfd, fdtype, data, len)
     -- detect the protocol and add correct handler
     if is_http[initial] then
         local fd = aiosocket:new(elfd, childfd, fdtype, true)
-        self.fds[childfd] = fd        
+        self.fds[childfd] = fd
         self:handle_as_http(fd)
         fd:on_data(elfd, childfd, data, len)
     else
