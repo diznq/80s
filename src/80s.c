@@ -61,7 +61,7 @@ static int get_cpus(int argc, const char **argv) {
         return 1;
     }
 #elif defined(_SC_NPROCESSORS_ONLN)
-    int count = sysconf(_SC_NPROCESSORS_ONLN);
+    count = sysconf(_SC_NPROCESSORS_ONLN);
 #elif defined(_GNU_SOURCE)
     count = get_nprocs();
 #endif
