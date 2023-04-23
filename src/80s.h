@@ -27,15 +27,6 @@ extern "C" {
 #include <sys/types.h>
 #include <sys/epoll.h>
 #define event_t epoll_event
-#elif defined(__sun)
-#define UNIX_BASED
-#define USE_PORT
-#define USE_INOTIFY
-#include <port.h>
-#include <sys/types.h>
-#include <sys/port.h>
-#include <sys/poll.h>
-#define event_t port_event
 #else
 #error unsupported platform
 #endif

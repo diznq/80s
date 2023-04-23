@@ -110,8 +110,6 @@ int s80_connect(void *ctx, int elfd, const char *addr, int portno) {
         EV_SET(ev, childfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
         EV_SET(ev + 1, childfd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, 0, 0, (void*)S80_FD_SOCKET);
         status = kevent(elfd, ev, 2, NULL, 0, NULL);
-#elif defined(USE_PORT)
-        status = port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN | POLLOUT, NULL);
 #endif
 
         if (status < 0) {
@@ -141,8 +139,6 @@ ssize_t s80_write(void *ctx, int elfd, int childfd, int fdtype, const char *data
 #elif defined(USE_KQUEUE)
             EV_SET(&ev, childfd, EVFILT_WRITE, fdtype = S80_FD_PIPE ? (EV_ADD | EV_CLEAR) : (EV_ADD | EV_ONESHOT), 0, 0, (void*)fdtype);
             status = kevent(elfd, &ev, 1, NULL, 0, NULL);
-#elif defined(USE_PORT)
-            status = port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN | POLLOUT, NULL);
 #endif
             if (status < 0) {
                 dbg("l_net_write: failed to add socket to out poll");
@@ -160,8 +156,6 @@ int s80_close(void *ctx, int elfd, int childfd, int fdtype) {
     ev.events = EPOLLIN | EPOLLOUT;
     SET_FD_HOLDER(&ev.data, fdtype, childfd);
     status = epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev);
-#elif defined(USE_PORT)
-    status = port_dissociate(elfd, PORT_SOURCE_FD, childfd);
 #endif
 
     if (status < 0) {
@@ -230,8 +224,6 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
         // subscribe for both read and write separately
         EV_SET(ev, childfd, i == 0 ? EVFILT_READ : EVFILT_WRITE, i == 0 ? EV_ADD : (EV_ADD | EV_CLEAR), 0, 0, (void*)S80_FD_PIPE);
         status = kevent(elfd, ev, 1, NULL, 0, NULL);
-#elif defined(USE_PORT)
-        status = port_associate(elfd, PORT_SOURCE_FD, childfd, i == 0 ? POLLIN : POLLOUT, NULL);
 #endif
         if(status < 0) {
             cleanup_pipes(elfd, pipes, i - 1);
@@ -286,8 +278,6 @@ static int cleanup_pipes(int elfd, int *pipes, int allocated) {
             ev[0].events = i == 0 ? EPOLLIN : EPOLLOUT;
             SET_FD_HOLDER(&ev[0].data, S80_FD_PIPE, childfd);
             epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, ev);
-#elif defined(USE_PORT)
-            port_dissociate(elfd, PORT_SOURCE_FD, childfd, i == 0 ? POLLIN : POLLOUT);
 #endif
         }
     }
