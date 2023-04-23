@@ -108,7 +108,7 @@ int s80_connect(void *ctx, int elfd, const char *addr, int portno) {
 #elif defined(USE_KQUEUE)
         // subscribe for both read and write separately
         EV_SET(ev, childfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
-        EV_SET(ev + 1, childfd, EVFILT_WRITE, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
+        EV_SET(ev + 1, childfd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, 0, 0, (void*)S80_FD_SOCKET);
         status = kevent(elfd, ev, 2, NULL, 0, NULL);
 #elif defined(USE_PORT)
         status = port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN | POLLOUT, NULL);

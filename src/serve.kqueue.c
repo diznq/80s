@@ -113,12 +113,6 @@ void *serve(void *vparams) {
                             on_close(ctx, elfd, childfd);
                         }
                     } else if(events[n].data > 0) {
-                        if(fdtype != S80_FD_PIPE) {
-                            EV_SET(&ev, childfd, EVFILT_WRITE, EV_DELETE, 0, 0, (void*)fdtype);
-                            if(kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
-                                dbg("serve: failed to remove from kqueue");
-                            }
-                        }
                         on_write(ctx, elfd, childfd, 0);
                     }
                     break;
