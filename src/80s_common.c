@@ -139,7 +139,7 @@ ssize_t s80_write(void *ctx, int elfd, int childfd, int fdtype, const char *data
             SET_FD_HOLDER(&ev.data, fdtype, childfd);
             status = epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev);
 #elif defined(USE_KQUEUE)
-            EV_SET(&ev, childfd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, 0, 0, (void*)fdtype);
+            EV_SET(&ev, childfd, EVFILT_WRITE, fdtype = S80_FD_PIPE ? (EV_ADD | EV_CLEAR) : (EV_ADD | EV_ONESHOT), 0, 0, (void*)fdtype);
             status = kevent(elfd, &ev, 1, NULL, 0, NULL);
 #elif defined(USE_PORT)
             status = port_associate(elfd, PORT_SOURCE_FD, childfd, POLLIN | POLLOUT, NULL);
@@ -228,7 +228,7 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
         status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
 #elif defined(USE_KQUEUE)
         // subscribe for both read and write separately
-        EV_SET(ev, childfd, i == 0 ? EVFILT_READ : EVFILT_WRITE, EV_ADD, 0, 0, (void*)S80_FD_PIPE);
+        EV_SET(ev, childfd, i == 0 ? EVFILT_READ : EVFILT_WRITE, i == 0 ? EV_ADD : (EV_ADD | EV_CLEAR), 0, 0, (void*)S80_FD_PIPE);
         status = kevent(elfd, ev, 1, NULL, 0, NULL);
 #elif defined(USE_PORT)
         status = port_associate(elfd, PORT_SOURCE_FD, childfd, i == 0 ? POLLIN : POLLOUT, NULL);
