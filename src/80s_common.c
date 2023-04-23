@@ -137,7 +137,7 @@ ssize_t s80_write(void *ctx, int elfd, int childfd, int fdtype, const char *data
             SET_FD_HOLDER(&ev.data, fdtype, childfd);
             status = epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev);
 #elif defined(USE_KQUEUE)
-            EV_SET(&ev, childfd, EVFILT_WRITE, fdtype = S80_FD_PIPE ? (EV_ADD | EV_CLEAR) : (EV_ADD | EV_ONESHOT), 0, 0, (void*)fdtype);
+            EV_SET(&ev, childfd, EVFILT_WRITE, fdtype == S80_FD_PIPE ? (EV_ADD | EV_CLEAR) : (EV_ADD | EV_ONESHOT), 0, 0, (void*)fdtype);
             status = kevent(elfd, &ev, 1, NULL, 0, NULL);
 #endif
             if (status < 0) {

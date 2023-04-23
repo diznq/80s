@@ -560,12 +560,12 @@ static void ssl_secret_callback(const SSL* ssl, const char* line) {
     int n = 0, elfd = ctx->elfd, childfd = ctx->fd, status;
     if(strstr(line, "SERVER_TRAFFIC_SECRET_0") == line) {
         en = wren;
-        key = ctx->wrkey;
-        iv = ctx->wriv;
+        key = (unsigned char*)ctx->wrkey;
+        iv = (unsigned char*)ctx->wriv;
     } else if(strstr(line, "CLIENT_TRAFFIC_SECRET_0") == line) {
         en = rden;
-        key = ctx->rdkey;
-        iv = ctx->rdiv;
+        key = (unsigned char*)ctx->rdkey;
+        iv = (unsigned char*)ctx->rdiv;
     } else {
         return;
     }
