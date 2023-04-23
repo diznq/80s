@@ -53,7 +53,7 @@ static int get_arg(const char *arg, int default_value, int flag, int argc, const
     return flag ? 0 : default_value;
 }
 
-static int get_cpus(int argc, const char **argv) {
+static int get_cpus() {
     int count;
 #if defined(USE_KQUEUE)
     size_t size=sizeof(count);
@@ -69,7 +69,7 @@ static int get_cpus(int argc, const char **argv) {
 }
 
 int main(int argc, const char **argv) {
-    const int workers = get_cpus(argc, argv);
+    const int workers = get_arg("-c", get_cpus(argc, argv), 0, argc, argv);
     char resolved[100];
     int elfd, parentfd, optval, i,
         portno = get_arg("-p", 8080, 0, argc, argv),
