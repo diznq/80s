@@ -57,7 +57,7 @@ static int get_cpus(int argc, const char **argv) {
     int count;
 #if defined(USE_KQUEUE)
     size_t size=sizeof(count);
-    if(sysctlbyname("hw.ncpu", &count, &size, NULL, 0) == 0) {
+    if(sysctlbyname("hw.ncpu", &count, &size, NULL, 0) < 0) {
         return 1;
     }
 #elif defined(_SC_NPROCESSORS_ONLN)
