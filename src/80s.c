@@ -24,6 +24,9 @@
 
 #include <sys/socket.h>
 #include <sys/types.h>
+#ifdef USE_KQUEUE
+#include <sys/sysctl.h>
+#endif
 #endif
 
 union addr_common {
@@ -51,29 +54,18 @@ static int get_arg(const char *arg, int default_value, int flag, int argc, const
 }
 
 static int get_cpus(int argc, const char **argv) {
-    FILE *fr;
-    char buf[1024];
-    int n_cpus = get_arg("-c", 0, 0, argc, argv);
-    // if cpu count was specified, use it
-    if (n_cpus > 0) {
-        return n_cpus;
-    }
-    fr = fopen("/proc/cpuinfo", "r");
-    // if there is no cpuinfo, fallback with 1 CPU
-    if (!fr) {
+    int count;
+#if defined(USE_KQUEUE)
+    size_t size=sizeof(count);
+    if(sysctlbyname("hw.ncpu", &count, &size, NULL, 0) == 0) {
         return 1;
     }
-    // read entire cpuinfo, count how many processors we find
-    while (fgets(buf, sizeof(buf), fr)) {
-        if (strstr(buf, "processor") == buf) {
-            n_cpus++;
-        }
-    }
-    // there cannot be less than 1 workers
-    if (n_cpus <= 0) {
-        return 1;
-    }
-    return n_cpus;
+#elif defined(_SC_NPROCESSORS_ONLN)
+    int count = sysconf(_SC_NPROCESSORS_ONLN);
+#elif defined(_GNU_SOURCE)
+    count = get_nprocs();
+#endif
+    return count > 0 ? count : 1;
 }
 
 int main(int argc, const char **argv) {
