@@ -132,6 +132,11 @@ void *serve(void *vparams) {
                     }
                     // if length is <= 0 or error happens, remove the socket from event loop
                     if (readlen <= 0 || (flags & (EV_EOF | EV_ERROR))) {
+                        while(fdtype == S80_FD_PIPE && readlen > 0) {
+                            readlen = read(childfd, buf, BUFSIZE);
+                            if(readlen <= 0) break;
+                            on_receive(ctx, elfd, childfd, fdtype, buf, readlen);
+                        }
                         if (close(childfd) < 0) {
                             dbg("serve: failed to close child socket");
                         }
