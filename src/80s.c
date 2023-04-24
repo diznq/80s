@@ -82,33 +82,43 @@ static void* run(void *params_) {
     void *result = NULL;
     dynserve_t serve;
     for(;;) {
+        printf("run: worker %d acquiring lock\n", params->workerid);
         sem_wait(&reload->serve_lock);
         reload->ready++;
-        if(reload->loaded != reload->running) {
-            printf("run: worker %d loading latest dynamic library\n", params->workerid);
-            reload->loaded = reload->running;
+        if(reload->ready == reload->workers) {
+            printf("run: all workers ready, reloading dynamic library\n");
+            if(reload->dlcurrent != NULL && dlclose(reload->dlcurrent) < 0) {
+                error("run: failed to close previous dynamic library");
+            }
             reload->dlcurrent = dlopen(S80_DYNAMIC_SO, RTLD_LAZY);
             if(reload->dlcurrent == NULL) {
                 error("run: failed to open dynamic library");
             }
             reload->serve = dlsym(reload->dlcurrent, "serve");
             if(reload->serve == NULL) {
-                error("run: failed to find serve procedure");
+                error("run: failed to locate serve procedure");
             }
+        } else {
+            printf("run: worker %d is pending readiness\n", params->workerid);
+            reload->serve = NULL;
         }
-        printf("run: worker %d loaded latest dynamic library, ready: %d/%d\n", params->workerid, reload->ready, params->workers);
-        if(reload->ready == params->workers) {
-            printf("run: all workers ready, unloading old library if present\n");
-            if(reload->dlprevious) {
-                if(dlclose(reload->dlprevious) < 0) {
-                    error("run: failed to close dynamic library");
-                }
-            }
-            reload->dlprevious = reload->dlcurrent;
-        }
-        serve = reload->serve;
         sem_post(&reload->serve_lock);
+
+        for(;;) {
+            sem_wait(&reload->serve_lock);
+            if(reload->serve != NULL) {
+                printf("run: worker %d restoring serve\n", params->workerid);
+                sem_post(&reload->serve_lock);
+                break;
+            } else {
+                usleep(10000);
+            }
+            sem_post(&reload->serve_lock);
+        }
+
+        serve = reload->serve;
         result = serve(params_);
+        printf("run: worker %d stopped, quit: %d\n", params->workerid, params->quit);
         if(params->quit) return result;
     }
     #endif

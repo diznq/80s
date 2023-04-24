@@ -80,8 +80,9 @@ if [ "$DYNAMIC" = "true" ]; then
       $LIBS \
       $FLAGS \
       -o "$OUT.so"
-
-  $CC src/80s.c $DEFINES $FLAGS -o "$OUT"
+  if [ ! "$SOONLY" = "true" ]; then
+    $CC src/80s.c $DEFINES $FLAGS -fPIC -o "$OUT"
+  fi
 else
   $CC src/80s.c src/80s_common.c src/dynstr.c src/algo.c \
       src/lua.c src/lua_net.c src/lua_codec.c src/lua_crypto.c \

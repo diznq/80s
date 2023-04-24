@@ -52,6 +52,7 @@ void *serve(void *vparams) {
     id = params->workerid;
     workers = params->workers;
     ctx = params->ctx;
+    elfd = params->els[id];
     sigfd = params->extra[S80_EXTRA_SIGNALFD];
 
     if(params->initialized == 0) {
@@ -101,6 +102,8 @@ void *serve(void *vparams) {
         on_init(ctx, elfd, parentfd);
         params->ctx = ctx;
         params->initialized = 1;
+    } else {
+        refresh_context(ctx, elfd, id, params->entrypoint, params->reload);
     }
 
 #ifndef S80_DYNAMIC

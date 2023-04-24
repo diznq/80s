@@ -8,9 +8,14 @@
 #include <stdio.h>
 
 static lua_State *create_lua(int elfd, int id, const char *entrypoint, struct live_reload *reload);
+static void refresh_lua(lua_State *L, int elfd, int id, const char *entrypoint, struct live_reload *reload);
 
 void *create_context(int elfd, int id, const char *entrypoint, struct live_reload *reload) {
     return (void *)create_lua(elfd, id, entrypoint, reload);
+}
+
+void refresh_context(void *ctx, int elfd, int id, const char *entrypoint, struct live_reload *reload) {
+    refresh_lua((lua_State*)ctx, elfd, id, entrypoint, reload);
 }
 
 void close_context(void *ctx) {
@@ -61,14 +66,7 @@ void on_init(void *ctx, int elfd, int parentfd) {
     }
 }
 
-static lua_State *create_lua(int elfd, int id, const char *entrypoint, struct live_reload *reload) {
-    int status;
-    lua_State *L = luaL_newstate();
-
-    if (L == NULL) {
-        return NULL;
-    }
-
+static void refresh_lua(lua_State *L, int elfd, int id, const char *entrypoint, struct live_reload *reload) {
     luaL_openlibs(L);
 #if LUA_VERSION_NUM > 501
     luaL_requiref(L, "net", luaopen_net, 1);
@@ -108,7 +106,18 @@ static lua_State *create_lua(int elfd, int id, const char *entrypoint, struct li
     lua_pushboolean(L, 1);
     lua_setglobal(L, "KTLS");
     #endif
+}
 
+static lua_State *create_lua(int elfd, int id, const char *entrypoint, struct live_reload *reload) {
+    int status;
+    lua_State *L = luaL_newstate();
+
+    if (L == NULL) {
+        return NULL;
+    }
+
+    refresh_lua(L, elfd, id, entrypoint, reload);
+    
     status = luaL_dofile(L, entrypoint);
 
     if (status) {

@@ -85,6 +85,7 @@ void *serve(void *vparams);
 #endif
 
 void *create_context(int elfd, int id, const char *entrypoint, struct live_reload *reload);
+void refresh_context(void *ctx, int elfd, int id, const char *entrypoint, struct live_reload *reload);
 void close_context(void *ctx);
 void on_receive(void *ctx, int elfd, int childfd, int fdtype, const char *buf, int readlen);
 void on_close(void *ctx, int elfd, int childfd);
