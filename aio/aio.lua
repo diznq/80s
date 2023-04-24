@@ -11,7 +11,7 @@
 --- @field write fun(elfd: lightuserdata, childfd: lightuserdata, fdtype: lightuserdata, data: string, offset: integer): boolean write data to file descriptor
 --- @field close fun(elfd: lightuserdata, childfd: lightuserdata, fdtype: lightuserdata): boolean close a file descriptor
 --- @field connect fun(elfd: lightuserdata, host: string, port: integer): fd: lightuserdata|nil, err: string|nil open a new network connection
---- @field reload fun() reload server
+--- @field reload fun(c_reload: lightuserdata|nil) reload server, if c_reload == S80_RELOAD, C binary is reloaded given executable was built with DYNAMIC=true
 --- @field listdir fun(dir: string): string[] list files in directory
 --- @field inotify_init fun(elfd: lightuserdata): fd: lightuserdata|nil, error: string|nil initialize inotify
 --- @field inotify_add fun(elfd: lightuserdata, childfd: lightuserdata, target: string): wd: lightuserdata add file to watchlist of inotify, returns watch descriptor
@@ -72,6 +72,8 @@ S80_FD_KTLS_SOCKET = S80_FD_KTLS_SOCKET or nil
 S80_FD_PIPE = S80_FD_PIPE or nil
 --- @type lightuserdata
 S80_FD_OTHER = S80_FD_OTHER or nil
+--- @type lightuserdata
+S80_RELOAD = S80_RELOAD or nil
 
 --- @type boolean
 KTLS = KTLS or false

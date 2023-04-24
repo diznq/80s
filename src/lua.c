@@ -7,10 +7,10 @@
 #include <lualib.h>
 #include <stdio.h>
 
-static lua_State *create_lua(int elfd, int id, const char *entrypoint);
+static lua_State *create_lua(int elfd, int id, const char *entrypoint, struct live_reload *reload);
 
-void *create_context(int elfd, int id, const char *entrypoint) {
-    return (void *)create_lua(elfd, id, entrypoint);
+void *create_context(int elfd, int id, const char *entrypoint, struct live_reload *reload) {
+    return (void *)create_lua(elfd, id, entrypoint, reload);
 }
 
 void close_context(void *ctx) {
@@ -61,7 +61,7 @@ void on_init(void *ctx, int elfd, int parentfd) {
     }
 }
 
-static lua_State *create_lua(int elfd, int id, const char *entrypoint) {
+static lua_State *create_lua(int elfd, int id, const char *entrypoint, struct live_reload *reload) {
     int status;
     lua_State *L = luaL_newstate();
 
@@ -100,6 +100,9 @@ static lua_State *create_lua(int elfd, int id, const char *entrypoint) {
     lua_setglobal(L, "S80_FD_PIPE");
     lua_pushlightuserdata(L, (void *)S80_FD_OTHER);
     lua_setglobal(L, "S80_FD_OTHER");
+
+    lua_pushlightuserdata(L, (void *)reload);
+    lua_setglobal(L, "S80_RELOAD");
 
     #ifdef USE_KTLS
     lua_pushboolean(L, 1);

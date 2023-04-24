@@ -27,7 +27,12 @@
 #ifdef USE_KQUEUE
 #include <sys/sysctl.h>
 #endif
+#ifdef S80_DYNAMIC
+#include <dlfcn.h>
 #endif
+#endif
+
+struct live_reload reload;
 
 union addr_common {
     struct sockaddr_in6 v6;
@@ -68,6 +73,47 @@ static int get_cpus() {
     return count > 0 ? count : 1;
 }
 
+static void* run(void *params_) {
+    #ifndef S80_DYNAMIC
+    return serve(params_);
+    #else
+    struct serve_params *params = (struct serve_params*)params_;
+    struct live_reload *reload = params->reload;
+    void *result = NULL;
+    dynserve_t serve;
+    for(;;) {
+        sem_wait(&reload->serve_lock);
+        reload->ready++;
+        if(reload->loaded != reload->running) {
+            printf("run: worker %d loading latest dynamic library\n", params->workerid);
+            reload->loaded = reload->running;
+            reload->dlcurrent = dlopen(S80_DYNAMIC_SO, RTLD_LAZY);
+            if(reload->dlcurrent == NULL) {
+                error("run: failed to open dynamic library");
+            }
+            reload->serve = dlsym(reload->dlcurrent, "serve");
+            if(reload->serve == NULL) {
+                error("run: failed to find serve procedure");
+            }
+        }
+        printf("run: worker %d loaded latest dynamic library, ready: %d/%d\n", params->workerid, reload->ready, params->workers);
+        if(reload->ready == params->workers) {
+            printf("run: all workers ready, unloading old library if present\n");
+            if(reload->dlprevious) {
+                if(dlclose(reload->dlprevious) < 0) {
+                    error("run: failed to close dynamic library");
+                }
+            }
+            reload->dlprevious = reload->dlcurrent;
+        }
+        serve = reload->serve;
+        sem_post(&reload->serve_lock);
+        result = serve(params_);
+        if(params->quit) return result;
+    }
+    #endif
+}
+
 int main(int argc, const char **argv) {
     const int workers = get_arg("-c", get_cpus(), 0, argc, argv);
     char resolved[100];
@@ -75,9 +121,11 @@ int main(int argc, const char **argv) {
         portno = get_arg("-p", 8080, 0, argc, argv),
         v6 = get_arg("-6", 0, 1, argc, argv);
     union addr_common serveraddr;
+    void *serve_handle = NULL;
     const char *entrypoint;
     const char *addr = v6 ? "::" : "0.0.0.0";
     struct serve_params params[workers];
+    sem_t serve_lock;
     #ifdef _WIN32
     HANDLE handles[workers];
     #else
@@ -86,6 +134,14 @@ int main(int argc, const char **argv) {
     int els[workers];
 
     memset(params, 0, sizeof(params));
+    memset(&reload, 0, sizeof(reload));
+
+    reload.loaded = 0;
+    reload.running = 1;
+    reload.ready = 0;
+    reload.workers = workers;
+
+    sem_init(&reload.serve_lock, 0, 1);
 
     for(i=1; i < argc - 1; i++) {
         if(!strcmp(argv[i], "-h")) {
@@ -142,14 +198,23 @@ int main(int argc, const char **argv) {
     if (listen(parentfd, 20000) < 0)
         error("main: failed to listen on server socket");
 
+    #ifdef S80_DYNAMIC
+    printf("main: reload listening on signal SIGUSR1 (%d)\n", SIGUSR1);
+    #endif
+
     for (i = 0; i < workers; i++) {
         params[i].initialized = 0;
-        params[i].quit = 0;
+        params[i].reload = &reload;
         params[i].parentfd = parentfd;
         params[i].workerid = i;
         params[i].els = els;
         params[i].workers = workers;
         params[i].entrypoint = entrypoint;
+        #ifdef S80_DYNAMIC
+        params[i].quit = 0;
+        #else
+        params[i].quit = 1;
+        #endif
 
         if (i > 0) {
             #ifdef _WIN32
@@ -158,14 +223,14 @@ int main(int argc, const char **argv) {
                 error("main: failed to create thread");
             }
             #else
-            if (pthread_create(&handles[i], NULL, serve, (void *)&params[i]) != 0) {
+            if (pthread_create(&handles[i], NULL, run, (void *)&params[i]) != 0) {
                 error("main: failed to create thread");
             }
             #endif
         }
     }
 
-    serve((void *)&params[0]);
+    run((void *)&params[0]);
 
     #ifdef _WIN32
     for (i = 1; i < workers; i++)

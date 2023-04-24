@@ -11,11 +11,16 @@ extern "C" {
 #define S80_FD_PIPE 2
 #define S80_FD_OTHER 3
 
+#ifndef S80_DYNAMIC_SO
+#define S80_DYNAMIC_SO "bin/80s.so"
+#endif
+
 #if defined(__FreeBSD__) || defined(__APPLE__)
 #define UNIX_BASED
 #define USE_KQUEUE
 #include <sys/types.h>
 #include <sys/event.h>
+#include <semaphore.h>
 #define event_t kevent
 #ifdef __FreeBSD__
 #define USE_KTLS
@@ -26,10 +31,24 @@ extern "C" {
 #define USE_INOTIFY
 #include <sys/types.h>
 #include <sys/epoll.h>
+#include <semaphore.h>
 #define event_t epoll_event
 #else
 #error unsupported platform
 #endif
+
+typedef void*(*dynserve_t)(void*);
+
+struct live_reload {
+    int running;
+    int loaded;
+    int ready;
+    int workers;
+    dynserve_t serve;
+    sem_t serve_lock;
+    void *dlcurrent;
+    void *dlprevious;
+};
 
 struct serve_params {
     // local to each thread
@@ -43,6 +62,7 @@ struct serve_params {
     // shared across all
     int *els;
     const char *entrypoint;
+    struct live_reload *reload;
 };
 
 struct fd_holder {
@@ -59,9 +79,12 @@ struct fd_holder {
 #define FD_HOLDER_FD(ptr) ((struct fd_holder*)ptr)->fd
 
 void error(const char *msg);
-void *serve(void *vparams);
 
-void *create_context(int elfd, int id, const char *entrypoint);
+#ifndef S80_DYNAMIC
+void *serve(void *vparams);
+#endif
+
+void *create_context(int elfd, int id, const char *entrypoint, struct live_reload *reload);
 void close_context(void *ctx);
 void on_receive(void *ctx, int elfd, int childfd, int fdtype, const char *buf, int readlen);
 void on_close(void *ctx, int elfd, int childfd);

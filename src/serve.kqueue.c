@@ -60,7 +60,7 @@ void *serve(void *vparams) {
             }
         }
 
-        ctx = create_context(elfd, id, params->entrypoint);
+        ctx = create_context(elfd, id, params->entrypoint, params->reload);
 
         if (ctx == NULL) {
             error("failed to initialize context");

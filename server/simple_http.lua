@@ -19,8 +19,9 @@ aio:http_get("/ip", function (fd, query, headers, body)
     fd:http_response("200 OK", "text/plain", string.format("%s:%d", ip, port))
 end)
 
-aio:http_post("/reload", function(fd, ...)
-    local status = net.reload()
+aio:http_post("/reload", function(fd, query, headers, body)
+    local args = aio:parse_query(query)
+    local status = args.c and net.reload(S80_RELOAD) or net.reload()
     if not status then
         fd:http_response("500 Internal Server Error", "text/plain", "Error: " .. WORKERID)
     else

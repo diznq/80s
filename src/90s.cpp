@@ -80,7 +80,7 @@ class Context {
     }
 };
 
-extern "C" void *create_context(int elfd, int id, const char *entrypoint) {
+extern "C" void *create_context(int elfd, int id, const char *entrypoint, struct live_reload *reload) {
     return new Context(elfd, id, entrypoint);
 }
 

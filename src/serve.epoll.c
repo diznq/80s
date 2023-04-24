@@ -27,7 +27,7 @@ union addr_common {
 
 void *serve(void *vparams) {
     int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id, flags, fdtype, closed = 0;
-    int sigfd;
+    int sigfd, runid;
     sigset_t sigmask;
     socklen_t clientlen = sizeof(union addr_common);
     struct signalfd_siginfo siginfo;
@@ -46,6 +46,7 @@ void *serve(void *vparams) {
 
     accepts = 0;
     params = (struct serve_params *)vparams;
+    runid = params->reload->running;
     parentfd = params->parentfd;
     els = params->els;
     id = params->workerid;
@@ -91,7 +92,7 @@ void *serve(void *vparams) {
             signal(SIGCHLD, SIG_IGN);
         }
 
-        ctx = create_context(elfd, id, params->entrypoint);
+        ctx = create_context(elfd, id, params->entrypoint, params->reload);
 
         if (ctx == NULL) {
             error("failed to initialize context");
@@ -102,11 +103,16 @@ void *serve(void *vparams) {
         params->initialized = 1;
     }
 
-    for (;;) {
+#ifndef S80_DYNAMIC
+    while(1)
+#else
+    while(runid == params->reload->running)
+#endif
+    {
         // wait for new events
         nfds = epoll_wait(elfd, events, MAX_EVENTS, -1);
 
-        if (nfds < 0) {
+        if (nfds < 0 && errno != EINTR) {
             error("serve: error on epoll_wait");
         }
 

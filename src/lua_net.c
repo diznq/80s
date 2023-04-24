@@ -81,14 +81,31 @@ static int l_net_sockname(lua_State *L) {
 
 static int l_net_reload(lua_State *L) {
     const char *entrypoint;
+    struct live_reload *reload;
     int status;
 
-    lua_getglobal(L, "ENTRYPOINT");
-    entrypoint = lua_tostring(L, -1);
+    if(lua_gettop(L) == 1 && lua_type(L, 1) == LUA_TLIGHTUSERDATA) {
+        #ifdef S80_DYNAMIC
+        reload = (struct live_reload*)lua_touserdata(L, 1);
+        if(reload->ready < reload->workers) {
+            lua_pushboolean(L, 0);
+        } else {
+            reload->ready = 0;
+            reload->running++;
+            lua_pushboolean(L, 1);
+        }
+        #else
+        lua_pushboolean(L, 0);
+        #endif
+        return 1;
+    } else {
+        lua_getglobal(L, "ENTRYPOINT");
+        entrypoint = lua_tostring(L, -1);
 
-    status = luaL_dofile(L, entrypoint);
-    if (status) {
-        fprintf(stderr, "l_net_reload: error running %s: %s\n", entrypoint, lua_tostring(L, -1));
+        status = luaL_dofile(L, entrypoint);
+        if (status) {
+            fprintf(stderr, "l_net_reload: error running %s: %s\n", entrypoint, lua_tostring(L, -1));
+        }
     }
 
     lua_pushboolean(L, status == 0);
@@ -222,7 +239,6 @@ static int l_net_listdir(lua_State *L) {
     int n, i;
     char buf[1000];
     const char *dir_name = lua_tostring(L, 1);
-
 
 #ifdef _WIN32
     WIN32_FIND_DATAA data;

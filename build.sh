@@ -59,19 +59,37 @@ if [ "$DEBUG" = "true" ]; then
     FLAGS="-O0 -g"
 fi
 
+FLAGS="$FLAGS -march=native -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast"
+
 echo "Defines: $DEFINES"
 echo "Libraries: $LIBS"
 echo "Flags: $FLAGS"
 echo "Lua include directory: $LUA_INC"
 echo "Lua library directory: $LUA_LIB"
 
-$CC src/80s.c src/80s_common.c src/dynstr.c src/algo.c \
-    src/lua.c src/lua_net.c src/lua_codec.c src/lua_crypto.c \
-    src/serve.epoll.c src/serve.kqueue.c \
-    "$LUA_LIB" \
-    $DEFINES \
-    "-I$LUA_INC" \
-    $LIBS \
-    $FLAGS -march=native \
-    -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast \
-    -o "$OUT"
+if [ "$DYNAMIC" = "true" ]; then
+  DEFINES="$DEFINES -DS80_DYNAMIC=1"
+  DEFINES="$DEFINES -DS80_SO=$OUT.so"
+  $CC src/80s_common.c src/dynstr.c src/algo.c \
+      src/lua.c src/lua_net.c src/lua_codec.c src/lua_crypto.c \
+      src/serve.epoll.c src/serve.kqueue.c \
+      -shared -fPIC \
+      "$LUA_LIB" \
+      "-I$LUA_INC" \
+      $DEFINES \
+      $LIBS \
+      $FLAGS \
+      -o "$OUT.so"
+
+  $CC src/80s.c $DEFINES $FLAGS -o "$OUT"
+else
+  $CC src/80s.c src/80s_common.c src/dynstr.c src/algo.c \
+      src/lua.c src/lua_net.c src/lua_codec.c src/lua_crypto.c \
+      src/serve.epoll.c src/serve.kqueue.c \
+      "$LUA_LIB" \
+      "-I$LUA_INC" \
+      $DEFINES \
+      $LIBS \
+      $FLAGS \
+      -o "$OUT"
+fi
