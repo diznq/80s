@@ -18,13 +18,15 @@
 #include <sys/signalfd.h>
 #include <sys/wait.h>
 
+#define S80_EXTRA_SIGNALFD 0
+
 union addr_common {
     struct sockaddr_in6 v6;
     struct sockaddr_in v4;
 };
 
 void *serve(void *vparams) {
-    int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id, flags, fdtype;
+    int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id, flags, fdtype, closed = 0;
     int sigfd;
     sigset_t sigmask;
     socklen_t clientlen = sizeof(union addr_common);
@@ -48,50 +50,57 @@ void *serve(void *vparams) {
     els = params->els;
     id = params->workerid;
     workers = params->workers;
+    ctx = params->ctx;
+    sigfd = params->extra[S80_EXTRA_SIGNALFD];
 
-    signal(SIGPIPE, SIG_IGN);
+    if(params->initialized == 0) {
+        signal(SIGPIPE, SIG_IGN);
 
-    // create local epoll and assign it to context's array of els, so others can reach it
-    elfd = els[id] = epoll_create1(0);
-    if (elfd < 0)
-        error("serve: failed to create epoll");
+        // create local epoll and assign it to context's array of els, so others can reach it
+        elfd = els[id] = epoll_create1(0);
+        if (elfd < 0)
+            error("serve: failed to create epoll");
 
-    // only one thread can poll on server socket and accept others!
-    if (id == 0) {
-        ev.events = EPOLLIN;
-        SET_FD_HOLDER(&ev.data, S80_FD_SOCKET, parentfd);
-        if (epoll_ctl(elfd, EPOLL_CTL_ADD, parentfd, &ev) < 0) {
-            error("serve: failed to add server socket to epoll");
+        // only one thread can poll on server socket and accept others!
+        if (id == 0) {
+            ev.events = EPOLLIN;
+            SET_FD_HOLDER(&ev.data, S80_FD_SOCKET, parentfd);
+            if (epoll_ctl(elfd, EPOLL_CTL_ADD, parentfd, &ev) < 0) {
+                error("serve: failed to add server socket to epoll");
+            }
+
+            sigemptyset(&sigmask);
+            sigaddset(&sigmask, SIGCHLD);
+            if(sigprocmask(SIG_BLOCK, &sigmask, 0) < 0) {
+                error("serve: failed to create sigprocmask");
+            }
+
+            sigfd = signalfd(-1, &sigmask, 0);
+            if(sigfd < 0) {
+                error("serve: failed to create signal fd");
+            }
+            
+            ev.events = EPOLLIN;
+            SET_FD_HOLDER(&ev.data, S80_FD_OTHER, sigfd);
+            if (epoll_ctl(elfd, EPOLL_CTL_ADD, sigfd, &ev) < 0) {
+                error("serve: failed to add signal fd to epoll");
+            }
+
+            params->extra[S80_EXTRA_SIGNALFD] = sigfd;
+        } else {
+            signal(SIGCHLD, SIG_IGN);
         }
 
-        sigemptyset(&sigmask);
-        sigaddset(&sigmask, SIGCHLD);
-        if(sigprocmask(SIG_BLOCK, &sigmask, 0) < 0) {
-            error("serve: failed to create sigprocmask");
+        ctx = create_context(elfd, id, params->entrypoint);
+
+        if (ctx == NULL) {
+            error("failed to initialize context");
         }
 
-        sigfd = signalfd(-1, &sigmask, 0);
-        if(sigfd < 0) {
-            error("serve: failed to create signal fd");
-        }
-        
-        ev.events = EPOLLIN;
-        SET_FD_HOLDER(&ev.data, S80_FD_OTHER, sigfd);
-        if (epoll_ctl(elfd, EPOLL_CTL_ADD, sigfd, &ev) < 0) {
-            error("serve: failed to add signal fd to epoll");
-        }
-    } else {
-        signal(SIGCHLD, SIG_IGN);
+        on_init(ctx, elfd, parentfd);
+        params->ctx = ctx;
+        params->initialized = 1;
     }
-
-    ctx = create_context(elfd, id, params->entrypoint);
-
-    if (ctx == NULL) {
-        error("failed to initialize context");
-    }
-
-    on_init(ctx, elfd, parentfd);
-    int closed = 0;
 
     for (;;) {
         // wait for new events
@@ -182,7 +191,9 @@ void *serve(void *vparams) {
         }
     }
 
-    close_context(ctx);
+    if(params->quit) {
+        close_context(ctx);
+    }
 
     return NULL;
 }

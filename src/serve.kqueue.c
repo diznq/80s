@@ -41,30 +41,35 @@ void *serve(void *vparams) {
     parentfd = params->parentfd;
     els = params->els;
     id = params->workerid;
+    ctx = params->ctx;
     workers = params->workers;
 
-    signal(SIGPIPE, SIG_IGN);
+    if(params->initialized == 0) {
+        signal(SIGPIPE, SIG_IGN);
 
-    // create local kqueue and assign it to context's array of els, so others can reach it
-    elfd = els[id] = kqueue();
-    if (elfd < 0)
-        error("serve: failed to create kqueue");
+        // create local kqueue and assign it to context's array of els, so others can reach it
+        elfd = els[id] = kqueue();
+        if (elfd < 0)
+            error("serve: failed to create kqueue");
 
-    // only one thread can poll on server socket and accept others!
-    if (id == 0) {
-        EV_SET(&ev, parentfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
-        if (kevent(elfd, &ev, 1, NULL, 0, NULL) == -1) {
-            error("serve: failed to add server socket to kqueue");
+        // only one thread can poll on server socket and accept others!
+        if (id == 0) {
+            EV_SET(&ev, parentfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
+            if (kevent(elfd, &ev, 1, NULL, 0, NULL) == -1) {
+                error("serve: failed to add server socket to kqueue");
+            }
         }
+
+        ctx = create_context(elfd, id, params->entrypoint);
+
+        if (ctx == NULL) {
+            error("failed to initialize context");
+        }
+
+        on_init(ctx, elfd, parentfd);
+        params->ctx = ctx;
+        params->initialized = 1;
     }
-
-    ctx = create_context(elfd, id, params->entrypoint);
-
-    if (ctx == NULL) {
-        error("failed to initialize context");
-    }
-
-    on_init(ctx, elfd, parentfd);
 
     for (;;) {
         // wait for new events
@@ -153,7 +158,9 @@ void *serve(void *vparams) {
         }
     }
 
-    close_context(ctx);
+    if(params->quit) {
+        close_context(ctx);
+    }
 
     return NULL;
 }

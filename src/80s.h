@@ -32,9 +32,15 @@ extern "C" {
 #endif
 
 struct serve_params {
+    // local to each thread
+    int initialized;
     int parentfd;
     int workerid;
     int workers;
+    int quit;
+    int extra[4];
+    void *ctx;
+    // shared across all
     int *els;
     const char *entrypoint;
 };

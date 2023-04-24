@@ -85,6 +85,8 @@ int main(int argc, const char **argv) {
     #endif
     int els[workers];
 
+    memset(params, 0, sizeof(params));
+
     for(i=1; i < argc - 1; i++) {
         if(!strcmp(argv[i], "-h")) {
             addr = argv[i + 1];
@@ -141,6 +143,8 @@ int main(int argc, const char **argv) {
         error("main: failed to listen on server socket");
 
     for (i = 0; i < workers; i++) {
+        params[i].initialized = 0;
+        params[i].quit = 0;
         params[i].parentfd = parentfd;
         params[i].workerid = i;
         params[i].els = els;
