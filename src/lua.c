@@ -66,18 +66,24 @@ void on_init(void *ctx, int elfd, int parentfd) {
     }
 }
 
-static void refresh_lua(lua_State *L, int elfd, int id, const char *entrypoint, struct live_reload *reload) {
-
-#if LUA_VERSION_NUM > 501
+static void clean_global(lua_State *L, const char *name) {
     int idx;
-    // remove already existing packages to force reload on openlibs
-    while (lua_getfield(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE) == LUA_TTABLE) {
+    if(lua_getfield(L, LUA_REGISTRYINDEX, name) != LUA_TNIL) {
         lua_pop(L, 1);
         idx = lua_absindex(L, LUA_REGISTRYINDEX);
         lua_pushnil(L);
-        lua_setfield(L, idx, LUA_LOADED_TABLE);
+        lua_setfield(L, idx,  name);
+    } else {
+        lua_pop(L, 1);
     }
-    lua_pop(L, 1);
+}
+
+static void refresh_lua(lua_State *L, int elfd, int id, const char *entrypoint, struct live_reload *reload) {
+
+#if (LUA_VERSION_NUM > 501) && defined(S80_DYNAMIC)
+    // remove already existing packages to force reload on openlibs
+    clean_global(L, LUA_LOADED_TABLE);
+    clean_global(L, LUA_FILEHANDLE);
 #endif
 
     luaL_openlibs(L);

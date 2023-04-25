@@ -82,12 +82,10 @@ function templates:prepare(content, base, file_name)
             if not path:match("^/") then
                 path = base .. path
             end
-            local f, err = io.open(path, "r")
-            if not f or err then
+            local content = aio:read_file_sync(path, "r")
+            if not content then
                 return "failed to include " .. path
             end
-            local content = f:read("*all")
-            f:close()
             return content
         end)
 

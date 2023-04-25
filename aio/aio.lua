@@ -13,6 +13,7 @@
 --- @field connect fun(elfd: lightuserdata, host: string, port: integer): fd: lightuserdata|nil, err: string|nil open a new network connection
 --- @field reload fun(c_reload: lightuserdata|nil) reload server, if c_reload == S80_RELOAD, C binary is reloaded given executable was built with DYNAMIC=true
 --- @field listdir fun(dir: string): string[] list files in directory
+--- @field readfile fun(path: string, mode: string): string|nil read file contents
 --- @field inotify_init fun(elfd: lightuserdata): fd: lightuserdata|nil, error: string|nil initialize inotify
 --- @field inotify_add fun(elfd: lightuserdata, childfd: lightuserdata, target: string): wd: lightuserdata add file to watchlist of inotify, returns watch descriptor
 --- @field inotify_remove fun(elfd: lightuserdata, childfd: lightuserdata, wd: lightuserdata): boolean, string|nil remove watch decriptor from watchlist
@@ -92,8 +93,10 @@ if KTLS and (os.getenv("KTLS") or "true") == "false" then KTLS = false end
 --- @generic V : string
 --- @alias aiopromise<V> fun(on_resolved: fun(result: V)) AIO promise
 
-function unpack(...)
-    return table.unpack(...)
+if type(table.unpack) ~= "nil" then
+    function unpack(...)
+        return table.unpack(...)
+    end
 end
 
 on_before_http = on_before_http or nil
@@ -811,6 +814,14 @@ function aio:connect(elfd, host, port)
     end
     self.fds[sock] = aiosocket:new(elfd, sock, S80_FD_SOCKET, false)
     return self.fds[sock], nil
+end
+
+---Read file in synchronous way
+---@param path string
+---@param mode string
+---@return string|nil
+function aio:read_file_sync(path, mode)
+    return net.readfile(path, mode)
 end
 
 --- Open a process

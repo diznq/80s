@@ -1,6 +1,7 @@
 #include "80s.h"
 #include "lua_net.h"
 #include "algo.h"
+#include "dynstr.h"
 #include <lauxlib.h>
 #include <lualib.h>
 
@@ -77,6 +78,31 @@ static int l_net_sockname(lua_State *L) {
     lua_pushstring(L, buf);
     lua_pushinteger(L, port);
     return 2;
+}
+
+static int l_net_readfile(lua_State *L) {
+    char buf[10000];
+    struct dynstr dyn;
+    size_t size;
+    const char *name = lua_tostring(L, 1);
+    const char *mode = lua_tostring(L, 2);
+    FILE *f = fopen(name, mode);
+    if(!f) {
+        return 0;
+    }
+    fseek(f, 0, SEEK_END);
+    size = (size_t)ftell(f);
+    fseek(f, 0, SEEK_SET);
+    dynstr_init(&dyn, buf, sizeof(buf));
+    if(dynstr_check(&dyn, size + 1)) {
+        fread(dyn.ptr, size, 1, f);
+        lua_pushlstring(L, dyn.ptr, size);
+        dynstr_release(&dyn);
+        fclose(f);
+        return 1;
+    }
+    fclose(f);
+    return 0;
 }
 
 static int l_net_reload(lua_State *L) {
@@ -343,6 +369,7 @@ LUALIB_API int luaopen_net(lua_State *L) {
         {"sockname", l_net_sockname},
         {"reload", l_net_reload},
         {"listdir", l_net_listdir},
+        {"readfile", l_net_readfile},
         {"inotify_init", l_net_inotify_init},
         {"inotify_add", l_net_inotify_add},
         {"inotify_remove", l_net_inotify_remove},

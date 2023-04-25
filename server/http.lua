@@ -83,10 +83,8 @@ local function init_dir(root, base, prefix)
             end
         elseif not file:match("%.lua$") and base:sub(1, #root + 12) == root .. "public_html/" then
             -- only parse files that are at least in public_html and are not .lua
-            local f, err = io.open(base .. file, "r")
-            if f then
-                local content = f:read("*all")
-                f:close()
+            local content = aio:read_file_sync(base .. file, "r")
+            if content then
 
                 local mime = "text/plain; charset=utf-8"
                 local dynamic = false
