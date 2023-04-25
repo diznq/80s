@@ -120,6 +120,10 @@ static void refresh_lua(lua_State *L, int elfd, int id, const char *entrypoint, 
     lua_pushboolean(L, 1);
     lua_setglobal(L, "KTLS");
     #endif
+
+    if (luaL_dofile(L, entrypoint)) {
+        fprintf(stderr, "serve: error running %s: %s\n", entrypoint, lua_tostring(L, -1));
+    }
 }
 
 static lua_State *create_lua(int elfd, int id, const char *entrypoint, struct live_reload *reload) {
@@ -131,12 +135,5 @@ static lua_State *create_lua(int elfd, int id, const char *entrypoint, struct li
     }
 
     refresh_lua(L, elfd, id, entrypoint, reload);
-    
-    status = luaL_dofile(L, entrypoint);
-
-    if (status) {
-        fprintf(stderr, "serve: error running %s: %s\n", entrypoint, lua_tostring(L, -1));
-    }
-
     return L;
 }

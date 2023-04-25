@@ -164,7 +164,7 @@ if (os.getenv("RELOAD") or "false") == "true" then
                 local now = events[1].clock
                 if now - LAST_LIVE_RELOAD > 0.2 then
                     print("Reloading server, time delta: ", now - LAST_LIVE_RELOAD)
-                    net.reload()
+                    aio:reload()
                     LAST_LIVE_RELOAD = now
                 end
                 for _, evt in ipairs(events) do

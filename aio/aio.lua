@@ -960,6 +960,15 @@ function aio:on_init(elfd, parentfd)
 
 end
 
+--- Perform server reload
+---@param full any|nil if not nil, perform full reload
+function aio:reload(full)
+    if full then
+        net.reload(S80_RELOAD)
+    end
+    net.reload()
+end
+
 --- Default HTTP request handler
 --- @param fd aiosocket file descriptor
 --- @param method string http method

@@ -111,9 +111,9 @@ static void* run(void *params_) {
                 sem_post(&reload->serve_lock);
                 break;
             } else {
+                sem_post(&reload->serve_lock);
                 usleep(10000);
             }
-            sem_post(&reload->serve_lock);
         }
 
         serve = reload->serve;
