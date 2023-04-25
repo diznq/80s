@@ -92,7 +92,10 @@ if KTLS and (os.getenv("KTLS") or "true") == "false" then KTLS = false end
 --- @generic V : string
 --- @alias aiopromise<V> fun(on_resolved: fun(result: V)) AIO promise
 
-unpack = unpack or table.unpack
+function unpack(...)
+    return table.unpack(...)
+end
+
 on_before_http = on_before_http or nil
 on_after_http = on_after_http or nil
 

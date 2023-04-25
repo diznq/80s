@@ -38,6 +38,7 @@ extern "C" {
 #endif
 
 typedef void*(*dynserve_t)(void*);
+typedef void*(*alloc_t)(void*, void*, size_t, size_t);
 
 struct live_reload {
     int running;
@@ -48,6 +49,8 @@ struct live_reload {
     sem_t serve_lock;
     void *dlcurrent;
     void *dlprevious;
+    alloc_t allocator;
+    void *ud;
 };
 
 struct serve_params {

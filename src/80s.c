@@ -124,6 +124,14 @@ static void* run(void *params_) {
     #endif
 }
 
+static void* allocator(void* ud, void* ptr, size_t old_size, size_t new_size) {
+    if(new_size == 0) {
+        free(ptr);
+        return NULL;
+    }
+    return realloc(ptr, new_size);
+}
+
 int main(int argc, const char **argv) {
     const int workers = get_arg("-c", get_cpus(), 0, argc, argv);
     char resolved[100];
@@ -150,6 +158,8 @@ int main(int argc, const char **argv) {
     reload.running = 1;
     reload.ready = 0;
     reload.workers = workers;
+    reload.allocator = allocator;
+    reload.ud = &reload;
 
     sem_init(&reload.serve_lock, 0, 1);
 
