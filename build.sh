@@ -101,7 +101,7 @@ if [ "$DYNAMIC" = "true" ]; then
       $FLAGS \
       -o "$OUT.so"
   if [ ! "$SOONLY" = "true" ]; then
-    $CC src/80s.c $DEFINES $FLAGS -fPIC $LUA_LIB -o "$OUT"
+    $CC src/80s.c $DEFINES $FLAGS -fPIC $LUA_LIB $LIBS -o "$OUT"
   fi
 else
   $CC src/80s.c src/80s_common.c src/dynstr.c src/algo.c \
