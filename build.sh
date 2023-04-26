@@ -1,12 +1,18 @@
 #!/usr/bin/env sh
 if [ -z "${LUA_LIB_PATH}" ]; then
-  if [ -f "/usr/lib64/liblua.so" ]; then
-    LUA_LIB="-llua"
-    DYNLUA=1
-  elif [ -f "/run/host/usr/lib64/liblua.so" ]; then
-    LUA_LIB="-L /run/host/usr/lib64/liblua.so"
-    DYNLUA=1
-  else
+  if [ -z "$NODYNLINK" ]; then
+    if [ -f "/usr/lib64/liblua.so" ]; then
+      LUA_LIB="-llua"
+      DYNLUA=1
+    elif [ -f "/usr/lib/x86_64-linux-gnu/liblua5.4.so" ]; then
+      LUA_LIB="/usr/lib/x86_64-linux-gnu/liblua5.4.so"
+      DYNLUA=1
+    elif [ -f "/run/host/usr/lib64/liblua.so" ]; then
+      LUA_LIB="-L /run/host/usr/lib64/liblua.so"
+      DYNLUA=1
+    fi
+  fi
+  if [ -z "$LUA_LIB" ]; then
     LUA_LIB="/usr/local/lib/liblua.a"
   fi
 else
