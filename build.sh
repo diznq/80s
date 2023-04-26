@@ -1,13 +1,26 @@
 #!/usr/bin/env sh
-
 if [ -z "${LUA_LIB_PATH}" ]; then
-  LUA_LIB="/usr/local/lib/liblua.a"
+  if [ -f "/usr/lib64/liblua.so" ]; then
+    LUA_LIB="-llua"
+    DYNLUA=1
+  elif [ -f "/run/host/usr/lib64/liblua.so" ]; then
+    LUA_LIB="-L /run/host/usr/lib64/liblua.so"
+    DYNLUA=1
+  else
+    LUA_LIB="/usr/local/lib/liblua.a"
+  fi
 else
   LUA_LIB="${LUA_LIB_PATH}"
 fi
 
 if [ -z "${LUA_INC_PATH}" ]; then
-  LUA_INC="/usr/local/include/"
+  if [ -f "/usr/include/lua.h" ]; then
+    LUA_INC="/usr/include/"
+  elif [ -f "/run/host/usr/include/lua.h" ]; then
+    LUA_INC="/usr/include"
+  else
+    LUA_INC="/usr/local/include/"
+  fi
 else
   LUA_INC="${LUA_INC_PATH}"
 fi
@@ -17,27 +30,28 @@ OUT="${OUT:-bin/80s}"
 CC="${CC:-gcc}"
 
 if [ "$JIT" = "true" ]; then
+  if [ -z "${LUA_JIT_LIB_PATH}" ]; then
+    LUA_LIB="/usr/local/lib/libluajit-5.1.a"
+  else
+    LUA_LIB="${LUA_JIT_LIB_PATH}"
+  fi
 
-    if [ -z "${LUA_JIT_LIB_PATH}" ]; then
-      LUA_LIB="/usr/local/lib/libluajit-5.1.a"
-    else
-      LUA_LIB="${LUA_JIT_LIB_PATH}"
-    fi
-
-    if [ -z "${LUA_JIT_INC_PATH}" ]; then
-      LUA_INC="/usr/local/include/luajit-2.1/"
-    else
-      LUA_INC="${LUA_JIT_INC_PATH}"
-    fi
+  if [ -z "${LUA_JIT_INC_PATH}" ]; then
+    LUA_INC="/usr/local/include/luajit-2.1/"
+  else
+    LUA_INC="${LUA_JIT_INC_PATH}"
+  fi
 fi
 
 if [ ! -f "$LUA_INC/lua.h" ]; then
   OS="$(uname -o)"
   if [ "$OS" = "Msys" ]; then
     LUA_INC="/c/Users/$USER/vcpkg/packages/lua_x64-windows/include"
-  else
+  elif [ -d "/run/host" ]; then
+    if [ -z "$DYNLUA" ]; then
+      LUA_LIB="/run/host$LUA_LIB"
+    fi
     LUA_INC="/run/host$LUA_INC"
-    LUA_LIB="/run/host$LUA_LIB"
   fi
   if [ ! -f "$LUA_INC/lua.h" ]; then
     echo "failed to locate lua.h in $LUA_INC"
@@ -74,14 +88,14 @@ if [ "$DYNAMIC" = "true" ]; then
       src/lua.c src/lua_net.c src/lua_codec.c src/lua_crypto.c \
       src/serve.epoll.c src/serve.kqueue.c \
       -shared -fPIC \
-      "$LUA_LIB" \
+      $LUA_LIB \
       "-I$LUA_INC" \
       $DEFINES \
       $LIBS \
       $FLAGS \
       -o "$OUT.so"
   if [ ! "$SOONLY" = "true" ]; then
-    $CC src/80s.c $DEFINES $FLAGS -fPIC -o "$OUT"
+    $CC src/80s.c $DEFINES $FLAGS -fPIC $LUA_LIB -o "$OUT"
   fi
 else
   $CC src/80s.c src/80s_common.c src/dynstr.c src/algo.c \
