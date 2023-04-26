@@ -6,7 +6,7 @@ Minimalistic lock-less epoll/kqueue server with Lua bindings and full hot-code r
 
 Over time I already grew tired of insane software complexity of modern software development, that requires 300MB RAM just to return Hello world on HTTP server in Python and 500MB Docker image as an extra.
 
-80's is a minimalistic server that leverages Lua to handle network traffic and is only 280kB when compiled yet still achieving `166 000 req/s` on single core or `300 000 req/s` on 4 cores while being fully asynchronous and free of any locks.
+80's is a minimalistic server that leverages Lua to handle network traffic and is only 280kB when compiled yet still achieving `166 000 req/s` on single core or `330 000 req/s` on 4 cores while being fully asynchronous and free of any locks.
 
 \* Measurements were taken with 1 000 000 requests @ 500 parallel connections using `keep-alive`. Performance without `keep-alive` is `55 000 req/s` on both single or multi-core. CPU: i7-1165G7 @ 2.80GHz
 
