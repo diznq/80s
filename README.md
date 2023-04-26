@@ -1,6 +1,6 @@
 # 80's
 
-Minimalistic lock-less epoll server with Lua bindings.
+Minimalistic lock-less epoll/kqueue server with Lua bindings and full hot-code reloading.
 
 ## Motivation
 
