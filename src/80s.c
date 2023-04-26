@@ -218,10 +218,6 @@ int main(int argc, const char **argv) {
     if (listen(parentfd, 20000) < 0)
         error("main: failed to listen on server socket");
 
-    #ifdef S80_DYNAMIC
-    printf("main: reload listening on signal SIGUSR1 (%d)\n", SIGUSR1);
-    #endif
-
     for (i = 0; i < workers; i++) {
         params[i].initialized = 0;
         params[i].reload = &reload;
