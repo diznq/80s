@@ -25,7 +25,7 @@ fi
 if [ -z "${LUA_INC_PATH}" ]; then
   if [ -f "/usr/include/lua.h" ]; then
     LUA_INC="/usr/include/"
-  if [ -f "/usr/local/include/lua54/lua.h" ]; then
+  elif [ -f "/usr/local/include/lua54/lua.h" ]; then
     LUA_INC="/usr/local/include/lua54/"
   elif [ -f "/run/host/usr/include/lua.h" ]; then
     LUA_INC="/usr/include"
