@@ -106,7 +106,7 @@ static void* run(void *params_) {
                 break;
             } else {
                 sem_post(&reload->serve_lock);
-                usleep(10000);
+                usleep(1);
             }
         }
 
