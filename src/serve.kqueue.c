@@ -23,7 +23,7 @@ union addr_common {
 };
 
 void *serve(void *vparams) {
-    int *els, elfd, parentfd, nfds, childfd, flags, fdtype, status, n, readlen, workers, id;
+    int *els, elfd, parentfd, nfds, childfd, flags, fdtype, status, n, readlen, workers, id, selfpipe, running = 1;
     socklen_t clientlen = sizeof(union addr_common);
     unsigned accepts;
     void *ctx;
@@ -43,6 +43,7 @@ void *serve(void *vparams) {
     id = params->workerid;
     ctx = params->ctx;
     workers = params->workers;
+    selfpipe = params->reload->pipes[id];
 
     if(params->initialized == 0) {
         signal(SIGPIPE, SIG_IGN);
@@ -52,10 +53,15 @@ void *serve(void *vparams) {
         if (elfd < 0)
             error("serve: failed to create kqueue");
 
+        EV_SET(&ev, selfpipe, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_PIPE);
+        if(kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
+            error("serve: failed to add self-pipe to kqueue");
+        }
+
         // only one thread can poll on server socket and accept others!
         if (id == 0) {
             EV_SET(&ev, parentfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
-            if (kevent(elfd, &ev, 1, NULL, 0, NULL) == -1) {
+            if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
                 error("serve: failed to add server socket to kqueue");
             }
         }
@@ -71,7 +77,8 @@ void *serve(void *vparams) {
         params->initialized = 1;
     }
 
-    for (;;) {
+    while(running)
+    {
         // wait for new events
         nfds = kevent(elfd, NULL, 0, events, MAX_EVENTS, NULL);
 
@@ -104,6 +111,21 @@ void *serve(void *vparams) {
                 }
                 if (accepts == workers) {
                     accepts = 0;
+                }
+            } else if(childfd == selfpipe) {
+                if(events[n].filter == EVFILT_READ) {
+                    readlen = read(childfd, buf, BUFSIZE);
+                    if(readlen > 0) {
+                        switch(buf[0]) {
+                            case S80_SIGNAL_STOP:
+                                running = 0;
+                                break;
+                            case S80_SIGNAL_QUIT:
+                                params->quit = 1;
+                                running = 0;
+                                break;
+                        }
+                    }
                 }
             } else {
                 // only this very thread is able to poll given childfd as it was assigned only to
