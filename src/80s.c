@@ -150,6 +150,7 @@ int main(int argc, const char **argv) {
     pthread_t handles[workers];
     #endif
     int els[workers];
+    int pipes[workers][2];
 
     memset(params, 0, sizeof(params));
     memset(&reload, 0, sizeof(reload));
@@ -160,6 +161,7 @@ int main(int argc, const char **argv) {
     reload.workers = workers;
     reload.allocator = allocator;
     reload.ud = &reload;
+    reload.pipes = pipes;
 
     sem_init(&reload.serve_lock, 0, 1);
 
@@ -219,6 +221,10 @@ int main(int argc, const char **argv) {
         error("main: failed to listen on server socket");
 
     for (i = 0; i < workers; i++) {
+        if(pipe(pipes[i]) < 0) {
+            error("main: failed to create self-pipe");
+        }
+        fcntl(pipes[i][0], F_SETFL, fcntl(pipes[i][0], F_GETFL, 0) | O_NONBLOCK);
         params[i].initialized = 0;
         params[i].reload = &reload;
         params[i].parentfd = parentfd;

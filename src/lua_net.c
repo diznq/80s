@@ -108,7 +108,8 @@ static int l_net_readfile(lua_State *L) {
 static int l_net_reload(lua_State *L) {
     const char *entrypoint;
     struct live_reload *reload;
-    int status;
+    int status, i;
+    char buf[4];
 
     if(lua_gettop(L) == 1 && lua_type(L, 1) == LUA_TLIGHTUSERDATA) {
         #ifdef S80_DYNAMIC
@@ -116,6 +117,10 @@ static int l_net_reload(lua_State *L) {
         if(reload->ready < reload->workers) {
             lua_pushboolean(L, 0);
         } else {
+            buf[0] = S80_SIGNAL_STOP;
+            for(i=0; i < reload->workers; i++) {
+                write(reload->pipes[i][1], buf, 1);
+            }
             reload->ready = 0;
             reload->running++;
             lua_pushboolean(L, 1);

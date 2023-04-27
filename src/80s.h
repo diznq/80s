@@ -15,6 +15,9 @@ extern "C" {
 #define S80_DYNAMIC_SO "bin/80s.so"
 #endif
 
+#define S80_SIGNAL_STOP 0
+#define S80_SIGNAL_QUIT 1
+
 #if defined(__FreeBSD__) || defined(__APPLE__)
 #define UNIX_BASED
 #define USE_KQUEUE
@@ -51,6 +54,7 @@ struct live_reload {
     void *dlprevious;
     alloc_t allocator;
     void *ud;
+    int (*pipes)[2];
 };
 
 struct serve_params {

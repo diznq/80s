@@ -27,7 +27,8 @@ union addr_common {
 
 void *serve(void *vparams) {
     int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id, flags, fdtype, closed = 0;
-    int sigfd, runid;
+    int sigfd, selfpipe;
+    int running = 1;
     sigset_t sigmask;
     socklen_t clientlen = sizeof(union addr_common);
     struct signalfd_siginfo siginfo;
@@ -46,7 +47,6 @@ void *serve(void *vparams) {
 
     accepts = 0;
     params = (struct serve_params *)vparams;
-    runid = params->reload->running;
     parentfd = params->parentfd;
     els = params->els;
     id = params->workerid;
@@ -54,6 +54,7 @@ void *serve(void *vparams) {
     ctx = params->ctx;
     elfd = params->els[id];
     sigfd = params->extra[S80_EXTRA_SIGNALFD];
+    selfpipe = params->reload->pipes[id];
 
     if(params->initialized == 0) {
         signal(SIGPIPE, SIG_IGN);
@@ -62,6 +63,12 @@ void *serve(void *vparams) {
         elfd = els[id] = epoll_create1(0);
         if (elfd < 0)
             error("serve: failed to create epoll");
+
+        ev.events = EPOLLIN;
+        SET_FD_HOLDER(&ev.data, S80_FD_PIPE, selfpipe);
+        if(epoll_ctl(elfd, EPOLL_CTL_ADD, selfpipe, &ev) < 0) {
+            error("serve: failed to add self pipe to epoll");
+        }
 
         // only one thread can poll on server socket and accept others!
         if (id == 0) {
@@ -106,11 +113,7 @@ void *serve(void *vparams) {
         refresh_context(ctx, elfd, id, params->entrypoint, params->reload);
     }
 
-#ifndef S80_DYNAMIC
-    while(1)
-#else
-    while(runid == params->reload->running)
-#endif
+    while(running)
     {
         // wait for new events
         nfds = epoll_wait(elfd, events, MAX_EVENTS, -1);
@@ -145,6 +148,19 @@ void *serve(void *vparams) {
                 }
                 if (accepts == workers) {
                     accepts = 0;
+                }
+            } else if(childfd == selfpipe) {
+                readlen = read(childfd, buf, BUFSIZE);
+                if(readlen > 0) {
+                    switch(buf[0]) {
+                        case S80_SIGNAL_STOP:
+                            running = 0;
+                            break;
+                        case S80_SIGNAL_QUIT:
+                            params->quit = 1;
+                            running = 0;
+                            break;
+                    }
                 }
             } else {
                 // only this very thread is able to poll given childfd as it was assigned only to
