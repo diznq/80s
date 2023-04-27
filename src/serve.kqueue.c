@@ -75,6 +75,8 @@ void *serve(void *vparams) {
         on_init(ctx, elfd, parentfd);
         params->ctx = ctx;
         params->initialized = 1;
+    } else {
+        refresh_context(ctx, elfd, id, params->entrypoint, params->reload);
     }
 
     while(running)
