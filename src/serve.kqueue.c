@@ -44,6 +44,7 @@ void *serve(void *vparams) {
     ctx = params->ctx;
     workers = params->workers;
     selfpipe = params->reload->pipes[id][0];
+    elfd = els[id];
 
     if(params->initialized == 0) {
         signal(SIGPIPE, SIG_IGN);
