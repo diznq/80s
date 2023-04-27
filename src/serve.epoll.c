@@ -54,7 +54,7 @@ void *serve(void *vparams) {
     ctx = params->ctx;
     elfd = params->els[id];
     sigfd = params->extra[S80_EXTRA_SIGNALFD];
-    selfpipe = params->reload->pipes[id];
+    selfpipe = params->reload->pipes[id][0];
 
     if(params->initialized == 0) {
         signal(SIGPIPE, SIG_IGN);
