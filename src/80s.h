@@ -5,6 +5,8 @@ extern "C" {
 #endif
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define S80_FD_SOCKET 0
 #define S80_FD_KTLS_SOCKET 1
