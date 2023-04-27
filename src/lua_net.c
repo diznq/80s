@@ -113,7 +113,7 @@ static int l_net_reload(lua_State *L) {
 
     if(lua_gettop(L) == 1 && lua_type(L, 1) == LUA_TLIGHTUSERDATA) {
         reload = (struct live_reload*)lua_touserdata(L, 1);
-        lua_pushoolean(L, s80_reload(reload) >= 0);
+        lua_pushboolean(L, s80_reload(reload) >= 0);
         return 1;
     } else {
         lua_getglobal(L, "ENTRYPOINT");
