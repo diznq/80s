@@ -104,6 +104,7 @@ ssize_t s80_write(void *ctx, int elfd, int childfd, int fdtype, const char *data
 int s80_close(void *ctx, int elfd, int childfd, int fdtype);
 int s80_peername(int fd, char *buf, size_t bufsize, int *port);
 int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args);
+int s80_reload(struct live_reload *reload);
 
 #ifdef DEBUG
 #define dbg(message) printf("%s: %s\n", message, strerror(errno))

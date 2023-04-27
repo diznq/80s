@@ -112,22 +112,8 @@ static int l_net_reload(lua_State *L) {
     char buf[4];
 
     if(lua_gettop(L) == 1 && lua_type(L, 1) == LUA_TLIGHTUSERDATA) {
-        #ifdef S80_DYNAMIC
         reload = (struct live_reload*)lua_touserdata(L, 1);
-        if(reload->ready < reload->workers) {
-            lua_pushboolean(L, 0);
-        } else {
-            buf[0] = S80_SIGNAL_STOP;
-            for(i=0; i < reload->workers; i++) {
-                write(reload->pipes[i][1], buf, 1);
-            }
-            reload->ready = 0;
-            reload->running++;
-            lua_pushboolean(L, 1);
-        }
-        #else
-        lua_pushboolean(L, 0);
-        #endif
+        lua_pushoolean(L, s80_reload(reload) >= 0);
         return 1;
     } else {
         lua_getglobal(L, "ENTRYPOINT");

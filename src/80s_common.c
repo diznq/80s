@@ -266,6 +266,26 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
 #endif
 }
 
+int s80_reload(struct live_reload *reload) {
+    #ifdef S80_DYNAMIC
+    int i;
+    char buf[4];
+    if(reload->ready < reload->workers) {
+        return -1;
+    } else {
+        buf[0] = S80_SIGNAL_STOP;
+        for(i=0; i < reload->workers; i++) {
+            write(reload->pipes[i][1], buf, 1);
+        }
+        reload->ready = 0;
+        reload->running++;
+        return 0;
+    }
+    #else
+    return -1;
+    #endif
+}
+
 static int cleanup_pipes(int elfd, int *pipes, int allocated) {
 #ifdef UNIX_BASED
     struct event_t ev[2];
