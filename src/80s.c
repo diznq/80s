@@ -39,12 +39,6 @@ union addr_common {
     struct sockaddr_in v4;
 };
 
-// 80s.h/error implementation
-void error(const char *msg) {
-    perror(msg);
-    exit(1);
-}
-
 static int get_arg(const char *arg, int default_value, int flag, int argc, const char **argv) {
     int i, off = flag ? 0 : 1;
     for (i = 1; i < argc - off; i++) {

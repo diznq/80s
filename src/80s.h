@@ -85,7 +85,10 @@ struct fd_holder {
 #define FD_HOLDER_TYPE(ptr) ((struct fd_holder*)ptr)->type
 #define FD_HOLDER_FD(ptr) ((struct fd_holder*)ptr)->fd
 
-void error(const char *msg);
+static void error(const char *msg) {
+    perror(msg);
+    exit(1);
+}
 
 #ifndef S80_DYNAMIC
 void *serve(void *vparams);
