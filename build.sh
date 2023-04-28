@@ -8,7 +8,7 @@ if [ -z "${LUA_LIB_PATH}" ]; then
       LUA_LIB="-llua-5.4"
       DYNLUA=1
     elif [ -f "/usr/lib/x86_64-linux-gnu/liblua5.4.so" ]; then
-      LUA_LIB="/usr/lib/x86_64-linux-gnu/liblua5.4.so"
+      LUA_LIB="-llua5.4"
       DYNLUA=1
     elif [ -f "/run/host/usr/lib64/liblua.so" ]; then
       LUA_LIB="-L /run/host/usr/lib64/liblua.so"
