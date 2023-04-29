@@ -38,7 +38,7 @@ fi
 if [ -z "$LUA_INC" ]; then
   echo "error: failed to find lua include, searched $INC_SEARCH_PATH"
   exit 1
-done
+fi
 
 if [ "$LINK" = "dynamic" ]; then
   LUA_LIB=$(echo "$LUA_LIB" | sed 's/.*[/]lib/-l/g' | sed 's/.so.*//g')
