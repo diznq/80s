@@ -1,74 +1,52 @@
 #!/usr/bin/env sh
-if [ -z "${LUA_LIB_PATH}" ]; then
-  if [ -z "$NODYNLINK" ]; then
-    if [ -f "/usr/lib64/liblua.so" ]; then
-      LUA_LIB="-llua"
-      DYNLUA=1
-    elif [ -f "/usr/local/lib/liblua-5.4.so" ]; then
-      LUA_LIB="-llua-5.4"
-      DYNLUA=1
-    elif [ -f "/usr/lib/x86_64-linux-gnu/liblua5.4.so" ]; then
-      LUA_LIB="-llua5.4"
-      DYNLUA=1
-    elif [ -f "/run/host/usr/lib64/liblua.so" ]; then
-      LUA_LIB="-L /run/host/usr/lib64/liblua.so"
-      DYNLUA=1
-    fi
-  fi
-  if [ -z "$LUA_LIB" ]; then
-    LUA_LIB="/usr/local/lib/liblua.a"
-  fi
-else
-  LUA_LIB="${LUA_LIB_PATH}"
+INC_SEARCH_PATH="$LUA_INC_PATH /usr/include/lua.h /usr/local/include/lua54/lua.h"
+JIT_INC_SEARCH_PATH="$LUA_INC_PATH /usr/local/include/luajit-2.1/"
+SO_SEARCH_PATH="$LUA_LIB_PATH /usr/lib64/liblua.so /usr/local/lib/liblua-5.4.so /usr/lib/x86_64-linux-gnu/liblua5.4.so"
+JIT_SO_SEARCH_PATH="$LUA_LIB_PATH /usr/lib64/libluajit-5.1.so* /usr/local/lib/libluajit-5.1.so*"
+LIB_SEARCH_PATH="$LUA_LIB_PATH /usr/local/lib/liblua.a"
+
+if [ "$JIT" = "true" ]; then
+  INC_SEARCH_PATH="$JIT_INC_SEARCH_PATH"
 fi
 
-if [ -z "${LUA_INC_PATH}" ]; then
-  if [ -f "/usr/include/lua.h" ]; then
-    LUA_INC="/usr/include/"
-  elif [ -f "/usr/local/include/lua54/lua.h" ]; then
-    LUA_INC="/usr/local/include/lua54/"
-  elif [ -f "/run/host/usr/include/lua.h" ]; then
-    LUA_INC="/usr/include"
+if [ "$LINK" = "dynamic" ]; then
+  if [ "$JIT" = true ]; then
+    LIB_SEARCH_PATH="$JIT_SO_SEARCH_PATH"
   else
-    LUA_INC="/usr/local/include/"
+    LIB_SEARCH_PATH="$SO_SEARCH_PATH"
   fi
-else
-  LUA_INC="${LUA_INC_PATH}"
+fi
+
+for path in $INC_SEARCH_PATH; do
+  if [ -f "$path" ]; then
+    LUA_INC="$path"
+    break
+  fi
+done
+
+for path in $LIB_SEARCH_PATH; do
+  if ls "$path" 1> /dev/null 2>&1; then
+    LUA_LIB="$path"
+  fi
+done
+
+if [ -z "$LUA_LIB" ]; then
+  echo "error: failed to find lua library, searched $LIB_SEARCH_PATH"
+  exit 1
+fi
+
+if [ -z "$LUA_INC" ]; then
+  echo "error: failed to find lua include, searched $INC_SEARCH_PATH"
+  exit 1
+done
+
+if [ "$LINK" = "dynamic" ]; then
+  LUA_LIB=$(echo "$LUA_LIB" | sed 's/.*[/]lib/-l/g' | sed 's/.so.*//g')
 fi
 
 FLAGS="-s -O3"
 OUT="${OUT:-bin/80s}"
 CC="${CC:-gcc}"
-
-if [ "$JIT" = "true" ]; then
-  if [ -z "${LUA_JIT_LIB_PATH}" ]; then
-    LUA_LIB="/usr/local/lib/libluajit-5.1.a"
-  else
-    LUA_LIB="${LUA_JIT_LIB_PATH}"
-  fi
-
-  if [ -z "${LUA_JIT_INC_PATH}" ]; then
-    LUA_INC="/usr/local/include/luajit-2.1/"
-  else
-    LUA_INC="${LUA_JIT_INC_PATH}"
-  fi
-fi
-
-if [ ! -f "$LUA_INC/lua.h" ]; then
-  OS="$(uname -o)"
-  if [ "$OS" = "Msys" ]; then
-    LUA_INC="/c/Users/$USER/vcpkg/packages/lua_x64-windows/include"
-  elif [ -d "/run/host" ]; then
-    if [ -z "$DYNLUA" ]; then
-      LUA_LIB="/run/host$LUA_LIB"
-    fi
-    LUA_INC="/run/host$LUA_INC"
-  fi
-  if [ ! -f "$LUA_INC/lua.h" ]; then
-    echo "failed to locate lua.h in $LUA_INC"
-    exit 1
-  fi
-fi
 
 mkdir -p bin
 
@@ -92,7 +70,7 @@ echo "Flags: $FLAGS"
 echo "Lua include directory: $LUA_INC"
 echo "Lua library directory: $LUA_LIB"
 
-if [ "$DYNAMIC" = "true" ]; then
+if [ "$LINK" = "dynamic" ]; then
   DEFINES="$DEFINES -DS80_DYNAMIC=1"
   DEFINES="$DEFINES -DS80_SO=$OUT.so"
   $CC src/80s_common.c src/dynstr.c src/algo.c \
