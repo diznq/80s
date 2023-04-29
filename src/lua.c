@@ -67,6 +67,7 @@ void on_init(void *ctx, int elfd, int parentfd) {
 }
 
 static void clean_global(lua_State *L, const char *name) {
+#if (LUA_VERSION_NUM > 501) && defined(S80_DYNAMIC)
     int idx;
     if(lua_getfield(L, LUA_REGISTRYINDEX, name) != LUA_TNIL) {
         lua_pop(L, 1);
@@ -76,6 +77,7 @@ static void clean_global(lua_State *L, const char *name) {
     } else {
         lua_pop(L, 1);
     }
+#endif
 }
 
 static void refresh_lua(lua_State *L, int elfd, int id, const char *entrypoint, struct live_reload *reload) {
