@@ -62,6 +62,8 @@ if [ "$DEBUG" = "true" ]; then
     FLAGS="-O0 -g"
 fi
 
+LUA_INC=$(echo "$LUA_INC" | sed 's/lua.h//g')
+
 FLAGS="$FLAGS -march=native -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast"
 
 echo "Defines: $DEFINES"
