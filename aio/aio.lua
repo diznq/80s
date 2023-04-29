@@ -22,6 +22,7 @@
 --- @field sockname fun(fd: lightuserdata): ip: string, port: integer get ip and port of remote FD
 --- @field clock fun(): number return monotonic clock in seconds
 --- @field popen fun(elfd: lightuserdata, command: string, ...: string): read: lightuserdata|nil, write: lightuserdata|string process
+--- @field info fun(): string return build info and capabilities
 net = net or {}
 
 --- @class crypto

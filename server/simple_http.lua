@@ -29,6 +29,10 @@ aio:http_post("/reload", function(fd, query, headers, body)
     end
 end)
 
+aio:http_get("/info", function (fd, query, headers, body)
+    fd:http_response("200 OK", "text/plain", net.info())
+end)
+
 aio:http_get("/cipher", function (self, query, headers, body)
     local args = aio:parse_query(query)
     local key = args.key or "1234567890123456"
