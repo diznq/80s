@@ -25,6 +25,8 @@ You can also define following environment variables before running the build to 
 
 - `JIT=true`: use LuaJIT instead of Lua
 - `DEBUG=true`: compile in debug mode
+- `LINK=static/dynamic`: link type, if dynamic live binary reload (not just Lua) is enabled
+- `SOONLY=true`: build only .so file if LINK is dynamic for live reloads
 
 i.e. `JIT=true ./build.sh`
 
