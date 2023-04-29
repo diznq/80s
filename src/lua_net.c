@@ -352,7 +352,7 @@ static int l_net_popen(lua_State *L) {
     return 2;
 }
 
-static int l_net_build_info(lua_State *L) {
+static int l_net_info(lua_State *L) {
     char buf[500];
     struct dynstr str;
     dynstr_init(&str, buf, sizeof(buf));
@@ -410,7 +410,7 @@ LUALIB_API int luaopen_net(lua_State *L) {
         {"partscan", l_net_partscan},
         {"clock", l_net_clock},
         {"popen", l_net_popen},
-        {"build_info", l_net_build_info},
+        {"info", l_net_info},
         {NULL, NULL}};
 #if LUA_VERSION_NUM > 501
     luaL_newlib(L, netlib);
