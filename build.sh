@@ -58,13 +58,13 @@ mkdir -p bin
 DEFINES=""
 LIBS="-lm -ldl -lpthread -lcrypto -lssl"
 
-if [ $(uname) = "SunOS" ]; then
-  LIBS="$LIBS -lsocket -lnsl"
+if [ "$DEBUG" = "true" ]; then
+    DEFINES="$DEFINES -DS80_DEBUG=1"
+    FLAGS="-O0 -g"
 fi
 
-if [ "$DEBUG" = "true" ]; then
-    DEFINES="$DEFINES -DDEBUG=1"
-    FLAGS="-O0 -g"
+if [ "$JIT" = "true" ]; then
+  DEFINES="$DEFINES -DS80_JIT=1"
 fi
 
 LUA_INC=$(echo "$LUA_INC" | sed 's/lua.h//g')

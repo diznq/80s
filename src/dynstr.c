@@ -45,6 +45,10 @@ int dynstr_puts(struct dynstr *self, const char *data, size_t len) {
     return 1;
 }
 
+int dynstr_putsz(struct dynstr *self, const char *data) {
+    return dynstr_puts(self, data, strlen(data));
+}
+
 int dynstr_putg(struct dynstr *self, double num) {
     size_t buf_size = self->size - self->length;
     int written = snprintf(self->ptr + self->length, buf_size, "%.20g", num);

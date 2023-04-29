@@ -352,6 +352,48 @@ static int l_net_popen(lua_State *L) {
     return 2;
 }
 
+static int l_net_build_info(lua_State *L) {
+    char buf[500];
+    struct dynstr str;
+    dynstr_init(&str, buf, sizeof(buf));
+    dynstr_putsz(&str, "date: ");
+    dynstr_putsz(&str, __DATE__);
+    dynstr_putsz(&str, ", time: ");
+    dynstr_putsz(&str, __TIME__);
+    dynstr_putsz(&str, ", flags: ");
+    #ifdef S80_DYNAMIC
+    dynstr_putsz(&str, "dynamic(");
+    dynstr_putsz(&str, S80_DYNAMIC_SO);
+    dynstr_putsz(&str, "), ");
+    #endif
+    #ifdef USE_EPOLL
+    dynstr_putsz(&str, "epoll, ");
+    #endif
+    #ifdef USE_KQUEUE
+    dynstr_putsz(&str, "kqueue, ");
+    #endif
+    #ifdef USE_INOTIFY
+    dynstr_putsz(&str, "inotify, ");
+    #endif
+    #ifdef USE_KTLS
+    dynstr_putsz(&str, "ktls, ");
+    #endif
+    #ifdef S80_JIT
+    dynstr_putsz(&str, "luajit, ");
+    #else
+    dynstr_putsz(&str, "lua, ");
+    #endif
+    #ifdef S80_DEBUG
+    dynstr_putsz(&str, "debug, ");
+    #endif
+    if(str.ok) {
+        lua_pushlstring(L, str.ptr, str.length - 2);
+    } else {
+        lua_pushnil(L);
+    }
+    return 1;
+}
+
 LUALIB_API int luaopen_net(lua_State *L) {
     const luaL_Reg netlib[] = {
         {"write", l_net_write},
@@ -368,6 +410,7 @@ LUALIB_API int luaopen_net(lua_State *L) {
         {"partscan", l_net_partscan},
         {"clock", l_net_clock},
         {"popen", l_net_popen},
+        {"build_info", l_net_build_info},
         {NULL, NULL}};
 #if LUA_VERSION_NUM > 501
     luaL_newlib(L, netlib);
