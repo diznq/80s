@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
-INC_SEARCH_PATH="$LUA_INC_PATH /usr/include/lua.h /usr/local/include/lua54/lua.h"
-JIT_INC_SEARCH_PATH="$LUA_INC_PATH /usr/local/include/luajit-2.1/"
+INC_SEARCH_PATH="$LUA_INC_PATH /usr/include/lua.h /usr/include/lua5.4/lua.h /usr/local/include/lua54/lua.h /usr/local/include/lua.h"
+JIT_INC_SEARCH_PATH="$LUA_INC_PATH /usr/local/include/luajit-2.1/lua.h"
 SO_SEARCH_PATH="$LUA_LIB_PATH /usr/lib64/liblua.so /usr/local/lib/liblua-5.4.so /usr/lib/x86_64-linux-gnu/liblua5.4.so"
 JIT_SO_SEARCH_PATH="$LUA_LIB_PATH /usr/lib64/libluajit-5.1.so* /usr/local/lib/libluajit-5.1.so*"
 LIB_SEARCH_PATH="$LUA_LIB_PATH /usr/local/lib/liblua.a"
