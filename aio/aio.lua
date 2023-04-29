@@ -978,7 +978,7 @@ function aio:reload(full)
     if full then
         net.reload(S80_RELOAD)
     end
-    net.reload()
+    return net.reload()
 end
 
 --- Default HTTP request handler
