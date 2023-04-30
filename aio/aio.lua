@@ -829,18 +829,18 @@ end
 ---@param elfd lightuserdata event loop
 ---@param command string command
 ---@param ... string args
---- @return aiosocket|nil write
---- @return string|aiosocket read
+--- @return aiosocket|nil read read pipe
+--- @return aiosocket|nil write write pipe, in case read is nil, this is string error instead
 function aio:popen(elfd, command, ...)
     local args = self:map({...}, tostring)
-    local sock, err = net.popen(elfd, command, unpack(args))
-    if sock == nil or type(err) == "string" then
+    local rd, wr = net.popen(elfd, command, unpack(args))
+    if rd == nil or type(wr) == "string" then
         ---@diagnostic disable-next-line: return-type-mismatch
         return nil, err
     end
-    self.fds[sock] = aiosocket:new(elfd, sock, S80_FD_PIPE, false)
-    self.fds[err] = aiosocket:new(elfd, err, S80_FD_PIPE, false)
-    return self.fds[sock], self.fds[err]
+    self.fds[rd] = aiosocket:new(elfd, rd, S80_FD_PIPE, false)
+    self.fds[wr] = aiosocket:new(elfd, wr, S80_FD_PIPE, false)
+    return self.fds[rd], self.fds[wr]
 end
 
 --- Open a process and read it's entire stdout
