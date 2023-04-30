@@ -92,7 +92,7 @@ Naming conventions:
 - `net.connect(elfd, hostName, port)`: create new TCP socket, returns `socket, error`
 - `net.write(elfd, childfd, data)`: write data on socket
 - `net.close(elfd, childfd)`: close a socket
-- `net.reload()`: reload entrypoint Lua
+- `net.reload(live_reload)`: reload entrypoint Lua, if live_reload == S80_RELOAD, full reload of C binary is performed
 - `net.listdir(dir)`: list files in a directory, directories will end with `/` in returned result
 - `crypto.sha1(data)`: returns raw SHA1 of data
 - `crypto.sha256(data)`: returns raw SHA256 of data

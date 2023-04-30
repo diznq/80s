@@ -976,7 +976,7 @@ end
 ---@param full any|nil if not nil, perform full reload
 function aio:reload(full)
     if full then
-        net.reload(S80_RELOAD)
+        return net.reload(S80_RELOAD)
     end
     return net.reload()
 end
