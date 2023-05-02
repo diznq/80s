@@ -246,8 +246,8 @@ function orm:create(sql, repo)
             method = method:gsub("findB", "b")
             repo.all[method] = self:create_method(sql, query, types, decoders, false, false, repo.all)
             repo.one[method] = self:create_method(sql, query, types, decoders, true, false, repo.one)
-            repo.deleteAll[method] = self:create_method(sql, query:gsub("^SELECT %*", "DELETE"), types, decoders, false, false, repo.all, true)
-            repo.deleteOne[method] = self:create_method(sql, query:gsub("^SELECT %*", "DELETE"), types, decoders, true, false, repo.one, true)
+            repo.deleteAll[method] = self:create_method(sql, query:gsub("^SELECT %*", "DELETE"), types, decoders, false, false, repo.deleteAll, true)
+            repo.deleteOne[method] = self:create_method(sql, query:gsub("^SELECT %*", "DELETE"), types, decoders, true, false, repo.deleteOne, true)
             repo.count[method] = self:create_method(sql, query:gsub("^SELECT %*", "SELECT COUNT(*) AS c"), types, decoders, true, true, repo.count)
         end
     end
