@@ -26,6 +26,7 @@ extern "C" {
 #include <sys/types.h>
 #include <sys/event.h>
 #include <semaphore.h>
+typedef int fd_t;
 #define event_t kevent
 #ifdef __FreeBSD__
 #define USE_KTLS
@@ -37,7 +38,16 @@ extern "C" {
 #include <sys/types.h>
 #include <sys/epoll.h>
 #include <semaphore.h>
+typedef int fd_t;
 #define event_t epoll_event
+#elif defined(_WIN32)
+#define USE_IOCP
+#include <WinSock2.h>
+#include <Windows.h>
+typedef int fd_t;
+typedef HANDLE sem_t;
+struct winevent {};
+#define event_t winevent;
 #else
 #error unsupported platform
 #endif
@@ -62,7 +72,7 @@ struct live_reload {
 struct serve_params {
     // local to each thread
     int initialized;
-    int parentfd;
+    fd_t parentfd;
     int workerid;
     int workers;
     int quit;
@@ -76,7 +86,7 @@ struct serve_params {
 
 struct fd_holder {
     int type;
-    int fd;
+    fd_t fd;
 };
 
 #define SET_FD_HOLDER(ptr, Type, Fd) do {\
@@ -96,19 +106,19 @@ static void error(const char *msg) {
 void *serve(void *vparams);
 #endif
 
-void *create_context(int elfd, int id, const char *entrypoint, struct live_reload *reload);
-void refresh_context(void *ctx, int elfd, int id, const char *entrypoint, struct live_reload *reload);
+void *create_context(fd_t elfd, int id, const char *entrypoint, struct live_reload *reload);
+void refresh_context(void *ctx, fd_t elfd, int id, const char *entrypoint, struct live_reload *reload);
 void close_context(void *ctx);
-void on_receive(void *ctx, int elfd, int childfd, int fdtype, const char *buf, int readlen);
-void on_close(void *ctx, int elfd, int childfd);
-void on_write(void *ctx, int elfd, int childfd, int written);
-void on_init(void *ctx, int elfd, int parentfd);
+void on_receive(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *buf, int readlen);
+void on_close(void *ctx, fd_t elfd, fd_t childfd);
+void on_write(void *ctx, fd_t elfd, fd_t childfd, int written);
+void on_init(void *ctx, fd_t elfd, fd_t parentfd);
 
-int s80_connect(void *ctx, int elfd, const char *addr, int port);
-ssize_t s80_write(void *ctx, int elfd, int childfd, int fdtype, const char *data, ssize_t offset, size_t len);
-int s80_close(void *ctx, int elfd, int childfd, int fdtype);
+fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int port);
+ssize_t s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, ssize_t offset, size_t len);
+int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype);
 int s80_peername(int fd, char *buf, size_t bufsize, int *port);
-int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args);
+int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args);
 int s80_reload(struct live_reload *reload);
 
 #ifdef S80_DEBUG

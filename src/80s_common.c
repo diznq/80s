@@ -26,13 +26,14 @@ union addr_common {
     struct sockaddr_in v4;
 };
 
-static int cleanup_pipes(int elfd, int* pipes, int allocated);
+static int cleanup_pipes(fd_t elfd, fd_t* pipes, int allocated);
 
-int s80_connect(void *ctx, int elfd, const char *addr, int portno) {
+fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
     struct event_t ev[2];
     struct sockaddr_in ipv4addr;
     struct sockaddr_in6 ipv6addr;
     int status, i, found4 = 0, found6 = 0, usev6 = 0, found = 0, v6 = 0;
+    fd_t childfd;
     struct hostent *hp;
     struct in_addr **ipv4;
     struct in6_addr **ipv6;
@@ -75,7 +76,7 @@ int s80_connect(void *ctx, int elfd, const char *addr, int portno) {
     }
 
     // create a non-blocking socket
-    int childfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    childfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
 
     if (found6 && v6) {
@@ -122,7 +123,7 @@ int s80_connect(void *ctx, int elfd, const char *addr, int portno) {
     return -1;
 }
 
-ssize_t s80_write(void *ctx, int elfd, int childfd, int fdtype, const char *data, ssize_t offset, size_t len) {
+ssize_t s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, ssize_t offset, size_t len) {
     struct event_t ev;
     int status;
     size_t writelen = write(childfd, data + offset, len - offset);
@@ -149,7 +150,7 @@ ssize_t s80_write(void *ctx, int elfd, int childfd, int fdtype, const char *data
     }
 }
 
-int s80_close(void *ctx, int elfd, int childfd, int fdtype) {
+int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
     struct event_t ev;
     int status = 0;
 #ifdef USE_EPOLL
@@ -171,7 +172,7 @@ int s80_close(void *ctx, int elfd, int childfd, int fdtype) {
     return status;
 }
 
-int s80_peername(int fd, char *buf, size_t bufsize, int *port) {
+int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port) {
     union addr_common addr;
     socklen_t clientlen = sizeof(addr);
 
@@ -192,11 +193,12 @@ int s80_peername(int fd, char *buf, size_t bufsize, int *port) {
     }
 }
 
-int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) {
+int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args) {
 #ifdef UNIX_BASED
     struct event_t ev[2];
-    int piperd[2], pipewr[2];
-    int status, i, j, childfd, pid;
+    fd_t piperd[2], pipewr[2];
+    fd_t childfd;
+    int status, i, j, pid;
 
     // create pipes for parent-child communication
     status = pipe(pipewr);
@@ -210,7 +212,7 @@ int s80_popen(int elfd, int* pipes_out, const char *command, char *const *args) 
     }
     
     //              parent r / w          child  w / r
-    int pipes[4] = {piperd[0], pipewr[1], pipewr[0], piperd[1]};
+    fd_t pipes[4] = {piperd[0], pipewr[1], pipewr[0], piperd[1]};
     for(i=0; i<2; i++) {
         childfd = pipes[i];
         fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
@@ -286,7 +288,7 @@ int s80_reload(struct live_reload *reload) {
     #endif
 }
 
-static int cleanup_pipes(int elfd, int *pipes, int allocated) {
+static int cleanup_pipes(fd_t elfd, int *pipes, int allocated) {
 #ifdef UNIX_BASED
     struct event_t ev[2];
     int i, childfd, err = errno;

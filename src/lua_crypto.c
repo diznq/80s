@@ -34,8 +34,8 @@ struct ssl_nb_context {
     BIO *rdbio;
     BIO *wrbio;
     #ifdef USE_KTLS
-    int elfd;
-    int fd;
+    fd_t elfd;
+    fd_t fd;
     enum KTLS_STATE ktls_state;
     struct tls_enable wren, rden;
     char wriv[16], rdiv[16];
@@ -373,8 +373,8 @@ static int l_crypto_ssl_bio_new(lua_State *L) {
     SSL_CTX* ssl_ctx = (SSL_CTX*)lua_touserdata(L, 1);
     #ifdef USE_KTLS
     ctx->ktls_state = do_ktls ? KTLS_INIT : KTLS_NONE;
-    ctx->elfd = (int)lua_touserdata(L, 2);
-    ctx->fd = (int)lua_touserdata(L, 3);
+    ctx->elfd = (fd_t)lua_touserdata(L, 2);
+    ctx->fd = (fd_t)lua_touserdata(L, 3);
     #endif
     ctx->rdbio = BIO_new(BIO_s_mem());
     ctx->wrbio = BIO_new(BIO_s_mem());
@@ -557,7 +557,8 @@ static void ssl_secret_callback(const SSL* ssl, const char* line) {
     const char *original = line;
     struct tls_enable *rden = &ctx->rden, *wren = &ctx->wren, *en = NULL;
     unsigned char secret[32], *key, *iv, b;
-    int n = 0, elfd = ctx->elfd, childfd = ctx->fd, status;
+    int n = 0, status;
+    fd_t elfd = ctx->elfd, childfd = ctx->fd;
     if(strstr(line, "SERVER_TRAFFIC_SECRET_0") == line) {
         en = wren;
         key = (unsigned char*)ctx->wrkey;

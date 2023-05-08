@@ -7,14 +7,14 @@
 #include <lualib.h>
 #include <stdio.h>
 
-static lua_State *create_lua(int elfd, int id, const char *entrypoint, struct live_reload *reload);
-static void refresh_lua(lua_State *L, int elfd, int id, const char *entrypoint, struct live_reload *reload);
+static lua_State *create_lua(fd_t elfd, int id, const char *entrypoint, struct live_reload *reload);
+static void refresh_lua(lua_State *L, fd_t elfd, int id, const char *entrypoint, struct live_reload *reload);
 
-void *create_context(int elfd, int id, const char *entrypoint, struct live_reload *reload) {
+void *create_context(fd_t elfd, int id, const char *entrypoint, struct live_reload *reload) {
     return (void *)create_lua(elfd, id, entrypoint, reload);
 }
 
-void refresh_context(void *ctx, int elfd, int id, const char *entrypoint, struct live_reload *reload) {
+void refresh_context(void *ctx, fd_t elfd, int id, const char *entrypoint, struct live_reload *reload) {
     refresh_lua((lua_State*)ctx, elfd, id, entrypoint, reload);
 }
 
@@ -22,7 +22,7 @@ void close_context(void *ctx) {
     lua_close((lua_State *)ctx);
 }
 
-void on_receive(void *ctx, int elfd, int childfd, int fdtype, const char *buf, int readlen) {
+void on_receive(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *buf, int readlen) {
     lua_State *L = (lua_State *)ctx;
     lua_getglobal(L, "on_data");
     lua_pushlightuserdata(L, (void *)elfd);
@@ -35,7 +35,7 @@ void on_receive(void *ctx, int elfd, int childfd, int fdtype, const char *buf, i
     }
 }
 
-void on_close(void *ctx, int elfd, int childfd) {
+void on_close(void *ctx, fd_t elfd, fd_t childfd) {
     lua_State *L = (lua_State *)ctx;
     lua_getglobal(L, "on_close");
     lua_pushlightuserdata(L, (void *)elfd);
@@ -45,7 +45,7 @@ void on_close(void *ctx, int elfd, int childfd) {
     }
 }
 
-void on_write(void *ctx, int elfd, int childfd, int written) {
+void on_write(void *ctx, fd_t elfd, fd_t childfd, int written) {
     lua_State *L = (lua_State *)ctx;
     lua_getglobal(L, "on_write");
     lua_pushlightuserdata(L, (void *)elfd);
@@ -56,7 +56,7 @@ void on_write(void *ctx, int elfd, int childfd, int written) {
     }
 }
 
-void on_init(void *ctx, int elfd, int parentfd) {
+void on_init(void *ctx, fd_t elfd, int parentfd) {
     lua_State *L = (lua_State *)ctx;
     lua_getglobal(L, "on_init");
     lua_pushlightuserdata(L, (void *)elfd);
@@ -80,7 +80,7 @@ static void clean_global(lua_State *L, const char *name) {
 #endif
 }
 
-static void refresh_lua(lua_State *L, int elfd, int id, const char *entrypoint, struct live_reload *reload) {
+static void refresh_lua(lua_State *L, fd_t elfd, int id, const char *entrypoint, struct live_reload *reload) {
 
 #if (LUA_VERSION_NUM > 501) && defined(S80_DYNAMIC)
     // remove already existing packages to force reload on openlibs
@@ -134,7 +134,7 @@ static void refresh_lua(lua_State *L, int elfd, int id, const char *entrypoint, 
     }
 }
 
-static lua_State *create_lua(int elfd, int id, const char *entrypoint, struct live_reload *reload) {
+static lua_State *create_lua(fd_t elfd, int id, const char *entrypoint, struct live_reload *reload) {
     int status;
     lua_State *L = lua_newstate(reload->allocator, reload->ud);
 

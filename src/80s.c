@@ -129,9 +129,10 @@ static void* allocator(void* ud, void* ptr, size_t old_size, size_t new_size) {
 int main(int argc, const char **argv) {
     const int workers = get_arg("-c", get_cpus(), 0, argc, argv);
     char resolved[100];
-    int elfd, parentfd, optval, i,
+    int optval, i,
         portno = get_arg("-p", 8080, 0, argc, argv),
         v6 = get_arg("-6", 0, 1, argc, argv);
+    fd_t parentfd;
     union addr_common serveraddr;
     void *serve_handle = NULL;
     const char *entrypoint;
@@ -183,7 +184,7 @@ int main(int argc, const char **argv) {
     }
     #endif
 
-    parentfd = socket(v6 ? AF_INET6 : AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    parentfd = (fd_t)socket(v6 ? AF_INET6 : AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
     if (parentfd < 0)
         error("main: failed to create server socket");
