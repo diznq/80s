@@ -76,11 +76,11 @@ static void* run(void *params_) {
     void *result = NULL;
     dynserve_t serve;
     for(;;) {
-        printf("run: worker %d acquiring lock\n", params->workerid);
+        dbgf("run: worker %d acquiring lock\n", params->workerid);
         sem_wait(&reload->serve_lock);
         reload->ready++;
         if(reload->ready == reload->workers) {
-            printf("run: all workers ready, reloading dynamic library\n");
+            dbgf("run: all workers ready, reloading dynamic library\n");
             if(reload->dlcurrent != NULL && dlclose(reload->dlcurrent) < 0) {
                 error("run: failed to close previous dynamic library");
             }
@@ -93,7 +93,7 @@ static void* run(void *params_) {
                 error("run: failed to locate serve procedure");
             }
         } else {
-            printf("run: worker %d is pending readiness\n", params->workerid);
+            dbgf("run: worker %d is pending readiness\n", params->workerid);
             reload->serve = NULL;
         }
         sem_post(&reload->serve_lock);
@@ -101,7 +101,7 @@ static void* run(void *params_) {
         for(;;) {
             sem_wait(&reload->serve_lock);
             if(reload->serve != NULL) {
-                printf("run: worker %d restoring serve\n", params->workerid);
+                dbgf("run: worker %d restoring serve\n", params->workerid);
                 sem_post(&reload->serve_lock);
                 break;
             } else {
@@ -112,7 +112,7 @@ static void* run(void *params_) {
 
         serve = reload->serve;
         result = serve(params_);
-        printf("run: worker %d stopped, quit: %d\n", params->workerid, params->quit);
+        dbgf("run: worker %d stopped, quit: %d\n", params->workerid, params->quit);
         if(params->quit) return result;
     }
     #endif

@@ -123,8 +123,10 @@ int s80_reload(struct live_reload *reload);
 
 #ifdef S80_DEBUG
 #define dbg(message) printf("%s: %s\n", message, strerror(errno))
+#define dbgf(...) printf(__VA_ARGS__)
 #else
 #define dbg(message)
+#define dbgf(...)
 #endif
 
 #define BUFSIZE 16384
