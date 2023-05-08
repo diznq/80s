@@ -48,7 +48,7 @@ typedef int fd_t;
 typedef int fd_t;
 typedef HANDLE sem_t;
 struct winevent {};
-#define event_t winevent;
+#define event_t winevent
 #else
 #error unsupported platform
 #endif
@@ -121,6 +121,7 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype);
 int s80_peername(int fd, char *buf, size_t bufsize, int *port);
 int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args);
 int s80_reload(struct live_reload *reload);
+void s80_enable_async(fd_t fd);
 
 #ifdef S80_DEBUG
 #define dbg(message) printf("%s: %s\n", message, strerror(errno))

@@ -219,7 +219,6 @@ int main(int argc, const char **argv) {
         if(pipe(pipes[i]) < 0) {
             error("main: failed to create self-pipe");
         }
-        fcntl(pipes[i][0], F_SETFL, fcntl(pipes[i][0], F_GETFL, 0) | O_NONBLOCK);
         params[i].initialized = 0;
         params[i].reload = &reload;
         params[i].parentfd = parentfd;

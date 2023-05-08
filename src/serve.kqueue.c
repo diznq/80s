@@ -48,6 +48,7 @@ void *serve(void *vparams) {
     elfd = els[id];
 
     if(params->initialized == 0) {
+        s80_enable_async(selfpipe);
         signal(SIGPIPE, SIG_IGN);
 
         // create local kqueue and assign it to context's array of els, so others can reach it
@@ -102,7 +103,7 @@ void *serve(void *vparams) {
                     dbg("serve: error on server accept");
                 }
                 // set non blocking flag to the newly created child socket
-                fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
+                s80_enable_async(childfd);
                 EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
                 // add the child socket to the event loop it belongs to based on modulo
                 // with number of workers, to balance the load to other threads

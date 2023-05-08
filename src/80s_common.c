@@ -28,6 +28,14 @@ union addr_common {
 
 static int cleanup_pipes(fd_t elfd, fd_t* pipes, int allocated);
 
+void s80_enable_async(fd_t fd) {
+    #if defined(USE_EPOLL) || defined(USE_KQUEUE)
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    #elif defined(USE_IOCP)
+
+    #endif
+}
+
 fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
     struct event_t ev[2];
     struct sockaddr_in ipv4addr;
@@ -77,7 +85,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
 
     // create a non-blocking socket
     childfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
+    s80_enable_async(childfd);
 
     if (found6 && v6) {
         found = 1;
@@ -215,7 +223,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
     fd_t pipes[4] = {piperd[0], pipewr[1], pipewr[0], piperd[1]};
     for(i=0; i<2; i++) {
         childfd = pipes[i];
-        fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
+        s80_enable_async(childfd);
         pipes_out[i] = childfd;
 #ifdef USE_EPOLL
         // use [0] to keep code compatibility with kqueue that is able to set multiple events at once

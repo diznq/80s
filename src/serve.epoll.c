@@ -57,6 +57,7 @@ void *serve(void *vparams) {
     selfpipe = params->reload->pipes[id][0];
 
     if(params->initialized == 0) {
+        s80_enable_async(selfpipe);
         signal(SIGPIPE, SIG_IGN);
 
         // create local epoll and assign it to context's array of els, so others can reach it
@@ -138,7 +139,7 @@ void *serve(void *vparams) {
                     dbg("serve: error on server accept");
                 }
                 // set non blocking flag to the newly created child socket
-                fcntl(childfd, F_SETFL, fcntl(childfd, F_GETFL, 0) | O_NONBLOCK);
+                s80_enable_async(childfd);
                 ev.events = EPOLLIN;
                 SET_FD_HOLDER(&ev.data, S80_FD_SOCKET, childfd);
                 // add the child socket to the event loop it belongs to based on modulo
