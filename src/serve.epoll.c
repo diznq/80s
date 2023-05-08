@@ -26,8 +26,8 @@ union addr_common {
 };
 
 void *serve(void *vparams) {
-    int *els, elfd, parentfd, nfds, childfd, status, n, readlen, workers, id, flags, fdtype, closed = 0;
-    int sigfd, selfpipe;
+    fd_t *els, elfd, parentfd, childfd, sigfd, selfpipe;
+    int nfds, status, n, readlen, workers, id, flags, fdtype, closed = 0;
     int running = 1;
     sigset_t sigmask;
     socklen_t clientlen = sizeof(union addr_common);

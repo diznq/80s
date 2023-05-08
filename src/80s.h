@@ -42,8 +42,9 @@ typedef int fd_t;
 #define event_t epoll_event
 #elif defined(_WIN32)
 #define USE_IOCP
-#include <WinSock2.h>
-#include <Windows.h>
+#include <winsock2.h>
+#include <windows.h>
+#include <mswsock.h>
 typedef int fd_t;
 typedef HANDLE sem_t;
 struct winevent {};
@@ -66,7 +67,7 @@ struct live_reload {
     void *dlprevious;
     alloc_t allocator;
     void *ud;
-    int (*pipes)[2];
+    fd_t (*pipes)[2];
 };
 
 struct serve_params {
@@ -76,10 +77,10 @@ struct serve_params {
     int workerid;
     int workers;
     int quit;
-    int extra[4];
+    fd_t extra[4];
     void *ctx;
     // shared across all
-    int *els;
+    fd_t *els;
     const char *entrypoint;
     struct live_reload *reload;
 };

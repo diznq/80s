@@ -23,7 +23,8 @@ union addr_common {
 };
 
 void *serve(void *vparams) {
-    int *els, elfd, parentfd, nfds, childfd, flags, fdtype, status, n, readlen, workers, id, selfpipe, running = 1;
+    fd_t *els, elfd, parentfd, childfd, selfpipe;
+    int nfds, flags, fdtype, status, n, readlen, workers, id, running = 1;
     socklen_t clientlen = sizeof(union addr_common);
     unsigned accepts;
     void *ctx;

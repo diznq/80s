@@ -144,8 +144,8 @@ int main(int argc, const char **argv) {
     #else
     pthread_t handles[workers];
     #endif
-    int els[workers];
-    int pipes[workers][2];
+    fd_t els[workers];
+    fd_t pipes[workers][2];
 
     memset(params, 0, sizeof(params));
     memset(&reload, 0, sizeof(reload));
