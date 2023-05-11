@@ -58,6 +58,7 @@ void *serve(void *vparams) {
 
     if(params->initialized == 0) {
         s80_enable_async(selfpipe);
+        s80_enable_async(parentfd);
         signal(SIGPIPE, SIG_IGN);
 
         // create local epoll and assign it to context's array of els, so others can reach it
