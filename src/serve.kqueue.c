@@ -102,6 +102,7 @@ void *serve(void *vparams) {
                 childfd = accept(parentfd, (struct sockaddr *)&clientaddr, &clientlen);
                 if (childfd < 0) {
                     dbg("serve: error on server accept");
+                    continue;
                 }
                 // set non blocking flag to the newly created child socket
                 s80_enable_async(childfd);
