@@ -296,7 +296,7 @@ int s80_reload(struct live_reload *reload) {
     #endif
 }
 
-static int cleanup_pipes(fd_t elfd, int *pipes, int allocated) {
+static int cleanup_pipes(fd_t elfd, fd_t *pipes, int allocated) {
 #ifdef UNIX_BASED
     struct event_t ev[2];
     int i, childfd, err = errno;

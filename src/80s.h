@@ -118,7 +118,7 @@ void on_init(void *ctx, fd_t elfd, fd_t parentfd);
 fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int port);
 ssize_t s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, ssize_t offset, size_t len);
 int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype);
-int s80_peername(int fd, char *buf, size_t bufsize, int *port);
+int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port);
 int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args);
 int s80_reload(struct live_reload *reload);
 void s80_enable_async(fd_t fd);
