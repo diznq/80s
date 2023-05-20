@@ -38,14 +38,17 @@ typedef int fd_t;
 #include <sys/types.h>
 #include <sys/epoll.h>
 #include <semaphore.h>
+typedef int sock_t;
 typedef int fd_t;
 #define event_t epoll_event
 #elif defined(_WIN32)
 #define USE_IOCP
 #include <winsock2.h>
 #include <windows.h>
+#include <ws2tcpip.h>
 #include <mswsock.h>
-typedef int fd_t;
+typedef SOCKET sock_t;
+typedef HANDLE fd_t;
 typedef HANDLE sem_t;
 struct winevent {};
 #define event_t winevent

@@ -158,7 +158,11 @@ int main(int argc, const char **argv) {
     reload.ud = &reload;
     reload.pipes = pipes;
 
+    #ifdef UNIX_BASED
     sem_init(&reload.serve_lock, 0, 1);
+    #else
+    reload.serve_lock = CreateSemaphoreA(NULL, 1, 1, NULL);
+    #endif
 
     for(i=1; i < argc - 1; i++) {
         if(!strcmp(argv[i], "-h")) {
@@ -190,7 +194,7 @@ int main(int argc, const char **argv) {
         error("main: failed to create server socket");
 
     optval = 1;
-    setsockopt(parentfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
+    setsockopt((sock_t)parentfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
     memset((void *)&serveraddr, 0, sizeof(serveraddr));
 
     if (v6) {
@@ -209,14 +213,19 @@ int main(int argc, const char **argv) {
 
     printf("ip: %s, port: %d, cpus: %d, v6: %d\n", resolved, portno, workers, !!v6);
 
-    if (bind(parentfd, (struct sockaddr *)(v6 ? (void *)&serveraddr.v6 : (void *)&serveraddr.v4), v6 ? sizeof(serveraddr.v6) : sizeof(serveraddr.v4)) < 0)
+    if (bind((sock_t)parentfd, (struct sockaddr *)(v6 ? (void *)&serveraddr.v6 : (void *)&serveraddr.v4), v6 ? sizeof(serveraddr.v6) : sizeof(serveraddr.v4)) < 0)
         error("main: failed to bind server socket");
 
-    if (listen(parentfd, 20000) < 0)
+    if (listen((sock_t)parentfd, 20000) < 0)
         error("main: failed to listen on server socket");
 
     for (i = 0; i < workers; i++) {
-        if(pipe(pipes[i]) < 0) {
+        #ifdef UNIX_BASED
+        if(pipe(pipes[i]) < 0) 
+        #else
+        if(CreatePipe(&pipes[i][0], &pipes[i][1], NULL, 0) == FALSE)
+        #endif
+        {
             error("main: failed to create self-pipe");
         }
         params[i].initialized = 0;

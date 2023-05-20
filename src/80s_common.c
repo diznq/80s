@@ -54,7 +54,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
     hp = gethostbyname(addr);
     if (hp == NULL) {
         errno = EINVAL;
-        return -1;
+        return (fd_t)-1;
     }
 
     memset((void *)&ipv4addr, 0, sizeof(ipv4addr));
@@ -84,7 +84,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
     }
 
     // create a non-blocking socket
-    childfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    childfd = (fd_t)socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     s80_enable_async(childfd);
 
     if (found6 && v6) {
@@ -99,13 +99,13 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
 
     if (!found) {
         errno = EINVAL;
-        return -1;
+        return (fd_t)-1;
     }
 
     if (usev6) {
-        status = connect(childfd, (const struct sockaddr *)&ipv6addr, sizeof(ipv6addr));
+        status = connect((sock_t)childfd, (const struct sockaddr *)&ipv6addr, sizeof(ipv6addr));
     } else {
-        status = connect(childfd, (const struct sockaddr *)&ipv4addr, sizeof(ipv4addr));
+        status = connect((sock_t)childfd, (const struct sockaddr *)&ipv4addr, sizeof(ipv4addr));
     }
 
     if (status == 0 || errno == EINPROGRESS) {
@@ -123,19 +123,23 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
 
         if (status < 0) {
             dbg("l_net_connect: failed to add child to epoll");
-            return -1;
+            return (fd_t)-1;
         }
         return childfd;
     }
 
-    return -1;
+    return (fd_t)-1;
 }
 
 ssize_t s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, ssize_t offset, size_t len) {
     struct event_t ev;
     int status;
-    size_t writelen = write(childfd, data + offset, len - offset);
-
+    size_t writelen;
+    #ifdef UNIX_BASED
+    writelen = write(childfd, data + offset, len - offset);
+    #else
+    writelen = 0;
+    #endif
     if (writelen < 0 && errno != EWOULDBLOCK) {
         dbg("l_net_write: write failed");
         return -1;
@@ -171,7 +175,11 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
         dbg("l_net_close: failed to remove child from epoll");
         return status;
     }
+    #ifdef UNIX_BASED
     status = close(childfd);
+    #else
+    status = closesocket((sock_t)childfd);
+    #endif
     if (status < 0) {
         dbg("l_net_close: failed to close childfd");
     }
@@ -184,7 +192,7 @@ int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port) {
     union addr_common addr;
     socklen_t clientlen = sizeof(addr);
 
-    if (getsockname(fd, (struct sockaddr *)&addr, &clientlen) < 0) {
+    if (getsockname((sock_t)fd, (struct sockaddr *)&addr, &clientlen) < 0) {
         return 0;
     }
 
