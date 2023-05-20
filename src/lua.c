@@ -56,7 +56,7 @@ void on_write(void *ctx, fd_t elfd, fd_t childfd, int written) {
     }
 }
 
-void on_init(void *ctx, fd_t elfd, int parentfd) {
+void on_init(void *ctx, fd_t elfd, fd_t parentfd) {
     lua_State *L = (lua_State *)ctx;
     lua_getglobal(L, "on_init");
     lua_pushlightuserdata(L, (void *)elfd);

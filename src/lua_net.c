@@ -86,7 +86,7 @@ static int l_net_readfile(lua_State *L) {
     size_t size;
     const char *name = lua_tostring(L, 1);
     const char *mode = lua_tostring(L, 2);
-    FILE *f = fopen(name, mode);
+    FILE *f = fopen(name, "rb");
     if(!f) {
         return 0;
     }
@@ -259,10 +259,20 @@ static int l_net_listdir(lua_State *L) {
     int n, i;
     char buf[1000];
     const char *dir_name = lua_tostring(L, 1);
-
+    
+    lua_newtable(L);
 #ifdef _WIN32
     WIN32_FIND_DATAA data;
-    HANDLE hFind = FindFirstFileA(dir_name, &data);
+    memset(&data, 0, sizeof(data));
+    strncpy(full_path, dir_name, sizeof(full_path) - 4);
+    dir_name = full_path;
+    i = 0;
+    while(full_path[i]) {
+        if(full_path[i] == '/') full_path[i] = '\\';
+        i++;
+    }
+    strncat(full_path, "*", sizeof(full_path) - 1);
+    HANDLE hFind = FindFirstFileA(full_path, &data);
     if(hFind == INVALID_HANDLE_VALUE) {
         return 1;
     }
@@ -282,7 +292,6 @@ static int l_net_listdir(lua_State *L) {
         lua_rawseti(L, -2, ++i);
     } while(FindNextFileA(hFind, &data));
 #else
-    lua_newtable(L);
     n = scandir(dir_name, &eps, NULL, alphasort);
     while (n >= 0 && n--) {
         if (!strcmp(eps[n]->d_name, ".") || !strcmp(eps[n]->d_name, "..")) {

@@ -53,7 +53,7 @@ static int get_arg(const char *arg, int default_value, int flag, int argc, const
 }
 
 static int get_cpus() {
-    int count;
+    int count = 1;
 #if defined(USE_KQUEUE)
     size_t size=sizeof(count);
     if(sysctlbyname("hw.ncpu", &count, &size, NULL, 0) < 0) {
@@ -63,6 +63,10 @@ static int get_cpus() {
     count = sysconf(_SC_NPROCESSORS_ONLN);
 #elif defined(_GNU_SOURCE)
     count = get_nprocs();
+#elif defined(_WIN32)
+    // SYSTEM_INFO info;
+    // GetSystemInfo(&info);
+    // count = info.dwNumberOfProcessors;
 #endif
     return count > 0 ? count : 1;
 }

@@ -20,6 +20,9 @@ extern "C" {
 #define S80_SIGNAL_STOP 0
 #define S80_SIGNAL_QUIT 1
 
+#define BUFSIZE 16384
+#define MAX_EVENTS 4096
+
 #if defined(__FreeBSD__) || defined(__APPLE__)
 #define UNIX_BASED
 #define USE_KQUEUE
@@ -43,6 +46,9 @@ typedef int fd_t;
 #define event_t epoll_event
 #elif defined(_WIN32)
 #define USE_IOCP
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <winsock2.h>
 #include <windows.h>
 #include <ws2tcpip.h>
@@ -51,6 +57,23 @@ typedef SOCKET sock_t;
 typedef HANDLE fd_t;
 typedef HANDLE sem_t;
 struct winevent {};
+
+#define S80_WIN_OP_READ 1
+#define S80_WIN_OP_ACCEPT 2
+#define S80_WIN_OP_WRITE 3
+
+struct context_holder {
+    int op;
+    int fdtype;
+    int connected;
+    fd_t fd;
+    DWORD length;
+    DWORD flags;
+    WSABUF wsaBuf;
+    char data[BUFSIZE + 128];
+    struct context_holder *recv, *send;
+    OVERLAPPED ol;
+};
 #define event_t winevent
 #else
 #error unsupported platform
@@ -127,15 +150,16 @@ int s80_reload(struct live_reload *reload);
 void s80_enable_async(fd_t fd);
 
 #ifdef S80_DEBUG
+#ifdef USE_IOCP
+#define dbg(message) printf("%s, wsa: %d, last error: %d\n", message, WSAGetLastError(), GetLastError())
+#else
 #define dbg(message) printf("%s: %s\n", message, strerror(errno))
+#endif
 #define dbgf(...) printf(__VA_ARGS__)
 #else
 #define dbg(message)
 #define dbgf(...)
 #endif
-
-#define BUFSIZE 16384
-#define MAX_EVENTS 4096
 
 #ifdef __cplusplus
 }

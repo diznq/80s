@@ -32,7 +32,8 @@ void s80_enable_async(fd_t fd) {
     #if defined(USE_EPOLL) || defined(USE_KQUEUE)
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
     #elif defined(USE_IOCP)
-
+    u_long mode = 1;
+    ioctlsocket((sock_t)fd, FIONBIO, &mode);
     #endif
 }
 
@@ -137,9 +138,6 @@ ssize_t s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *da
     size_t writelen;
     #ifdef UNIX_BASED
     writelen = write(childfd, data + offset, len - offset);
-    #else
-    writelen = 0;
-    #endif
     if (writelen < 0 && errno != EWOULDBLOCK) {
         dbg("l_net_write: write failed");
         return -1;
@@ -160,6 +158,29 @@ ssize_t s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *da
         }
         return writelen;
     }
+    #else
+    struct context_holder *cx = (struct context_holder*)childfd;
+    if(cx->send->wsaBuf.buf != NULL) {
+        free(cx->send->wsaBuf.buf);
+        cx->send->wsaBuf.buf = NULL;
+        cx->send->wsaBuf.len = 0;
+    }
+    cx->send->wsaBuf.buf = (char*)malloc(len - offset);
+    cx->send->wsaBuf.len = len - offset;
+    memcpy(cx->send->wsaBuf.buf, data + offset, len - offset);
+    status = WSASend((sock_t)cx->fd, &cx->send->wsaBuf, 1, NULL, cx->flags, &cx->send->ol, NULL);
+    if(status == SOCKET_ERROR && WSAGetLastError() == WSA_IO_PENDING) {
+        return 0;
+    } else if(status == SOCKET_ERROR) {
+        dbg("l_net_write: WSASend failed");
+        return -1;
+    } else {
+        free(cx->send->wsaBuf.buf);
+        cx->send->wsaBuf.buf = NULL;
+        cx->send->wsaBuf.len = 0;
+        return len - offset;
+    }
+    #endif
 }
 
 int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
@@ -175,10 +196,17 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
         dbg("l_net_close: failed to remove child from epoll");
         return status;
     }
+    
     #ifdef UNIX_BASED
     status = close(childfd);
     #else
-    status = closesocket((sock_t)childfd);
+    struct context_holder* cx = (struct context_holder*)childfd;
+    if(cx->connected) {
+        cx->connected = 0;
+        status = closesocket((sock_t)cx->fd);
+    } else {
+        status = 0;
+    }
     #endif
     if (status < 0) {
         dbg("l_net_close: failed to close childfd");
