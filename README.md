@@ -17,7 +17,8 @@ Over time I already grew tired of insane software complexity of modern software 
 Prerequisites:
 - installed Lua librares (lualib.a and Lua headers possibly in /usr/local/include)
 - installed OpenSSL libraries
-- Linux (as of now, only epoll is supported as event loop provider, kqueue and IOCP to be in future)
+- Linux, FreeBSD or Windows (IOCP for Windows is supported only partially for basic tasks)
+- if building on Windows, Msys2 is recommended as building environment
 
 To compile the project, simply run `./build.sh`.
 
@@ -86,7 +87,7 @@ Naming conventions:
 - `_G.on_data(elfd, childfd, data, length)`: called on each incoming packet of data
 - `_G.on_close(elfd, childfd)`: called when socket is closed
 - `_G.on_write(elfd, childfd)`: called when socket sbecomes writeable (also on connect)
-- `_G.on_init(elfd, parentfd)`: called when epoll is initialized
+- `_G.on_init(elfd, parentfd)`: called when event loop is initialized
 
 ### Lua APIs
 - `net.connect(elfd, hostName, port)`: create new TCP socket, returns `socket, error`
