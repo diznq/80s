@@ -1,8 +1,10 @@
 #ifndef __80S_H__
 #define __80S_H__
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -14,7 +16,7 @@ extern "C" {
 #define S80_FD_OTHER 3
 
 #ifndef S80_DYNAMIC_SO
-#define S80_DYNAMIC_SO "bin/80s.so"
+    #define S80_DYNAMIC_SO "bin/80s.so"
 #endif
 
 #define S80_SIGNAL_STOP 0
@@ -24,60 +26,60 @@ extern "C" {
 #define MAX_EVENTS 4096
 
 #if defined(__FreeBSD__) || defined(__APPLE__)
-#define UNIX_BASED
-#define USE_KQUEUE
-#include <sys/types.h>
-#include <sys/event.h>
-#include <semaphore.h>
-typedef int fd_t;
-#define event_t kevent
-#ifdef __FreeBSD__
-#define USE_KTLS
-#endif
+    #define UNIX_BASED
+    #define USE_KQUEUE
+    #include <sys/types.h>
+    #include <sys/event.h>
+    #include <semaphore.h>
+    typedef int fd_t;
+    #define event_t kevent
+    #ifdef __FreeBSD__
+        #define USE_KTLS
+    #endif
 #elif defined(__linux__) || defined(SOLARIS_EPOLL)
-#define UNIX_BASED
-#define USE_EPOLL
-#define USE_INOTIFY
-#include <sys/types.h>
-#include <sys/epoll.h>
-#include <semaphore.h>
-typedef int sock_t;
-typedef int fd_t;
-#define event_t epoll_event
+    #define UNIX_BASED
+    #define USE_EPOLL
+    #define USE_INOTIFY
+    #include <sys/types.h>
+    #include <sys/epoll.h>
+    #include <semaphore.h>
+    typedef int sock_t;
+    typedef int fd_t;
+    #define event_t epoll_event
 #elif defined(_WIN32)
-#define USE_IOCP
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <winsock2.h>
-#include <windows.h>
-#include <ws2tcpip.h>
-#include <mswsock.h>
-typedef SOCKET sock_t;
-typedef HANDLE fd_t;
-typedef HANDLE sem_t;
-struct winevent {};
+    #define USE_IOCP
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #include <winsock2.h>
+    #include <windows.h>
+    #include <ws2tcpip.h>
+    #include <mswsock.h>
+    typedef SOCKET sock_t;
+    typedef HANDLE fd_t;
+    typedef HANDLE sem_t;
+    struct winevent {};
 
-#define S80_WIN_OP_READ 1
-#define S80_WIN_OP_ACCEPT 2
-#define S80_WIN_OP_WRITE 3
-#define S80_WIN_OP_CONNECT 4
+    #define S80_WIN_OP_READ 1
+    #define S80_WIN_OP_ACCEPT 2
+    #define S80_WIN_OP_WRITE 3
+    #define S80_WIN_OP_CONNECT 4
 
-struct context_holder {
-    int op;
-    int fdtype;
-    int connected;
-    fd_t fd;
-    DWORD length;
-    DWORD flags;
-    WSABUF wsaBuf;
-    char data[BUFSIZE + 128];
-    struct context_holder *recv, *send;
-    OVERLAPPED ol;
-};
+    struct context_holder {
+        int op;
+        int fdtype;
+        int connected;
+        fd_t fd;
+        DWORD length;
+        DWORD flags;
+        WSABUF wsaBuf;
+        char data[BUFSIZE + 128];
+        struct context_holder *recv, *send;
+        OVERLAPPED ol;
+    };
 
-struct context_holder* new_fd_context(fd_t childfd, int fdtype);
-#define event_t winevent
+    struct context_holder* new_fd_context(fd_t childfd, int fdtype);
+    #define event_t winevent
 #else
 #error unsupported platform
 #endif
@@ -153,18 +155,19 @@ int s80_reload(struct live_reload *reload);
 void s80_enable_async(fd_t fd);
 
 #ifdef S80_DEBUG
-#ifdef USE_IOCP
-#define dbg(message) printf("%s, wsa: %d, last error: %d\n", message, WSAGetLastError(), GetLastError())
+    #ifdef USE_IOCP
+        #define dbg(message) printf("%s, wsa: %d, last error: %d\n", message, WSAGetLastError(), GetLastError())
+    #else
+        #define dbg(message) printf("%s: %s\n", message, strerror(errno))
+    #endif
+    #define dbgf(...) printf(__VA_ARGS__)
 #else
-#define dbg(message) printf("%s: %s\n", message, strerror(errno))
-#endif
-#define dbgf(...) printf(__VA_ARGS__)
-#else
-#define dbg(message)
-#define dbgf(...)
+    #define dbg(message)
+    #define dbgf(...)
 #endif
 
 #ifdef __cplusplus
 }
 #endif
+
 #endif

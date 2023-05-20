@@ -50,6 +50,10 @@ aio:http_get("/cipher", function (self, query, headers, body)
     end
 end)
 
+aio:http_get("/worker", function (self, query, headers, body)
+    self:http_response("200 OK", "text/plain", tostring(WORKERID))
+end)
+
 aio:http_get("/visit", function (self, query, headers, body)
     local args = aio:parse_query(query)
     local url = args.url or "http://localhost:8080/haha"

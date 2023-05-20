@@ -29,12 +29,12 @@ union addr_common {
 static int cleanup_pipes(fd_t elfd, fd_t* pipes, int allocated);
 
 void s80_enable_async(fd_t fd) {
-    #if defined(USE_EPOLL) || defined(USE_KQUEUE)
+#if defined(USE_EPOLL) || defined(USE_KQUEUE)
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
-    #elif defined(USE_IOCP)
+#elif defined(USE_IOCP)
     u_long mode = 1;
     ioctlsocket((sock_t)fd, FIONBIO, &mode);
-    #endif
+#endif
 }
 
 fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
@@ -85,11 +85,11 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
     }
 
     // create a non-blocking socket
-    #ifdef UNIX_BASED
+#ifdef UNIX_BASED
     childfd = (fd_t)socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    #else
+#else
     childfd = (fd_t)WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
-    #endif
+#endif
     s80_enable_async(childfd);
 
     if (found6 && v6) {
@@ -107,24 +107,24 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
         return (fd_t)-1;
     }
 
-    #ifdef UNIX_BASED
+#ifdef UNIX_BASED
     if (usev6) {
         status = connect((sock_t)childfd, (const struct sockaddr *)&ipv6addr, sizeof(ipv6addr));
     } else {
         status = connect((sock_t)childfd, (const struct sockaddr *)&ipv4addr, sizeof(ipv4addr));
     }
     if (status == 0 || errno == EINPROGRESS) {
-#ifdef USE_EPOLL
+    #ifdef USE_EPOLL
         // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
         ev[0].events = EPOLLIN | EPOLLOUT;
         SET_FD_HOLDER(&ev[0].data, S80_FD_SOCKET, childfd);
         status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
-#elif defined(USE_KQUEUE)
+    #elif defined(USE_KQUEUE)
         // subscribe for both read and write separately
         EV_SET(ev, childfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
         EV_SET(ev + 1, childfd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, 0, 0, (void*)S80_FD_SOCKET);
         status = kevent(elfd, ev, 2, NULL, 0, NULL);
-#endif
+    #endif
 
         if (status < 0) {
             dbg("l_net_connect: failed to add child to epoll");
@@ -132,7 +132,8 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
         }
         return childfd;
     }
-    #else
+#else
+    // things work quite differently on Windows, so first we need to receive pointer for ConnectEx
     LPFN_CONNECTEX lpConnectEx = NULL;
     GUID guid = WSAID_CONNECTEX;
     DWORD dwNumBytes = 0;
@@ -142,6 +143,8 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
         dbg("l_net_connect: couldn't retrieve ConnectEx");
         return (fd_t)-1;
     }
+
+    // helpers for handling different types of addresses
     const struct sockaddr *sa = NULL;
     union addr_common binding;
     memset(&binding, 0, sizeof(binding));
@@ -153,16 +156,19 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
         sa = (const struct sockaddr*)&binding.v4;
     }
 
+    // connectex requires the socket to be bound before it's being used
     if(bind((sock_t)childfd, sa, usev6 ? sizeof(binding.v6) : sizeof(binding.v4)) < 0) {
         dbg("l_net_connect: bind failed");
         return (fd_t)-1;
     }
     
+    // assign to the very same event loop as of caller
     if(CreateIoCompletionPort(childfd, elfd, (ULONG_PTR)S80_FD_SOCKET, 0) == NULL) {
         dbg("l_net_connect: couldn't associate with iocp");
         return (fd_t)-1;
     }
 
+    // finally initialize new tied fd context
     struct context_holder *cx = new_fd_context(childfd, S80_FD_SOCKET);
 
     if(usev6) {
@@ -171,17 +177,22 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
         sa = (const struct sockaddr *)&ipv4addr;
     }
 
+    // set proper state for both send and recv iocp context
     cx->send->op = S80_WIN_OP_CONNECT;
     cx->recv->op = S80_WIN_OP_READ;
+
     status = lpConnectEx((sock_t)childfd, sa, usev6 ? sizeof(ipv6addr) : sizeof(ipv4addr), NULL, 0, &cx->send->length, &cx->send->ol);
     if(status == TRUE || GetLastError() == WSA_IO_PENDING) {
+        // this is the state we should always get into
         return (fd_t)cx->recv;
     } else {
+        // if things fail, cleanup
         dbg("l_net_connect: connectex failed");
+        closesocket((sock_t)childfd);
         free(cx->send->recv);
         free(cx->send);
     }
-    #endif
+#endif
 
     return (fd_t)-1;
 }
@@ -190,21 +201,23 @@ ssize_t s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *da
     struct event_t ev;
     int status;
     size_t writelen;
-    #ifdef UNIX_BASED
+#ifdef UNIX_BASED
     writelen = write(childfd, data + offset, len - offset);
     if (writelen < 0 && errno != EWOULDBLOCK) {
         dbg("l_net_write: write failed");
         return -1;
     } else {
+        // it can happen that we tried to write more than the OS send buffer size is,
+        // in this case subscribe for next write availability event
         if (writelen < len) {
-#ifdef USE_EPOLL
+    #ifdef USE_EPOLL
             ev.events = EPOLLIN | EPOLLOUT;
             SET_FD_HOLDER(&ev.data, fdtype, childfd);
             status = epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev);
-#elif defined(USE_KQUEUE)
+    #elif defined(USE_KQUEUE)
             EV_SET(&ev, childfd, EVFILT_WRITE, fdtype == S80_FD_PIPE ? (EV_ADD | EV_CLEAR) : (EV_ADD | EV_ONESHOT), 0, 0, (void*)fdtype);
             status = kevent(elfd, &ev, 1, NULL, 0, NULL);
-#endif
+    #endif
             if (status < 0) {
                 dbg("l_net_write: failed to add socket to out poll");
                 return -1;
@@ -212,16 +225,21 @@ ssize_t s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *da
         }
         return writelen;
     }
-    #else
+#else
     struct context_holder *cx = (struct context_holder*)childfd;
+    // if there was some previous buffer, free it, although this shouldn't happen
     if(cx->send->wsaBuf.buf != NULL) {
         free(cx->send->wsaBuf.buf);
         cx->send->wsaBuf.buf = NULL;
         cx->send->wsaBuf.len = 0;
     }
+    // create a new throw-away buffer and fill it with contents to be sent
+    // we gotta do it this way, as directly sending data buffer
+    // doesn't guarantee it wouldn't get GC-ed in meantime
     cx->send->wsaBuf.buf = (char*)malloc(len - offset);
     cx->send->wsaBuf.len = len - offset;
     memcpy(cx->send->wsaBuf.buf, data + offset, len - offset);
+    // wsa send the stuff, if it's too large it later produces cx->send->ol event
     status = WSASend((sock_t)cx->fd, &cx->send->wsaBuf, 1, NULL, cx->flags, &cx->send->ol, NULL);
     if(status == SOCKET_ERROR && WSAGetLastError() == WSA_IO_PENDING) {
         return 0;
@@ -229,6 +247,8 @@ ssize_t s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *da
         dbg("l_net_write: WSASend failed");
         return -1;
     } else {
+        // in this case payload was small enough and got sent immediately, so clean-up
+        // the throw-away buffers safely here
         free(cx->send->wsaBuf.buf);
         cx->send->wsaBuf.buf = NULL;
         cx->send->wsaBuf.len = 0;
@@ -251,17 +271,19 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
         return status;
     }
     
-    #ifdef UNIX_BASED
+#ifdef UNIX_BASED
     status = close(childfd);
-    #else
+#else
+    // on iocp we get tied fd context, we need to resolve ->fd from it later
     struct context_holder* cx = (struct context_holder*)childfd;
     if(cx->connected) {
+        // only close if it wasn't closed already
         cx->connected = 0;
         status = closesocket((sock_t)cx->fd);
     } else {
         status = 0;
     }
-    #endif
+#endif
     if (status < 0) {
         dbg("l_net_close: failed to close childfd");
     }
@@ -274,10 +296,11 @@ int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port) {
     union addr_common addr;
     socklen_t clientlen = sizeof(addr);
 
-    #ifdef USE_IOCP
+#ifdef USE_IOCP
+    // on iocp we get tied fd context, we need to resolve ->fd from it
     struct context_holder *cx = (struct context_holder*)fd;
     fd = cx->fd;
-    #endif
+#endif
 
     if (getsockname((sock_t)fd, (struct sockaddr *)&addr, &clientlen) < 0) {
         return 0;
@@ -320,16 +343,16 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
         childfd = pipes[i];
         s80_enable_async(childfd);
         pipes_out[i] = childfd;
-#ifdef USE_EPOLL
+    #ifdef USE_EPOLL
         // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
         ev[0].events = i == 0 ? EPOLLIN : EPOLLOUT;
         SET_FD_HOLDER(&ev[0].data, S80_FD_PIPE, childfd);
         status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
-#elif defined(USE_KQUEUE)
+    #elif defined(USE_KQUEUE)
         // subscribe for both read and write separately
         EV_SET(ev, childfd, i == 0 ? EVFILT_READ : EVFILT_WRITE, i == 0 ? EV_ADD : (EV_ADD | EV_CLEAR), 0, 0, (void*)S80_FD_PIPE);
         status = kevent(elfd, ev, 1, NULL, 0, NULL);
-#endif
+    #endif
         if(status < 0) {
             cleanup_pipes(elfd, pipes, i - 1);
             for(j=0; j < 4; j++) {
@@ -372,7 +395,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
 }
 
 int s80_reload(struct live_reload *reload) {
-    #ifdef S80_DYNAMIC
+#ifdef S80_DYNAMIC
     int i;
     char buf[4];
     if(reload->ready < reload->workers) {
@@ -386,9 +409,9 @@ int s80_reload(struct live_reload *reload) {
         reload->running++;
         return 0;
     }
-    #else
+#else
     return -1;
-    #endif
+#endif
 }
 
 static int cleanup_pipes(fd_t elfd, fd_t *pipes, int allocated) {

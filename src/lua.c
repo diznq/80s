@@ -124,10 +124,10 @@ static void refresh_lua(lua_State *L, fd_t elfd, int id, const char *entrypoint,
     lua_pushlightuserdata(L, (void *)reload);
     lua_setglobal(L, "S80_RELOAD");
 
-    #ifdef USE_KTLS
+#ifdef USE_KTLS
     lua_pushboolean(L, 1);
     lua_setglobal(L, "KTLS");
-    #endif
+#endif
 
     if (luaL_dofile(L, entrypoint)) {
         fprintf(stderr, "serve: error running %s: %s\n", entrypoint, lua_tostring(L, -1));

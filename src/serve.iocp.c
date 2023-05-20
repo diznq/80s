@@ -6,6 +6,7 @@ union addr_common {
     struct sockaddr_in v4;
 };
 
+// create a new iocp context
 struct context_holder* new_context_holder(fd_t fd, int fdtype) {
     struct context_holder *ctx = (struct context_holder*)malloc(sizeof(struct context_holder));
     memset(ctx, 0, sizeof(struct context_holder));
@@ -18,6 +19,7 @@ struct context_holder* new_context_holder(fd_t fd, int fdtype) {
     return ctx;
 }
 
+// create a new tied iocp context that contains both recv and send contexts tied together
 struct context_holder* new_fd_context(fd_t childfd, int fdtype) {
     struct context_holder *recv_helper = new_context_holder(childfd, S80_FD_SOCKET);
     struct context_holder *send_helper = new_context_holder(childfd, S80_FD_SOCKET);
@@ -39,21 +41,14 @@ struct context_holder* new_fd_context(fd_t childfd, int fdtype) {
 
 void *serve(void *vparams) {
     fd_t *els, elfd, parentfd, childfd, selfpipe;
-    LPFN_ACCEPTEX lpfnAcceptEx;
-    GUID GuidAcceptEx = WSAID_ACCEPTEX;
+    OVERLAPPED_ENTRY events[MAX_EVENTS];
     ULONG nfds;
-    char* buf;
     struct context_holder *cx;
+    struct serve_params *params;
     int flags, fdtype, status, n, readlen, workers, id, running = 1;
-    socklen_t clientlen = sizeof(union addr_common);
     unsigned accepts;
     void *ctx;
-    union addr_common clientaddr;
-    OVERLAPPED_ENTRY events[MAX_EVENTS];
-    struct serve_params *params;
     
-    memset(&clientaddr, 0, sizeof(clientaddr));
-
     accepts = 0;
     params = (struct serve_params *)vparams;
     parentfd = params->parentfd;
@@ -65,7 +60,7 @@ void *serve(void *vparams) {
     elfd = els[id];
 
     if(params->initialized == 0) {
-        s80_enable_async(selfpipe);
+        //s80_enable_async(selfpipe);
         s80_enable_async(parentfd);
 
         // create local kqueue and assign it to context's array of els, so others can reach it
@@ -79,18 +74,21 @@ void *serve(void *vparams) {
                 error("serve: failed to add parentfd socket to iocp");
             }
             
-            childfd = (fd_t)WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
-            s80_enable_async(childfd);
-            // prepare overlapped structs for both recv and send for newly accepted socket
-            cx = new_fd_context(childfd, S80_FD_SOCKET);
-            cx->recv->op = S80_WIN_OP_ACCEPT;
-            
-            if(AcceptEx((sock_t)parentfd, (sock_t)childfd,
-                cx->recv->data, BUFSIZE, 
-                sizeof(union addr_common), sizeof(union addr_common),
-                &cx->recv->length, &cx->recv->ol) == FALSE) {
-                if(WSAGetLastError() != ERROR_IO_PENDING) {
-                    error("serve: AcceptEx failed");
+            // preload 16 accepts
+            for(n=0; n<16; n++) {
+                childfd = (fd_t)WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
+                s80_enable_async(childfd);
+                // prepare overlapped structs for both recv and send for newly accepted socket
+                cx = new_fd_context(childfd, S80_FD_SOCKET);
+                cx->recv->op = S80_WIN_OP_ACCEPT;
+                
+                if(AcceptEx((sock_t)parentfd, (sock_t)childfd,
+                    cx->recv->data, 0, 
+                    sizeof(union addr_common), sizeof(union addr_common),
+                    &cx->recv->length, &cx->recv->ol) == FALSE) {
+                    if(WSAGetLastError() != ERROR_IO_PENDING) {
+                        error("serve: AcceptEx failed");
+                    }
                 }
             }
         }
@@ -108,35 +106,35 @@ void *serve(void *vparams) {
         refresh_context(ctx, elfd, id, params->entrypoint, params->reload);
     }
 
-    dbgf("[%d] parentfd: %lu\n", id, parentfd);
-
     while(running)
     {
         // wait for new events
         if (!GetQueuedCompletionStatusEx(elfd, events, MAX_EVENTS, &nfds, INFINITE, FALSE)) {
-            dbgf("error: %d\n", GetLastError());
             error("serve: error on iocp");
         }
 
+        // the main difference from unix versions is that fd being sent to on_receive, on_write etc. is not really fd,
+        // but it is rather the tied context created by new_fd_context
         for (n = 0; n < nfds; ++n) {
             cx = (struct context_holder*)events[n].lpOverlapped->Pointer;
             fdtype = cx->fdtype;
             flags = cx->flags;
             childfd = cx->fd;
+
             if (cx->op == S80_WIN_OP_ACCEPT) {
+                // if context is in accept state, call wsarecv to move it to read state instead with recv context (cx->recv)
+                // and move it to els[accepts++ % workers] iocp event loop, this is where load balancing happens
                 dbgf("[%d] accept %llu, flags: %d, length: %d\n", id, cx->fd, cx->flags, events[n].dwNumberOfBytesTransferred);
-                if(events[n].dwNumberOfBytesTransferred) {
-                    cx->recv->op = S80_WIN_OP_READ;
-                    on_receive(ctx, elfd, (fd_t)cx->recv, cx->recv->fdtype, cx->recv->data, events[n].dwNumberOfBytesTransferred);
-                    if(cx->recv->connected) {
-                        status = WSARecv((sock_t)childfd, &cx->recv->wsaBuf, 1, NULL, &cx->recv->flags, &cx->recv->ol, NULL);
-                        if(status >= 0 || (status == SOCKET_ERROR && GetLastError() == WSA_IO_PENDING)) {
-                            if(CreateIoCompletionPort(childfd, els[accepts++ % workers], (ULONG_PTR)S80_FD_SOCKET, 0) == NULL) {
-                                dbg("serve: failed to associate");
-                            }
-                        } else if(status == SOCKET_ERROR) {
-                            dbg("serve: initial recv failed");
+                cx->recv->op = S80_WIN_OP_READ;
+                if(cx->recv->connected) {
+                    status = WSARecv((sock_t)childfd, &cx->recv->wsaBuf, 1, NULL, &cx->recv->flags, &cx->recv->ol, NULL);
+                    if(status >= 0 || (status == SOCKET_ERROR && GetLastError() == WSA_IO_PENDING)) {
+                        if(CreateIoCompletionPort(childfd, els[accepts++], (ULONG_PTR)S80_FD_SOCKET, 0) == NULL) {
+                            dbg("serve: failed to associate");
                         }
+                        if(accepts == workers) accepts = 0;
+                    } else if(status == SOCKET_ERROR) {
+                        dbg("serve: initial recv failed");
                     }
                 }
                 
@@ -147,7 +145,7 @@ void *serve(void *vparams) {
                 cx->recv->op = S80_WIN_OP_ACCEPT;
 
                 if(AcceptEx((sock_t)parentfd, (sock_t)childfd,
-                    cx->recv->data, BUFSIZE, 
+                    cx->recv->data, 0, 
                     sizeof(union addr_common), sizeof(union addr_common),
                     &cx->recv->length, &cx->recv->ol) == FALSE) {
                     if(WSAGetLastError() != WSA_IO_PENDING) {
@@ -157,13 +155,16 @@ void *serve(void *vparams) {
             } else if(cx->op == S80_WIN_OP_READ) {
                 dbgf("[%d] recv from %llu, flags: %d, length: %d (%d)\n", id, cx->fd, cx->flags, events[n].dwNumberOfBytesTransferred, cx->length);
                 if(events[n].dwNumberOfBytesTransferred == 0) {
+                    // when in read state, check if we received zero bytes as that is error
                     cx->connected = 0;
                     on_close(ctx, elfd, (fd_t)cx->recv);
                     free(cx->recv->send);
                     free(cx->recv);
                 } else {
+                    // if we received some bytes, call on_receive and carry on with wsarecv as this is pro-actor pattern
                     readlen = events[n].dwNumberOfBytesTransferred;
                     on_receive(ctx, elfd, (fd_t)cx->recv, cx->fdtype, cx->recv->data, readlen);
+                    // only continue if no closesockets happened along the way
                     if(cx->recv->connected) {
                         status = WSARecv((sock_t)childfd, &cx->recv->wsaBuf, 1, NULL, &cx->recv->flags, &cx->recv->ol, NULL);
                         if(status != SOCKET_ERROR || GetLastError() != WSA_IO_PENDING) {
@@ -174,28 +175,36 @@ void *serve(void *vparams) {
             } else if(cx->op == S80_WIN_OP_WRITE) {
                 dbgf("[%d] write to %llu, flags: %d, length: %d\n", id, cx->fd, cx->flags, events[n].dwNumberOfBytesTransferred);
                 if(cx->recv->connected) {
+                    // if there was a buffer sent, free that memory as it was throw-away buffer
                     if(cx->send->wsaBuf.buf != NULL) {
                         free(cx->send->wsaBuf.buf);
                         cx->send->wsaBuf.buf = NULL;
                         cx->send->wsaBuf.len = 0;
                     }
+                    // the one advantage over reactor here is that this gets called only when the write
+                    // is really complete, not partially complete, which is a nice thing
                     on_write(ctx, elfd, (fd_t)cx->recv, events[n].dwNumberOfBytesTransferred);
                 }
             } else if(cx->op == S80_WIN_OP_CONNECT) {
                 dbgf("[%d] connect to %llu, flags: %d, length: %d\n", id, cx->fd, cx->flags, events[n].dwNumberOfBytesTransferred);
                 cx->send->op = S80_WIN_OP_WRITE;
 
+                // this is a special state for write when connection is created, use setsockopt to check
+                // if creation was okay, if not, close the socket, if yes, move to write state instead
                 if(setsockopt((sock_t)childfd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0) < 0) {
                     dbgf("[%d] connect to %llu, setsockopt failed with %d\n", id, cx->fd, GetLastError());
                     cx->recv->connected = 0;
                     closesocket((sock_t)cx->fd);
                     on_close(ctx, elfd, (fd_t)cx->recv);
+                    // at this time there couldn't have been send->wsaBuf.buf allocated
                     free(cx->recv->send);
-                    free(cx->recv);  
+                    free(cx->recv);
                 } else {
                     cx->recv->connected = 1;
                     dbgf("[%d] connect to %llu successful\n", id, cx->fd);
+                    // tell the handlers that this fd is ready for writing, thus also for reading if it's a socket
                     on_write(ctx, elfd, (fd_t)cx->recv, events[n].dwNumberOfBytesTransferred);
+                    // as we are ini proactor mode, we need to force out WSARecv
                     status = WSARecv((sock_t)childfd, &cx->recv->wsaBuf, 1, NULL, &cx->recv->flags, &cx->recv->ol, NULL);
                     if(status > 0 || (status == SOCKET_ERROR && GetLastError() != WSA_IO_PENDING)) {
                         dbg("serve: connect recv failed");

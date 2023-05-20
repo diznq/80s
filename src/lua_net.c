@@ -374,31 +374,34 @@ static int l_net_info(lua_State *L) {
     dynstr_putsz(&str, ", time: ");
     dynstr_putsz(&str, __TIME__);
     dynstr_putsz(&str, ", flags: ");
-    #ifdef S80_DYNAMIC
+#ifdef S80_DYNAMIC
     dynstr_putsz(&str, "dynamic(");
     dynstr_putsz(&str, S80_DYNAMIC_SO);
     dynstr_putsz(&str, "), ");
-    #endif
-    #ifdef USE_EPOLL
+#endif
+#ifdef USE_EPOLL
     dynstr_putsz(&str, "epoll, ");
-    #endif
-    #ifdef USE_KQUEUE
+#endif
+#ifdef USE_KQUEUE
     dynstr_putsz(&str, "kqueue, ");
-    #endif
-    #ifdef USE_INOTIFY
+#endif
+#ifdef USE_IOCP
+    dynstr_putsz(&str, "iocp, ");
+#endif
+#ifdef USE_INOTIFY
     dynstr_putsz(&str, "inotify, ");
-    #endif
-    #ifdef USE_KTLS
+#endif
+#ifdef USE_KTLS
     dynstr_putsz(&str, "ktls, ");
-    #endif
-    #ifdef S80_JIT
+#endif
+#ifdef S80_JIT
     dynstr_putsz(&str, "luajit, ");
-    #else
+#else
     dynstr_putsz(&str, "lua, ");
-    #endif
-    #ifdef S80_DEBUG
+#endif
+#ifdef S80_DEBUG
     dynstr_putsz(&str, "debug, ");
-    #endif
+#endif
     if(str.ok) {
         lua_pushlstring(L, str.ptr, str.length - 2);
     } else {
