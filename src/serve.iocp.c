@@ -159,8 +159,8 @@ void *serve(void *vparams) {
                 if(events[n].dwNumberOfBytesTransferred == 0) {
                     cx->connected = 0;
                     on_close(ctx, elfd, (fd_t)cx->recv);
+                    free(cx->recv->send);
                     free(cx->recv);
-                    free(cx->send);
                 } else {
                     readlen = events[n].dwNumberOfBytesTransferred;
                     while(1) {
@@ -189,6 +189,26 @@ void *serve(void *vparams) {
                         cx->send->wsaBuf.len = 0;
                     }
                     on_write(ctx, elfd, (fd_t)cx->recv, events[n].dwNumberOfBytesTransferred);
+                }
+            } else if(cx->op == S80_WIN_OP_CONNECT) {
+                dbgf("[%d] connect to %llu, flags: %d, length: %d\n", id, cx->fd, cx->flags, events[n].dwNumberOfBytesTransferred);
+                cx->send->op = S80_WIN_OP_WRITE;
+
+                if(setsockopt((sock_t)childfd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0) < 0) {
+                    dbgf("[%d] connect to %llu, setsockopt failed with %d\n", id, cx->fd, GetLastError());
+                    cx->recv->connected = 0;
+                    closesocket((sock_t)cx->fd);
+                    on_close(ctx, elfd, (fd_t)cx->recv);
+                    free(cx->recv->send);
+                    free(cx->recv);  
+                } else {
+                    cx->recv->connected = 1;
+                    dbgf("[%d] connect to %llu successful\n", id, cx->fd);
+                    on_write(ctx, elfd, (fd_t)cx->recv, events[n].dwNumberOfBytesTransferred);
+                    status = WSARecv((sock_t)childfd, &cx->recv->wsaBuf, 1, NULL, &cx->recv->flags, &cx->recv->ol, NULL);
+                    if(status > 0 || (status == SOCKET_ERROR && GetLastError() != WSA_IO_PENDING)) {
+                        dbg("serve: connect recv failed");
+                    }
                 }
             }
             

@@ -186,8 +186,8 @@ end)
 To make coding easier, `aio:cor` and `aio:buffered_cor` exist to make code look more sequential when dealing with events of incoming data.
 
 ```lua
-local sock = aio:connect("localhost", 80)
-function sock:on_open() sock:write("GET / HTTP/1.1\r\n\r\n") end
+local sock = aio:connect(ELFD, "localhost", 80)
+function sock:on_connect() sock:write("GET / HTTP/1.1\r\n\r\n") end
 
 --- This
 function sock:on_data(elfd, childfd, data, len)

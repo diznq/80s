@@ -61,6 +61,7 @@ struct winevent {};
 #define S80_WIN_OP_READ 1
 #define S80_WIN_OP_ACCEPT 2
 #define S80_WIN_OP_WRITE 3
+#define S80_WIN_OP_CONNECT 4
 
 struct context_holder {
     int op;
@@ -74,6 +75,8 @@ struct context_holder {
     struct context_holder *recv, *send;
     OVERLAPPED ol;
 };
+
+struct context_holder* new_fd_context(fd_t childfd, int fdtype);
 #define event_t winevent
 #else
 #error unsupported platform

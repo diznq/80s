@@ -85,7 +85,11 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
     }
 
     // create a non-blocking socket
+    #ifdef UNIX_BASED
     childfd = (fd_t)socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    #else
+    childfd = (fd_t)WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
+    #endif
     s80_enable_async(childfd);
 
     if (found6 && v6) {
@@ -103,12 +107,12 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
         return (fd_t)-1;
     }
 
+    #ifdef UNIX_BASED
     if (usev6) {
         status = connect((sock_t)childfd, (const struct sockaddr *)&ipv6addr, sizeof(ipv6addr));
     } else {
         status = connect((sock_t)childfd, (const struct sockaddr *)&ipv4addr, sizeof(ipv4addr));
     }
-
     if (status == 0 || errno == EINPROGRESS) {
 #ifdef USE_EPOLL
         // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
@@ -128,6 +132,56 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
         }
         return childfd;
     }
+    #else
+    LPFN_CONNECTEX lpConnectEx = NULL;
+    GUID guid = WSAID_CONNECTEX;
+    DWORD dwNumBytes = 0;
+    WSAIoctl((sock_t)childfd, SIO_GET_EXTENSION_FUNCTION_POINTER, &guid, sizeof(guid), &lpConnectEx, sizeof(lpConnectEx), &dwNumBytes, NULL, NULL);
+    
+    if(lpConnectEx == NULL) {
+        dbg("l_net_connect: couldn't retrieve ConnectEx");
+        return (fd_t)-1;
+    }
+    const struct sockaddr *sa = NULL;
+    union addr_common binding;
+    memset(&binding, 0, sizeof(binding));
+    if(usev6) {
+        binding.v6.sin6_family = AF_INET6;
+        sa = (const struct sockaddr*)&binding.v6;
+    } else {
+        binding.v4.sin_family = AF_INET;
+        sa = (const struct sockaddr*)&binding.v4;
+    }
+
+    if(bind((sock_t)childfd, sa, usev6 ? sizeof(binding.v6) : sizeof(binding.v4)) < 0) {
+        dbg("l_net_connect: bind failed");
+        return (fd_t)-1;
+    }
+    
+    if(CreateIoCompletionPort(childfd, elfd, (ULONG_PTR)S80_FD_SOCKET, 0) == NULL) {
+        dbg("l_net_connect: couldn't associate with iocp");
+        return (fd_t)-1;
+    }
+
+    struct context_holder *cx = new_fd_context(childfd, S80_FD_SOCKET);
+
+    if(usev6) {
+        sa = (const struct sockaddr *)&ipv6addr;
+    } else {
+        sa = (const struct sockaddr *)&ipv4addr;
+    }
+
+    cx->send->op = S80_WIN_OP_CONNECT;
+    cx->recv->op = S80_WIN_OP_READ;
+    status = lpConnectEx((sock_t)childfd, sa, usev6 ? sizeof(ipv6addr) : sizeof(ipv4addr), NULL, 0, &cx->send->length, &cx->send->ol);
+    if(status == TRUE || GetLastError() == WSA_IO_PENDING) {
+        return (fd_t)cx->recv;
+    } else {
+        dbg("l_net_connect: connectex failed");
+        free(cx->send->recv);
+        free(cx->send);
+    }
+    #endif
 
     return (fd_t)-1;
 }
@@ -219,6 +273,11 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
 int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port) {
     union addr_common addr;
     socklen_t clientlen = sizeof(addr);
+
+    #ifdef USE_IOCP
+    struct context_holder *cx = (struct context_holder*)fd;
+    fd = cx->fd;
+    #endif
 
     if (getsockname((sock_t)fd, (struct sockaddr *)&addr, &clientlen) < 0) {
         return 0;
