@@ -163,20 +163,11 @@ void *serve(void *vparams) {
                     free(cx->recv);
                 } else {
                     readlen = events[n].dwNumberOfBytesTransferred;
-                    while(1) {
-                        on_receive(ctx, elfd, (fd_t)cx->recv, cx->fdtype, cx->recv->data, readlen);
-                        if(!cx->recv->connected) break;
+                    on_receive(ctx, elfd, (fd_t)cx->recv, cx->fdtype, cx->recv->data, readlen);
+                    if(cx->recv->connected) {
                         status = WSARecv((sock_t)childfd, &cx->recv->wsaBuf, 1, NULL, &cx->recv->flags, &cx->recv->ol, NULL);
-                        if(status == SOCKET_ERROR) {
-                            if(GetLastError() == WSA_IO_PENDING) {
-                                break;
-                            } else {
-                                dbg("serve: recv failed");
-                            }
-                            break;
-                        } else {
-                            dbg("serve: recv did not error");
-                            break;
+                        if(status != SOCKET_ERROR || GetLastError() != WSA_IO_PENDING) {
+                            dbg("serve: recv failed");
                         }
                     }
                 }

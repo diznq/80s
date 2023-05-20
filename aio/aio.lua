@@ -894,8 +894,6 @@ function aio:watch(elfd, targets, on_change)
             end
         end
         return sock
-    else
-        print(err)
     end
     return nil
 end
