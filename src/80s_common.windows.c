@@ -266,8 +266,9 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
     char buf[8192];
     int status, i, j, pid;
     char pipe_names[2][255];
-    sprintf(pipe_names[0], "\\\\.\\pipe\\80s_STDIN_%d", pipe_counter++);
-    sprintf(pipe_names[1], "\\\\.\\pipe\\80s_STDOUT_%d", pipe_counter);
+    pipe_counter++; // is this thread safe?
+    sprintf(pipe_names[0], "\\\\.\\pipe\\80s_STDIN_%d_%d_%d", GetCurrentProcessId(), GetCurrentThreadId(), pipe_counter);
+    sprintf(pipe_names[1], "\\\\.\\pipe\\80s_STDOUT_%d_%d_%d",  GetCurrentProcessId(), GetCurrentThreadId(), pipe_counter);
     pipes_out[0] = pipes_out[1] = NULL;
 
     dynstr_init(&ds, buf, sizeof(buf));
