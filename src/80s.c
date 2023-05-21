@@ -64,9 +64,9 @@ static int get_cpus() {
 #elif defined(_GNU_SOURCE)
     count = get_nprocs();
 #elif defined(_WIN32)
-    // SYSTEM_INFO info;
-    // GetSystemInfo(&info);
-    // count = info.dwNumberOfProcessors;
+    SYSTEM_INFO info;
+    GetSystemInfo(&info);
+    count = info.dwNumberOfProcessors;
 #endif
     return count > 0 ? count : 1;
 }

@@ -74,8 +74,8 @@ void *serve(void *vparams) {
                 error("serve: failed to add parentfd socket to iocp");
             }
             
-            // preload 8 accepts
-            for(n=0; n<16; n++) {
+            // preload workers * 3 accepts
+            for(n=0; n<workers * 3; n++) {
                 childfd = (fd_t)WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
                 s80_enable_async(childfd);
                 // prepare overlapped structs for both recv and send for newly accepted socket
