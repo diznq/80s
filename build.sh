@@ -85,7 +85,7 @@ echo "Lua library directory: $LUA_LIB"
 if [ "$LINK" = "dynamic" ]; then
   DEFINES="$DEFINES -DS80_DYNAMIC=1"
   DEFINES="$DEFINES -DS80_SO=$OUT.so"
-  $CC src/80s_common.c src/dynstr.c src/algo.c \
+  $CC src/80s_common.c src/80s_common.windows.c src/dynstr.c src/algo.c \
       src/lua.c src/lua_net.c src/lua_codec.c src/lua_crypto.c \
       src/serve.epoll.c src/serve.kqueue.c src/serve.iocp.c \
       -shared -fPIC \
@@ -99,7 +99,7 @@ if [ "$LINK" = "dynamic" ]; then
     $CC src/80s.c $DEFINES $FLAGS -fPIC $LUA_LIB $LIBS -o "$OUT"
   fi
 else
-  $CC src/80s.c src/80s_common.c src/dynstr.c src/algo.c \
+  $CC src/80s.c src/80s_common.c src/80s_common.windows.c src/dynstr.c src/algo.c \
       src/lua.c src/lua_net.c src/lua_codec.c src/lua_crypto.c \
       src/serve.epoll.c src/serve.kqueue.c src/serve.iocp.c \
       "$LUA_LIB" \

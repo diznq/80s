@@ -58,15 +58,7 @@ aio:http_get("/visit", function (self, query, headers, body)
     local args = aio:parse_query(query)
     local url = args.url or "http://localhost:8080/haha"
 
-    local rd, wr = aio:popen(ELFD, "curl", "--silent", url)
-    if rd ~= nil then
-        aio:cor(rd, function (stream, resolve)
-            local data = {}
-            for chunk in stream do
-                table.insert(data, chunk)
-                coroutine.yield()
-            end
-            self:http_response("200 OK", "text/plain", table.concat(data))
-        end)
-    end
+    aio:popen_read(ELFD, "curl", "--silent", url)(function (contents)
+        self:http_response("200 OK", "text/plain", contents or "")
+    end)
 end)
