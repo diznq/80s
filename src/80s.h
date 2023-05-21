@@ -31,6 +31,7 @@ extern "C" {
     #include <sys/types.h>
     #include <sys/event.h>
     #include <semaphore.h>
+    typedef int sock_t;
     typedef int fd_t;
     #define event_t kevent
     #ifdef __FreeBSD__
