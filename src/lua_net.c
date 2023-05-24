@@ -108,8 +108,7 @@ static int l_net_readfile(lua_State *L) {
 static int l_net_reload(lua_State *L) {
     const char *entrypoint;
     struct live_reload *reload;
-    int status, i;
-    char buf[4];
+    int status;
 
     if(lua_gettop(L) == 1 && lua_type(L, 1) == LUA_TLIGHTUSERDATA) {
         reload = (struct live_reload*)lua_touserdata(L, 1);
@@ -253,11 +252,8 @@ static int l_net_inotify_read(lua_State *L) {
 }
 
 static int l_net_listdir(lua_State *L) {
-    struct dirent **eps = NULL;
-    struct stat s;
-    char full_path[2000];
     int n, i;
-    char buf[1000];
+    char full_path[2000], buf[1000];
     const char *dir_name = lua_tostring(L, 1);
     
     lua_newtable(L);
@@ -292,6 +288,8 @@ static int l_net_listdir(lua_State *L) {
         lua_rawseti(L, -2, ++i);
     } while(FindNextFileA(hFind, &data));
 #else
+    struct dirent **eps = NULL;
+    struct stat s;
     n = scandir(dir_name, &eps, NULL, alphasort);
     while (n >= 0 && n--) {
         if (!strcmp(eps[n]->d_name, ".") || !strcmp(eps[n]->d_name, "..")) {
@@ -313,20 +311,27 @@ static int l_net_listdir(lua_State *L) {
         }
         lua_rawseti(L, -2, ++i);
     }
-#endif
-
+    
     if (eps != NULL) {
         free(eps);
     }
-
+#endif
     return 1;
 }
 
 static int l_net_clock(lua_State *L) {
-    struct timespec tp;
     double t;
+#ifdef UNIX_BASED
+    struct timespec tp;
     clock_gettime(CLOCK_MONOTONIC, &tp);
     t = tp.tv_sec + tp.tv_nsec / 1000000000.0;
+#else
+    FILETIME file_time;
+    uint64_t ns;
+    GetSystemTimeAsFileTime(&file_time);
+    ns = (((uint64_t)file_time.dwHighDateTime) << 32) | (file_time.dwLowDateTime);
+    t = ns / 10000000.0;
+#endif
     lua_pushnumber(L, (lua_Number)t);
     return 1;
 }
