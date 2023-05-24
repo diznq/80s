@@ -62,3 +62,10 @@ aio:http_get("/visit", function (self, query, headers, body)
         self:http_response("200 OK", "text/plain", contents or "")
     end)
 end)
+
+aio:http_get("/search", function(self, query, headers, body)
+    local args = aio:parse_query(query)
+    local haystack = args.haystack or ""
+    local needle = args.needle or ""
+    self:http_response("200 OK", "application/json", {net.partscan(haystack, needle, 0)})
+end)

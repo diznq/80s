@@ -29,7 +29,6 @@ void s80_enable_async(fd_t fd) {
 }
 
 fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
-    struct event_t ev[2];
     struct sockaddr_in ipv4addr;
     struct sockaddr_in6 ipv6addr;
     int status, i, found4 = 0, found6 = 0, usev6 = 0, found = 0, v6 = 0;
@@ -157,8 +156,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
     return (fd_t)-1;
 }
 
-ssize_t s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, ssize_t offset, size_t len) {
-    struct event_t ev;
+int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, size_t offset, size_t len) {
     int status;
     size_t writelen;
 
@@ -198,7 +196,6 @@ ssize_t s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *da
 }
 
 int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
-    struct event_t ev;
     int status = 0;
 
     if (status < 0) {

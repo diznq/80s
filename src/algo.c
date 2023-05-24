@@ -1,9 +1,9 @@
 #include "algo.h"
 #include <string.h>
-#include <sys/types.h>
+#include <stdint.h>
 
 struct kmp_result kmp(const char* haystack, size_t len, const char* pattern, size_t pattern_len, size_t offset) {
-    ssize_t i, j, k;
+    int64_t i, j, k;
     struct kmp_result result;
     int match = 0, KMP_T[256];
     result.offset = len;
@@ -27,7 +27,7 @@ struct kmp_result kmp(const char* haystack, size_t len, const char* pattern, siz
     KMP_T[0] = -1;
     j = 0;
     i = 1;
-    while (i < (ssize_t)pattern_len) {
+    while (i < (int64_t)pattern_len) {
         if (pattern[i] == pattern[j]) {
             KMP_T[i] = KMP_T[j];
         } else {
@@ -40,13 +40,13 @@ struct kmp_result kmp(const char* haystack, size_t len, const char* pattern, siz
     }
     KMP_T[i] = j;
 
-    j = (ssize_t)offset;
+    j = (int64_t)offset;
     k = 0;
-    while (j < (ssize_t)len) {
+    while (j < (int64_t)len) {
         if (pattern[k] == haystack[j]) {
             j++;
             k++;
-            if (k == (ssize_t)pattern_len) {
+            if (k == (int64_t)pattern_len) {
                 result.offset = j - k;
                 result.length = k;
                 return result;

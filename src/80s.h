@@ -59,7 +59,7 @@ extern "C" {
     typedef SOCKET sock_t;
     typedef HANDLE fd_t;
     typedef HANDLE sem_t;
-    struct winevent {};
+    struct winevent { int reserved; };
 
     #define S80_WIN_OP_READ 1
     #define S80_WIN_OP_ACCEPT 2
@@ -148,7 +148,7 @@ void on_write(void *ctx, fd_t elfd, fd_t childfd, int written);
 void on_init(void *ctx, fd_t elfd, fd_t parentfd);
 
 fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int port);
-ssize_t s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, ssize_t offset, size_t len);
+int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, size_t offset, size_t len);
 int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype);
 int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port);
 int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args);

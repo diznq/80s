@@ -130,7 +130,7 @@ static int l_crypto_cipher(lua_State *L) {
         if (len < hmac_len + 4) {
             use_iv = 0;
             iv_len = 0;
-        } else if (((ssize_t)len) - (*(int *)(data + hmac_len) + hmac_len + 4) <= 16) {
+        } else if (((long long)len) - (*(int *)(data + hmac_len) + hmac_len + 4) <= 16) {
             use_iv = 0;
             iv_len = 0;
         } else {

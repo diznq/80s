@@ -122,7 +122,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
     return (fd_t)-1;
 }
 
-ssize_t s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, ssize_t offset, size_t len) {
+int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, size_t offset, size_t len) {
     struct event_t ev;
     int status;
     size_t writelen = write(childfd, data + offset, len - offset);
