@@ -3,5 +3,5 @@
 #include <lua.h>
 
 // Lua cryptography extensions
-LUALIB_API int luaopen_crypto(lua_State *L);
+int luaopen_crypto(lua_State *L);
 #endif

@@ -638,7 +638,7 @@ static int l_crypto_random(lua_State *L) {
     return 1;
 }
 
-LUALIB_API int luaopen_crypto(lua_State *L) {
+int luaopen_crypto(lua_State *L) {
     const luaL_Reg netlib[] = {
         {"sha1", l_crypto_sha1},
         {"sha256", l_crypto_sha256},

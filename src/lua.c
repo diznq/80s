@@ -135,7 +135,6 @@ static void refresh_lua(lua_State *L, fd_t elfd, int id, const char *entrypoint,
 }
 
 static lua_State *create_lua(fd_t elfd, int id, const char *entrypoint, struct live_reload *reload) {
-    int status;
     lua_State *L = lua_newstate(reload->allocator, reload->ud);
 
     if (L == NULL) {

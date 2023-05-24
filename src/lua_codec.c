@@ -763,7 +763,7 @@ static int l_codec_html_encode(lua_State *L) {
     return 1;
 }
 
-LUALIB_API int luaopen_codec(lua_State *L) {
+int luaopen_codec(lua_State *L) {
     int i;
     const luaL_Reg netlib[] = {
         {"json_encode", l_codec_json_encode},

@@ -3,5 +3,5 @@
 #include <lua.h>
 
 // Lua encoders & decoders
-LUALIB_API int luaopen_codec(lua_State *L);
+int luaopen_codec(lua_State *L);
 #endif

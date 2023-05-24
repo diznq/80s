@@ -3,5 +3,5 @@
 #include <lua.h>
 
 // Lua networking functions and utilities
-LUALIB_API int luaopen_net(lua_State *L);
+int luaopen_net(lua_State *L);
 #endif

@@ -10,10 +10,10 @@
 #include <string.h>
 #include <time.h>
 
-#include <dirent.h>
-
 #ifdef _WIN32
 #include <Windows.h>
+#else
+#include <dirent.h>
 #endif
 
 #ifdef USE_INOTIFY
@@ -410,7 +410,7 @@ static int l_net_info(lua_State *L) {
     return 1;
 }
 
-LUALIB_API int luaopen_net(lua_State *L) {
+int luaopen_net(lua_State *L) {
     const luaL_Reg netlib[] = {
         {"write", l_net_write},
         {"close", l_net_close},

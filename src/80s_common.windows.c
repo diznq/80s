@@ -158,7 +158,6 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
 
 int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, size_t offset, size_t len) {
     int status;
-    size_t writelen;
 
     struct context_holder *cx = (struct context_holder*)childfd;
     // if there was some previous buffer, free it, although this shouldn't happen
@@ -256,12 +255,12 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
     PROCESS_INFORMATION piProcInfo; 
     STARTUPINFOA siStartInfo;
     BOOL bSuccess = FALSE;
-    fd_t piperd[2] = {INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE}, pipewr[2] = {INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE}, *pipex;
+    fd_t piperd[2] = {INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE}, pipewr[2] = {INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE};
     fd_t childfd;
     struct context_holder *cx;
     struct dynstr ds;
     char buf[8192];
-    int status, i, j, pid;
+    int i, j;
     char pipe_names[2][255];
     pipe_counter++; // is this thread safe?
     sprintf(pipe_names[0], "\\\\.\\pipe\\80s_STDIN_%d_%d_%d", GetCurrentProcessId(), GetCurrentThreadId(), pipe_counter);
