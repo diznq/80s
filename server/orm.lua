@@ -165,6 +165,11 @@ function orm:create(sql, repo)
             end
             table.insert(tuples, "(" .. table.concat(values, ",") .. ")" )
         end
+        if #tuples == 0 then
+            local resolve, resolver = aio:prepare_promise()
+            resolve({ok = true, affected_rows = 0})
+            return resolver
+        end
         local final_query = kw .. insert_base_query .. " " ..  table.concat(tuples, ",")
         return sql:exec(final_query, unpack(params))
     end
