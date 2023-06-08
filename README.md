@@ -47,25 +47,6 @@ To run the server, execute `bin/80s server/simple_http.lua`, optionally `bin/80s
 - `-m module1.so,module2.so,...`: list of comma separated modules to be loaded (default empty)
 - `-c concurrency`: set concurrency level (defaults to number of machine CPUs)
 
-## Creating custom C modules
-
-To extend the C functionality, custom modules can be created that contain `on_load` and `on_unload` procedures.
-
-Example:
-
-```c
-#include <stdio.h> 
-#include "../src/80s.h"
-
-int on_load(void *ctx, struct serve_params *params, int reload) {
-    printf("on load, worker: %d\n", params->workerid);
-}
-
-int on_unload(void *ctx, struct serve_params *params, int reload) {
-    printf("on unload, worker: %d\n", params->workerid);
-}
-```
-
 ## Benchmark
 
 By using `server/simple_http.lua` as basis for simple benchmarking, that is:
@@ -137,6 +118,27 @@ For systems supporting inotify API following additional APIs are available:
 - `net.inotify_add(elfd, fd, path)`: adds path to watchlist and returns wd (watch descriptor)
 - `net.inotify_remove(elfd, fd, wd)`: remove wd from inotify listener
 - `net.inotify_read(data)`: decode inotify event to Lua table structure
+
+
+## Creating custom C modules
+
+To extend the C functionality, custom modules can be created that contain `on_load` and `on_unload` procedures.
+
+Example:
+
+```c
+#include <stdio.h> 
+#include "../src/80s.h"
+
+int on_load(void *ctx, struct serve_params *params, int reload) {
+    printf("on load, worker: %d\n", params->workerid);
+}
+
+int on_unload(void *ctx, struct serve_params *params, int reload) {
+    printf("on unload, worker: %d\n", params->workerid);
+}
+```
+
 
 ## Async helpers
 
