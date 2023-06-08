@@ -220,8 +220,8 @@ int main(int argc, const char **argv) {
             #elif defined(_WIN32)
                 module->dlcurrent = (void*)LoadLibraryA(module->path);
                 if(module->dlcurrent) {
-                    module->load = GetProcAddress((HMODULE)module->dlcurrent, "on_load");
-                    module->unload = GetProcAddress((HMODULE)module->dlcurrent, "on_unload");
+                    module->load = (load_module_t)GetProcAddress((HMODULE)module->dlcurrent, "on_load");
+                    module->unload = (unload_module_t)GetProcAddress((HMODULE)module->dlcurrent, "on_unload");
                     dbgf("loaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
                 }
             #endif
