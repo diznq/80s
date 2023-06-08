@@ -28,9 +28,10 @@ union addr_common {
 void *serve(void *vparams) {
     fd_t *els, elfd, parentfd, childfd, sigfd, selfpipe;
     int nfds, status, n, readlen, workers, id, flags, fdtype, closed = 0;
-    int running = 1;
+    int running = 1, is_reload = 0;
     sigset_t sigmask;
     socklen_t clientlen = sizeof(union addr_common);
+    struct module_extension *module;
     struct signalfd_siginfo siginfo;
     unsigned accepts;
     void *ctx;
@@ -53,6 +54,7 @@ void *serve(void *vparams) {
     workers = params->workers;
     ctx = params->ctx;
     elfd = params->els[id];
+    module = params->reload->modules;
     sigfd = params->extra[S80_EXTRA_SIGNALFD];
     selfpipe = params->reload->pipes[id][0];
 
@@ -113,6 +115,12 @@ void *serve(void *vparams) {
         params->initialized = 1;
     } else {
         refresh_context(ctx, elfd, id, params->entrypoint, params->reload);
+        is_reload = 1;
+    }
+
+    while(module) {
+        if(module->load) module->load(ctx, params, is_reload);
+        module = module->next;
     }
 
     while(running)
@@ -217,6 +225,12 @@ void *serve(void *vparams) {
                 }
             }
         }
+    }
+
+    module = params->reload->modules;
+    while(module) {
+        if(module->unload) module->unload(ctx, params, params->quit == 0);
+        module = module->next;
     }
 
     if(params->quit) {

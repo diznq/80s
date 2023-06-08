@@ -41,11 +41,12 @@ struct context_holder* new_fd_context(fd_t childfd, int fdtype) {
 
 void *serve(void *vparams) {
     fd_t *els, elfd, parentfd, childfd, selfpipe;
+    struct module_extension *module;
     OVERLAPPED_ENTRY events[MAX_EVENTS];
     ULONG nfds, n;
     struct context_holder *cx;
     struct serve_params *params;
-    int flags, fdtype, status, readlen, workers, id, running = 1;
+    int flags, fdtype, status, readlen, workers, id, running = 1, is_reload = 0;
     unsigned accepts;
     void *ctx;
     
@@ -56,6 +57,7 @@ void *serve(void *vparams) {
     id = params->workerid;
     ctx = params->ctx;
     workers = params->workers;
+    module = params->reload->modules;
     selfpipe = params->reload->pipes[id][0];
     elfd = els[id];
 
@@ -110,6 +112,12 @@ void *serve(void *vparams) {
         params->initialized = 1;
     } else {
         refresh_context(ctx, elfd, id, params->entrypoint, params->reload);
+        is_reload = 1;
+    }
+
+    while(module) {
+        if(module->load) module->load(ctx, params, is_reload);
+        module = module->next;
     }
 
     while(running)
@@ -239,6 +247,12 @@ void *serve(void *vparams) {
                 break;
             }
         }
+    }
+
+    module = params->reload->modules;
+    while(module) {
+        if(module->unload) module->unload(ctx, params, params->quit == 0);
+        module = module->next;
     }
 
     if(params->quit) {

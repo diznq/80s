@@ -24,8 +24,9 @@ union addr_common {
 
 void *serve(void *vparams) {
     fd_t *els, elfd, parentfd, childfd, selfpipe;
-    int nfds, flags, fdtype, status, n, readlen, workers, id, running = 1;
+    int nfds, flags, fdtype, status, n, readlen, workers, id, running = 1, is_reload = 0;
     socklen_t clientlen = sizeof(union addr_common);
+    struct module_extension *module;
     unsigned accepts;
     void *ctx;
     union addr_common clientaddr;
@@ -44,6 +45,7 @@ void *serve(void *vparams) {
     id = params->workerid;
     ctx = params->ctx;
     workers = params->workers;
+    module = params->reload->modules;
     selfpipe = params->reload->pipes[id][0];
     elfd = els[id];
 
@@ -81,6 +83,12 @@ void *serve(void *vparams) {
         params->initialized = 1;
     } else {
         refresh_context(ctx, elfd, id, params->entrypoint, params->reload);
+        is_reload = 1;
+    }
+
+    while(module) {
+        if(module->load) module->load(ctx, params, is_reload);
+        module = module->next;
     }
 
     while(running)
@@ -181,6 +189,12 @@ void *serve(void *vparams) {
                 }
             }
         }
+    }
+
+    module = params->reload->modules;
+    while(module) {
+        if(module->unload) module->unload(ctx, params, params->quit == 0);
+        module = module->next;
     }
 
     if(params->quit) {

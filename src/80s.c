@@ -17,6 +17,7 @@
 #include <strings.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <dlfcn.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -26,9 +27,6 @@
 #include <sys/types.h>
 #ifdef USE_KQUEUE
 #include <sys/sysctl.h>
-#endif
-#ifdef S80_DYNAMIC
-#include <dlfcn.h>
 #endif
 #endif
 
@@ -52,6 +50,16 @@ static int get_arg(const char *arg, int default_value, int flag, int argc, const
     return flag ? 0 : default_value;
 }
 
+static const char *get_sz_arg(const char *arg, int argc, const char **argv) {
+    int i;
+    for(i=1; i < argc - 1; i++) {
+        if(!strcmp(argv[i], arg)) {
+            return argv[i + 1];
+        }
+    }
+    return (const char*)NULL;
+}
+
 static int get_cpus() {
     int count = 1;
 #if defined(USE_KQUEUE)
@@ -72,21 +80,41 @@ static int get_cpus() {
 }
 
 static void* run(void *params_) {
-    #ifndef S80_DYNAMIC
+#ifndef S80_DYNAMIC
     return serve(params_);
-    #else
+#elif defined(_WIN32)
+    // Windows support not required as it doesn't support live-reload
+    // in first place as files that are loaded cannot be overwritten
+    // during the run!
+    return  serve(params_);
+#else
     struct serve_params *params = (struct serve_params*)params_;
     struct live_reload *reload = params->reload;
+    struct module_extension *module = reload->modules;
     void *result = NULL;
     dynserve_t serve;
     for(;;) {
         dbgf("run: worker %d acquiring lock\n", params->workerid);
         sem_wait(&reload->serve_lock);
         reload->ready++;
+        module = reload->modules;
         if(reload->ready == reload->workers) {
             dbgf("run: all workers ready, reloading dynamic library\n");
             if(reload->dlcurrent != NULL && dlclose(reload->dlcurrent) < 0) {
                 error("run: failed to close previous dynamic library");
+            }
+            // only reload if not quitting, otherwise it's handled in main
+            while(params->quit == 0 && module) {
+                if(module->dlcurrent && dlclose(module->dlcurrent) < 0) {
+                    dbgf("run: failed to unload module %s\n", module->path);
+                }
+                module->dlcurrent = dlopen(module->path, RTLD_LAZY);
+                if(module->dlcurrent) {
+                    module->load = (load_module_t)dlsym(module->dlcurrent, "on_load");
+                    module->unload = (unload_module_t)dlsym(module->dlcurrent, "on_unload");
+                    dbgf("reloaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
+                }
+                module = module->next;
             }
             reload->dlcurrent = dlopen(S80_DYNAMIC_SO, RTLD_LAZY);
             if(reload->dlcurrent == NULL) {
@@ -119,7 +147,7 @@ static void* run(void *params_) {
         dbgf("run: worker %d stopped, quit: %d\n", params->workerid, params->quit);
         if(params->quit) return result;
     }
-    #endif
+#endif
 }
 
 static void* allocator(void* ud, void* ptr, size_t old_size, size_t new_size) {
@@ -132,15 +160,19 @@ static void* allocator(void* ud, void* ptr, size_t old_size, size_t new_size) {
 
 int main(int argc, const char **argv) {
     const int workers = get_arg("-c", get_cpus(), 0, argc, argv);
-    char resolved[100];
+    char resolved[100], *p, *q;
     int optval, i,
         portno = get_arg("-p", 8080, 0, argc, argv),
         v6 = get_arg("-6", 0, 1, argc, argv);
     fd_t parentfd;
     union addr_common serveraddr;
-    void *serve_handle = NULL;
+    struct module_extension *module = NULL, 
+                            *module_head = NULL, 
+                            *modules = NULL;
     const char *entrypoint;
+    const char *module_list = get_sz_arg("-m", argc, argv);
     const char *addr = v6 ? "::" : "0.0.0.0";
+    char *module_names = NULL;
     struct serve_params params[workers];
     sem_t serve_lock;
     #ifdef _WIN32
@@ -150,6 +182,58 @@ int main(int argc, const char **argv) {
     #endif
     fd_t els[workers];
     fd_t pipes[workers][2];
+
+    if(module_list) {
+        // go over all comma separated values, replacing comma with \0
+        // p holds current pivot, q holds pointer to beginning of the
+        // last found module name
+        p = q = module_names = (char*)calloc(1, strlen(module_list) + 4);
+        strcpy(module_names, module_list);
+        while(*p) {
+            if(*p == ',')
+                *p = 0;
+            p++;
+        }
+        // now that we replaced all , with \0, we can search for all 
+        // string\0 values, last one being string\0\0
+        p = module_names;
+        while(1) {
+            // if we encountered \0, load library located at str[q:p]
+            if(*p == 0 && p != q) {
+                module = (struct module_extension*)calloc(1, sizeof(struct module_extension));
+                if(module_head == NULL) {
+                    module_head = module;
+                    modules = module;
+                } else {
+                    module_head->next = module;
+                    module_head = module;
+                }
+                module->path = q;
+            #if defined(UNIX_BASED) && !defined(S80_RELOAD)
+                // load first time only in case live reload is disabled
+                module->dlcurrent = dlopen(module->path, RTLD_LAZY);
+                if(module->dlcurrent) {
+                    module->load = (load_module_t)dlsym(module->dlcurrent, "on_load");
+                    module->unload = (unload_module_t)dlsym(module->dlcurrent, "on_unload");
+                    dbgf("loaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
+                }
+            #elif defined(_WIN32)
+                module->dlcurrent = (void*)LoadLibraryA(module->path);
+                if(module->dlcurrent) {
+                    module->load = GetProcAddress((HMODULE)module->dlcurrent, "on_load");
+                    module->unload = GetProcAddress((HMODULE)module->dlcurrent, "on_unload");
+                    dbgf("loaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
+                }
+            #endif
+                q = p + 1;
+            }
+            // if we find \0\0, break
+            if(*p == 0 && *(p + 1) == 0) {
+                break;
+            }
+            p++;
+        }
+    }
 
     memset(params, 0, sizeof(params));
     memset(&reload, 0, sizeof(reload));
@@ -161,6 +245,7 @@ int main(int argc, const char **argv) {
     reload.allocator = allocator;
     reload.ud = &reload;
     reload.pipes = pipes;
+    reload.modules = modules;
 
     #ifdef UNIX_BASED
     sem_init(&reload.serve_lock, 0, 1);
@@ -268,4 +353,22 @@ int main(int argc, const char **argv) {
     for (i = 1; i < workers; i++)
         pthread_join(handles[i], NULL);
     #endif
+
+    if(module_names) {
+        free(module_names);
+    }
+
+    while(modules) {
+        module_head = modules->next;
+        if(modules->dlcurrent) {
+        #ifdef UNIX_BASED
+            dlclose(modules->dlcurrent);
+        #elif defined(_WIN32)
+            FreeLibrary((HMODULE)modules->dlcurrent);
+        #endif
+        }
+        free(modules);
+        modules = module_head;
+    }
+    
 }

@@ -85,8 +85,23 @@ extern "C" {
 #error unsupported platform
 #endif
 
+struct serve_params;
+struct module_extension;
+struct live_reload;
+
 typedef void*(*dynserve_t)(void*);
 typedef void*(*alloc_t)(void*, void*, size_t, size_t);
+// load/unload(context, params, reload)
+typedef void(*load_module_t)(void*, struct serve_params*, int);
+typedef void(*unload_module_t)(void*, struct serve_params*, int);
+
+struct module_extension {
+    const char *path;
+    void *dlcurrent;
+    load_module_t load;
+    unload_module_t unload;
+    struct module_extension *next;
+};
 
 struct live_reload {
     int running;
@@ -96,7 +111,7 @@ struct live_reload {
     dynserve_t serve;
     sem_t serve_lock;
     void *dlcurrent;
-    void *dlprevious;
+    struct module_extension *modules;
     alloc_t allocator;
     void *ud;
     fd_t (*pipes)[2];
@@ -104,13 +119,13 @@ struct live_reload {
 
 struct serve_params {
     // local to each thread
-    int initialized;
-    fd_t parentfd;
+    void *ctx;
     int workerid;
     int workers;
+    int initialized;
     int quit;
+    fd_t parentfd;
     fd_t extra[4];
-    void *ctx;
     // shared across all
     fd_t *els;
     const char *entrypoint;
