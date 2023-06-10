@@ -86,7 +86,18 @@ static void* run(void *params_) {
     // Windows support not required as it doesn't support live-reload
     // in first place as files that are loaded cannot be overwritten
     // during the run!
-    return  serve(params_);
+    struct serve_params *params = (struct serve_params*)params_;
+    struct live_reload *reload = params->reload;
+    dynserve_t serve;
+    reload->dlcurrent = (void*)LoadLibraryA(S80_DYNAMIC_SO);
+    if(reload->dlcurrent == NULL) {
+        error("run: failed to open dynamic library");
+    }
+    reload->serve = (dynserve_t)GetProcAddress((HMODULE)reload->dlcurrent, "serve");
+    if(reload->serve == NULL) {
+        error("run: failed to locate serve procedure");
+    }
+    return reload->serve(params_);
 #else
     struct serve_params *params = (struct serve_params*)params_;
     struct live_reload *reload = params->reload;
@@ -332,7 +343,7 @@ int main(int argc, const char **argv) {
 
         if (i > 0) {
             #ifdef _WIN32
-            handles[i] = CreateThread(NULL, 1 << 17, (LPTHREAD_START_ROUTINE)serve, (void*)&params[i], 0, NULL);
+            handles[i] = CreateThread(NULL, 1 << 17, (LPTHREAD_START_ROUTINE)run, (void*)&params[i], 0, NULL);
             if(handles[i] == INVALID_HANDLE_VALUE) {
                 error("main: failed to create thread");
             }

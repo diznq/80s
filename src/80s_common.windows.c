@@ -377,7 +377,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
 }
 
 int s80_reload(struct live_reload *reload) {
-#ifdef S80_DYNAMIC
+#if defined(S80_DYNAMIC) && defined(UNIX_BASED)
     int i;
     char buf[4];
     if(reload->ready < reload->workers) {
