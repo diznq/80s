@@ -5,6 +5,7 @@ SO_SEARCH_PATH="$LUA_LIB_PATH /usr/lib64/liblua.so /usr/local/lib/liblua-5.4.so 
 JIT_SO_SEARCH_PATH="$LUA_LIB_PATH /usr/lib64/libluajit-5.1.so* /usr/local/lib/libluajit-5.1.so*"
 LIB_SEARCH_PATH="$LUA_LIB_PATH /usr/local/lib/liblua.a /usr/local/lib/liblua-5.4.a /mingw64/lib/liblua.a"
 JIT_LIB_SEARCH_PATH="$LUA_LIB_PATH /usr/local/lib/libluajit-5.1.a /mingw64/lib/libluajit-5.1.a"
+SO_EXT="so"
 
 if [ "$JIT" = "true" ]; then
   INC_SEARCH_PATH="$JIT_INC_SEARCH_PATH"
@@ -59,6 +60,7 @@ DEFINES=""
 LIBS="-lm -ldl -lpthread -lcrypto -lssl"
 
 if [ "$(uname -o)" = "Msys" ]; then
+  SO_EXT="dll"
   LIBS=$(echo "$LIBS" | sed "s/-ldl//g")
   LIBS="$LIBS -lws2_32 -lmswsock"
 fi
@@ -84,7 +86,7 @@ echo "Lua library directory: $LUA_LIB"
 
 if [ "$LINK" = "dynamic" ]; then
   DEFINES="$DEFINES -DS80_DYNAMIC=1"
-  DEFINES="$DEFINES -DS80_SO=$OUT.so"
+  DEFINES="$DEFINES -DS80_SO=$OUT.$SO_EXT"
   $CC src/80s_common.c src/80s_common.windows.c src/dynstr.c src/algo.c \
       src/lua.c src/lua_net.c src/lua_codec.c src/lua_crypto.c \
       src/serve.epoll.c src/serve.kqueue.c src/serve.iocp.c \
@@ -94,7 +96,7 @@ if [ "$LINK" = "dynamic" ]; then
       $DEFINES \
       $LIBS \
       $FLAGS \
-      -o "$OUT.so"
+      -o "$OUT.$SO_EXT"
   if [ ! "$SOONLY" = "true" ]; then
     $CC src/80s.c $DEFINES $FLAGS -fPIC $LUA_LIB $LIBS -o "$OUT"
   fi
