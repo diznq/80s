@@ -109,8 +109,8 @@ static int l_crypto_cipher(lua_State *L) {
     if (needed_size % 16 != 0) {
         needed_size += 16 - needed_size % 16;
     }
-    needed_size += hmac_len + 16 + 4; // we need to also store SHA256 + length + IV
     out_len = (unsigned int)needed_size;
+    needed_size += hmac_len + 16 + 4; // we need to also store SHA256 + length + IV
 
     if (key_len < 16) {
         // deny keys shorter than 128 bits
