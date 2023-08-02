@@ -70,9 +70,30 @@ aio:http_get("/search", function(self, query, headers, body)
     self:http_response("200 OK", "application/json", {net.partscan(haystack, needle, 0)})
 end)
 
-aio:stream_http_get("/stream", function (self, query, headers, body)
+aio:stream_http_get("/chat", function (self, query, headers, body)
+    CHAT_PARTICIPANTS = CHAT_PARTICIPANTS or {}
+    self:write("Enter your name: ")
+    local name = coroutine.yield("\n")
+    if not name then
+        return
+    end
+    -- clean the name
+    name = name:gsub("[\r\n]", "")
     while true do
+        -- add the participant to broadcast
+        CHAT_PARTICIPANTS[self] = true
+        self:write("You: ")
         local data = coroutine.yield("\n")
-        self:write(data, false)
+        -- remove the participant from broadcast
+        if not data then
+            CHAT_PARTICIPANTS[self] = nil
+            break
+        end
+        -- broadcast it to everyone except sender
+        for participant, _ in pairs(CHAT_PARTICIPANTS) do
+            if participant ~= self then
+                participant:write("\n" .. name .. ": " .. data .. "\nYou: ")
+            end
+        end
     end
 end)

@@ -561,6 +561,12 @@ function aio:parse_http(data)
     local headers = {}
     local method, url, header = data:match("(.-) (.-) HTTP.-\r(.*)")
 
+    -- it can happen we received literally just METHOD url HTTP/version
+    if not header then
+        method, url = data:match("(.-) (.-) HTTP.*")
+        return method, url, headers
+    end
+
     for key, value in header:gmatch("\n(.-):[ ]*([^\r]+)") do
         headers[key:lower()] = value
     end
