@@ -69,3 +69,10 @@ aio:http_get("/search", function(self, query, headers, body)
     local needle = args.needle or ""
     self:http_response("200 OK", "application/json", {net.partscan(haystack, needle, 0)})
 end)
+
+aio:stream_http_get("/stream", function (self, query, headers, body)
+    while true do
+        local data = coroutine.yield("\n")
+        self:write(data, false)
+    end
+end)

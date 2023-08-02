@@ -348,7 +348,13 @@ if not aio then
             --- @type {[string]: aiohttphandler}
             GET={},
             --- @type {[string]: aiohttphandler}
-            POST={}
+            POST={},
+        },
+        http_stream = {
+            --- @type {[string]: aiohttphandler}
+            GET={},
+            --- @type {[string]: aiohttphandler}
+            POST={},
         },
         -- protocol handlers
         protocols = {},
@@ -415,8 +421,21 @@ function aio:handle_as_http(fd)
                 fd:close()
                 break
             end
-            local length = header:match("[Cc]ontent%-[Ll]ength: (%d+)")
             local body = ""
+            -- resolve method, script and query pre-maturely so
+            -- we can do checks for stream handlers
+            local method, url, headers = aio:parse_http(header)
+            local length = headers["content-length"]
+            local pivot = url:find("?", 0, true)
+            local script = url:sub(0, pivot and pivot - 1 or nil)
+            local query = pivot and url:sub(pivot + 1) or ""
+            -- check if it's a stream and if so, handle it there from now on
+            local stream_handler = (self.http_stream[method] or {})[script]
+            if stream_handler then
+                stream_handler(fd, query, headers, "")
+                break
+            end
+            -- if it's not a stream, handle it as usual
             if length and length ~= "0" then
                 body = coroutine.yield(tonumber(length))
                 if not body then
@@ -424,10 +443,9 @@ function aio:handle_as_http(fd)
                     break
                 end
             end
-            local method, url, headers = aio:parse_http(header)
             local close = (headers["connection"] or "close"):lower() == "close"
             fd.cw = close
-            aio:on_http(fd, method, url, headers, body)
+            aio:on_http(fd, method, script, query, headers, body)
             if close then
                 break
             end
@@ -802,6 +820,29 @@ function aio:http_any(method, url, callback)
     self.http[method][url] = callback
 end
 
+--- Add HTTP stream GET handler
+--- @param url string URL
+--- @param callback aiohttphandler handler
+function aio:stream_http_get(url, callback)
+    self.http_stream.GET[url] = callback
+end
+
+--- Add HTTP stream POST handler
+--- @param url string URL
+--- @param callback aiohttphandler handler
+function aio:stream_http_post(url, callback)
+    self.http_stream.POST[url] = callback
+end
+
+--- Add HTTP stream any handler
+---@param method string HTTP method
+---@param url string URL
+---@param callback aiohttphandler handler
+function aio:stream_http_any(method, url, callback)
+    self.http_stream[method] = self.http_stream[method] or {}
+    self.http_stream[method][url] = callback
+end
+
 --- Create a new TCP socket to host:port
 --- @param elfd lightuserdata epoll handle
 --- @param host string host name or IP address
@@ -982,13 +1023,11 @@ end
 --- Default HTTP request handler
 --- @param fd aiosocket file descriptor
 --- @param method string http method
---- @param url string URL
+--- @param script string URL
+--- @param query string
 --- @param headers table headers table
 --- @param body string request body
-function aio:on_http(fd, method, url, headers, body)
-    local pivot = url:find("?", 0, true)
-    local script = url:sub(0, pivot and pivot - 1 or nil)
-    local query = pivot and url:sub(pivot + 1) or ""
+function aio:on_http(fd, method, script, query, headers, body)
     local handlers = self.http[method]
 
     if handlers ~= nil then
