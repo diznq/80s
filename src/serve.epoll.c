@@ -104,7 +104,7 @@ void *serve(void *vparams) {
             signal(SIGCHLD, SIG_IGN);
         }
 
-        ctx = create_context(elfd, id, params->entrypoint, params->reload);
+        ctx = create_context(elfd, &params->node, params->entrypoint, params->reload);
 
         if (ctx == NULL) {
             error("failed to initialize context");
@@ -114,7 +114,7 @@ void *serve(void *vparams) {
         params->ctx = ctx;
         params->initialized = 1;
     } else {
-        refresh_context(ctx, elfd, id, params->entrypoint, params->reload);
+        refresh_context(ctx, elfd, &params->node, params->entrypoint, params->reload);
         is_reload = 1;
     }
 

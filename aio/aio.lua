@@ -77,6 +77,13 @@ S80_FD_OTHER = S80_FD_OTHER or nil
 --- @type lightuserdata
 S80_RELOAD = S80_RELOAD or nil
 
+--- @type integer
+PORT = PORT or 8080
+--- @type string
+NODE = NODE or "localhost"
+
+NODE_ID = string.format("%s/%d/%d", NODE, PORT, WORKERID)
+
 --- @type boolean
 KTLS = KTLS or false
 if KTLS and (os.getenv("KTLS") or "true") == "false" then KTLS = false end
@@ -140,6 +147,8 @@ local aiosocket = {
     elfd = nil,
     --- @type lightuserdata fd type
     ft = nil,
+    --- @type table|nil name
+    name = nil,
     --- @type boolean true if close after write
     cw = false,
     --- @type boolean true if socket is connected
@@ -176,7 +185,8 @@ function aiosocket:write(data, close)
         if not self.closed then
             self.closed = true
             self.buf = {}
-            self:on_close(self.elfd,self.fd)
+            pcall(self.on_close, self, self.elfd,self.fd)
+            aio:unset_named_fd(self)
         end
         return false
     elseif written < to_write then
@@ -253,6 +263,18 @@ function aiosocket:on_connect(elfd, childfd)
 
 end
 
+--- Create a named file descriptor
+---@param name table name
+---@return table name final name form
+function aiosocket:set_name(name)
+    if self.name then
+        aio:unset_named_fd(self)
+    end
+    local final_name = {aio:get_node(), unpack(name)}
+    aio:set_named_fd(final_name, self)
+    return final_name
+end
+
 --- Writeable handler of socket, overridable
 ---
 --- @param elfd lightuserdata epoll handle
@@ -294,7 +316,8 @@ function aiosocket:on_write(elfd, childfd, n_written)
             if not self.closed then
                 self.closed = true
                 self.buf = {}
-                self:on_close(self.elfd, self.fd)
+                pcall(self.on_close, self, self.elfd, self.fd)
+                aio:unset_named_fd(self)
             end
         elseif written < to_write then
             -- if we were able to send only part of data due to full buffer, equeue it for later
@@ -362,7 +385,15 @@ if not aio then
         master_key = nil,
         ---@type {[string]: {size: integer, data: {[string]: {expire: integer|nil, data: any}}}}
         cache = {},
-        max_cache_size = 10000
+        max_cache_size = 10000,
+
+        -- named fd storage
+        names = {},
+
+        -- node name storage
+        nodes = {
+            [NODE_ID] = {NODE, PORT, WORKERID}
+        }
     }
 end
 
@@ -957,7 +988,8 @@ function aio:on_close(elfd, childfd)
     if fd ~= nil and not fd.closed then
         fd.closed = true
         fd.buf = {}
-        fd:on_close(elfd, childfd)
+        pcall(fd.on_close, fd, elfd, childfd)
+        self:unset_named_fd(fd)
     end
 end
 
@@ -1015,6 +1047,127 @@ end
 --- @param parentfd lightuserdata server socket handle
 function aio:on_init(elfd, parentfd)
 
+end
+
+--- Set named file descriptor
+---@param name table name
+---@param fd aiosocket file descriptor object
+---@return boolean success
+function aio:set_named_fd(name, fd)
+    local root = self.names
+    fd.name = name
+    for i, part in ipairs(name) do
+        if i < #name then
+            local hit = root[part]
+            if (type(hit) == "table" and getmetatable(hit) == aiosocket) or (hit ~= nil and type(hit) ~= "table") then
+                return false
+            elseif hit == nil then
+                hit = {}
+                root[part] = hit
+                root = hit
+            else
+                root = hit
+            end
+        else
+            root[part] = fd
+        end
+    end
+    return true
+end
+
+--- Unset named file descriptor
+---@param fd aiosocket named fd
+function aio:unset_named_fd(fd)
+    local root = self.names
+    local name = fd.name
+    if not name then return end
+    fd.name = nil
+    for i, part in ipairs(name) do
+        if i == #name then
+            root[part] = nil
+        else
+            local hit = root[part]
+            if type(hit) ~= "table" or getmetatable(hit) == aiosocket then
+                break
+            end
+            root = hit
+        end
+    end
+end
+
+--- Get all named FDs that match the selector
+---@param selector table selector, can be either name of FD or part of name to match a group
+---@return aiosocket[] fds table of all FDs that match the selector
+function aio:get_named_fds(selector)
+    local root = self.names
+    local matches = {}
+    for i, part in ipairs(selector) do
+        if i == #selector then
+            local hit = root[part]
+            -- check if we hit FD directly or subset of FDs
+            if getmetatable(hit) == aiosocket then
+                return {hit}
+            else
+                self:recursively_fill(matches, hit, function(entity)
+                    return type(entity) == "table" and getmetatable(entity) == aiosocket
+                end)
+            end
+        else
+            local hit = root[part]
+            if type(hit) ~= "table" then
+                return matches
+            end
+            root = hit
+        end
+    end
+    return matches
+end
+
+--- Broadcast a message
+---@param selector table selector
+---@param except table|nil except fd name
+---@param message string data to broadcast
+---@param close boolean|nil write close flag
+function aio:broadcast(selector, except, message, close)
+    local nodes = self:get_named_fds(selector)
+    for _, node in ipairs(nodes) do
+        if node.name ~= except then
+            pcall(node.write, node, message, close)
+        end
+    end
+end
+
+--- Get node table object
+---@param node string|nil
+---@param port integer|nil
+---@param id integer|nil
+---@return table node_ref
+function aio:get_node(node, port, id)
+    if not node or node == NODE_ID or (node == NODE and port == PORT or id == WORKERID) then
+        return self.nodes[NODE_ID]
+    end
+    port = port or PORT
+    id = id or WORKERID
+    local handle = string.format("%s/%d/%d", node, port, id)
+    local hit = self.nodes[handle]
+    if hit then return hit end
+    hit = {node, port, id}
+    self.nodes[handle] = hit
+    return hit
+end
+
+--- Recursively fill the output with all subkeys of dict given the filter
+---@param output table array output
+---@param dict table dictionary
+---@param filter fun(entry: any): boolean filter
+function aio:recursively_fill(output, dict, filter)
+    for _, v in pairs(dict) do
+        if filter(v) then
+            output[#output + 1] = v
+        elseif type(v) == "table" then
+            self:recursively_fill(output, v, filter)
+        end
+    end
 end
 
 --- Perform server reload

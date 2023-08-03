@@ -103,6 +103,12 @@ struct module_extension {
     struct module_extension *next;
 };
 
+struct node_id {
+    int id;
+    int port;
+    const char *name;
+};
+
 struct live_reload {
     int running;
     int loaded;
@@ -124,6 +130,7 @@ struct serve_params {
     int workers;
     int initialized;
     int quit;
+    struct node_id node;
     fd_t parentfd;
     fd_t extra[4];
     // shared across all
@@ -154,8 +161,8 @@ static void error(const char *msg) {
 void *serve(void *vparams);
 #endif
 
-void *create_context(fd_t elfd, int id, const char *entrypoint, struct live_reload *reload);
-void refresh_context(void *ctx, fd_t elfd, int id, const char *entrypoint, struct live_reload *reload);
+void *create_context(fd_t elfd, struct node_id *id, const char *entrypoint, struct live_reload *reload);
+void refresh_context(void *ctx, fd_t elfd, struct node_id *id, const char *entrypoint, struct live_reload *reload);
 void close_context(void *ctx);
 void on_receive(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *buf, int readlen);
 void on_close(void *ctx, fd_t elfd, fd_t childfd);

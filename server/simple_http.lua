@@ -71,7 +71,6 @@ aio:http_get("/search", function(self, query, headers, body)
 end)
 
 aio:stream_http_get("/chat", function (self, query, headers, body)
-    CHAT_PARTICIPANTS = CHAT_PARTICIPANTS or {}
     self:write("Enter your name: ")
     local name = coroutine.yield("\n")
     if not name then
@@ -79,21 +78,13 @@ aio:stream_http_get("/chat", function (self, query, headers, body)
     end
     -- clean the name
     name = name:gsub("[\r\n]", "")
+    self:set_name({"chat", name})
     while true do
         -- add the participant to broadcast
-        CHAT_PARTICIPANTS[self] = true
         self:write("You: ")
         local data = coroutine.yield("\n")
-        -- remove the participant from broadcast
-        if not data then
-            CHAT_PARTICIPANTS[self] = nil
-            break
-        end
+        if not data then break end
         -- broadcast it to everyone except sender
-        for participant, _ in pairs(CHAT_PARTICIPANTS) do
-            if participant ~= self then
-                participant:write("\n" .. name .. ": " .. data .. "\nYou: ")
-            end
-        end
+        aio:broadcast({aio:get_node(), "chat"}, self.name, "\n" .. name .. ": " .. data .. "\nYou: ")
     end
 end)

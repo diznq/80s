@@ -50,14 +50,18 @@ static int get_arg(const char *arg, int default_value, int flag, int argc, const
     return flag ? 0 : default_value;
 }
 
-static const char *get_sz_arg(const char *arg, int argc, const char **argv) {
+static const char *get_sz_arg(const char *arg, int argc, const char **argv, const char *env, const char *default_value) {
     int i;
+    const char *env_value = env ? getenv(env) : NULL;
+    if(env_value) return env_value;
+
     for(i=1; i < argc - 1; i++) {
         if(!strcmp(argv[i], arg)) {
             return argv[i + 1];
         }
     }
-    return (const char*)NULL;
+    
+    return default_value;
 }
 
 static int get_cpus() {
@@ -181,10 +185,12 @@ int main(int argc, const char **argv) {
                             *module_head = NULL, 
                             *modules = NULL;
     const char *entrypoint;
-    const char *module_list = get_sz_arg("-m", argc, argv);
+    const char *module_list = get_sz_arg("-m", argc, argv, NULL, NULL);
+    const char *node_name = get_sz_arg("-n", argc, argv, "NODE", "localhost");
     const char *addr = v6 ? "::" : "0.0.0.0";
     char *module_names = NULL;
     struct serve_params params[workers];
+    struct node_id node;
     sem_t serve_lock;
     #ifdef _WIN32
     HANDLE handles[workers];
@@ -335,6 +341,9 @@ int main(int argc, const char **argv) {
         params[i].els = els;
         params[i].workers = workers;
         params[i].entrypoint = entrypoint;
+        params[i].node.id = i;
+        params[i].node.port = portno;
+        params[i].node.name = node_name;
         #ifdef S80_DYNAMIC
         params[i].quit = 0;
         #else
