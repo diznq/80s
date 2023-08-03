@@ -96,7 +96,6 @@ function nodes:broadcast(selector, except, message, close)
     local nodes = self:get_named_fds(selector)
     for _, node in ipairs(nodes) do
         if node.name ~= except then
-            print("broadcast to ", codec.json_encode(node.name))
             pcall(node.write, node, message, close)
         end
     end
