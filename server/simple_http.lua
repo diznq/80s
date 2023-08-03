@@ -1,7 +1,10 @@
 ---@type aio
 require("aio.aio")
+require("aio.nodes")
 
-aio:http_get("/haha", function (fd, query, headers, body)
+nodes:start()
+
+aio:http_get("/echo", function (fd, query, headers, body)
     local params = aio:parse_query(query)
     fd:http_response(
         "200 OK", 
@@ -56,7 +59,7 @@ end)
 
 aio:http_get("/visit", function (self, query, headers, body)
     local args = aio:parse_query(query)
-    local url = args.url or "http://localhost:8080/haha"
+    local url = args.url or "http://localhost:8080/echo"
 
     aio:popen_read(ELFD, "curl", "--silent", url)(function (contents)
         self:http_response("200 OK", "text/plain", contents or "")
@@ -78,13 +81,13 @@ aio:stream_http_get("/chat", function (self, query, headers, body)
     end
     -- clean the name
     name = name:gsub("[\r\n]", "")
-    self:set_name({"chat", name})
+    nodes:register(self, {"chat", name})
     while true do
         -- add the participant to broadcast
         self:write("You: ")
         local data = coroutine.yield("\n")
         if not data then break end
         -- broadcast it to everyone except sender
-        aio:broadcast({aio:get_node(), "chat"}, self.name, "\n" .. name .. ": " .. data .. "\nYou: ")
+        nodes:broadcast({nodes:get_node(), "chat"}, self:get_name(), "\n" .. name .. ": " .. data .. "\nYou: ")
     end
 end)

@@ -51,7 +51,7 @@ To run the server, execute `bin/80s server/simple_http.lua`, optionally `bin/80s
 
 By using `server/simple_http.lua` as basis for simple benchmarking, that is:
 
-- request goes to `/haha?name=Abcde`
+- request goes to `/echo?name=Abcde`
 - server responds with `Hi, Abcde!`
 
 Result of this "benchmark" were as follows:
@@ -70,7 +70,7 @@ Result of this "benchmark" were as follows:
 |  512 | 7 431.89 | 34 126.9 | 32 067.4 |      **276 537** |   244 457 |     49 276.8 | 136 063 | 208 429 |
 | 10000| 6 194.70 |	33 774.3 |	    N/A |	   **180 599** |   145 858 |	 40 492.6 |	119 237 | 157 191 |
 
-\* # = number of parallel connections using `ab -c # -n 1000000 -k http://localhost:8080/haha?name=Abcde`
+\* # = number of parallel connections using `ab -c # -n 1000000 -k http://localhost:8080/echo?name=Abcde`
 
 \* bold cell = highest requests/s
 
