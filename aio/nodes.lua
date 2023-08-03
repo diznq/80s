@@ -4,9 +4,14 @@ SELF_NODE = SELF_NODE or {NODE, PORT, WORKERID}
 
 nodes = nodes or {
     names = {},
+    --- @type {[string]: table}
     nodes = {
         [NODE_ID] = SELF_NODE
-    }
+    },
+    --- @type {[table]: aiosocket}
+    connections = {},
+    --- @type string|nil
+    authorization = "-"
 }
 
 --- Set named file descriptor
@@ -89,13 +94,49 @@ end
 
 --- Broadcast a message
 ---@param selector table selector
----@param except table|nil except fd name
+---@param except table|string|nil except fd name
 ---@param message string data to broadcast
 ---@param close boolean|nil write close flag
 function nodes:broadcast(selector, except, message, close)
+    if #selector >= 1 and selector[1] ~= SELF_NODE and #selector[1] == 3 then
+        -- if we broadcast outside
+        local node = self:get_node(unpack(selector[1]))
+        local connection = self.connections[node]
+        if not connection then
+            local fd, err = aio:connect(ELFD, node[1], node[2])
+            if fd then
+                self.connections[node] = fd
+                fd.on_close = function ()
+                    self.connections[node] = nil
+                end
+                connection = fd
+            else
+                print("nodes.broadcast: failed to create new connection due to ", err)
+            end
+        end
+        if connection then
+            local except_str = "-"
+            if type(except) == "string" then
+                except_str = except
+            elseif type(except) == "table" then
+                except_str = codec.json_encode(except)
+            end
+            local formatted = string.format(
+                "POST /nodes HTTP/1.1\r\nFrom: %s\r\nTo: %s\r\nExcept: %s\r\nAuthorization: %s\r\nContent-length: %d\r\nConnection: keep-alive\r\n\r\n%s", 
+                codec.json_encode(SELF_NODE),
+                codec.json_encode(selector),
+                except_str,
+                self.authorization,
+                message:len(),
+                message
+            )
+            connection:write(formatted)
+        end
+        return
+    end
     local nodes = self:get_named_fds(selector)
     for _, node in ipairs(nodes) do
-        if node.name ~= except then
+        if not except or (type(except) == "table" and node.name ~= except) or (type(except) == "string" and codec.json_encode(node.name) ~= except) then
             pcall(node.write, node, message, close)
         end
     end
@@ -107,7 +148,7 @@ end
 ---@param id integer|nil
 ---@return table node_ref
 function nodes:get_node(node, port, id)
-    if not node or node == NODE_ID or (node == NODE and port == PORT or id == WORKERID) then
+    if not node or node == NODE_ID or (node == NODE and port == PORT and id == WORKERID) then
         return self.nodes[NODE_ID]
     end
     port = port or PORT
@@ -139,8 +180,28 @@ end
 --- Calling this will hook protocol handler for nodes protocol
 --- so routing between nodes is possible, without it nodes can
 --- only be use locally within node
-function nodes:start()
-
+---
+---@param authorization string|nil authorization header requirement
+function nodes:start(authorization)
+    self.authorization = authorization or "-"
+    aio:http_post("/nodes", function (fd, query, headers, body)
+        if not (headers.from and headers.to and headers.except and #body > 0) then
+            fd:http_response("400 Bad request", "text/plain", "invalid request")
+            return
+        end
+        if authorization and headers.authorization ~= authorization then
+            fd:http_response("401 Unauthorized", "text/plain", "unauthorized")
+            return
+        end
+        --local from = codec.json_decode(headers.from)
+        local to = codec.json_decode(headers.to)
+        local except = nil
+        if headers.except ~= "-" then
+            except = headers.except
+        end
+        to[1] = self:get_node(unpack(to[1]))
+        self:broadcast(to, except, body)
+    end)
 end
 
 aio:register_close_handler("nodes", function (fd)

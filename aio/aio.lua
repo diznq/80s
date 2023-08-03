@@ -426,7 +426,7 @@ end
 
 --- Add new protocol handler for unknown protocols
 ---@param name string unique name of protocol
----@param handler {matches: aiomatches, handler: aiohandler} protocol handler
+---@param handler {matches: aiomatches, handle: aiohandler} protocol handler
 function aio:add_protocol_handler(name, handler)
     self.protocols[name] = handler
 end
