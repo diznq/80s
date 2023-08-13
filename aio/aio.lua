@@ -576,16 +576,26 @@ end
 ---Parse HTTP request
 ---
 ---@param data string http request
+---@param response boolean|nil parse as http response
 ---@return string method HTTP method
 ---@return string url request URL
 ---@return {[string]: string} headers headers table
-function aio:parse_http(data)
+function aio:parse_http(data, response)
     local headers = {}
-    local method, url, header = data:match("(.-) (.-) HTTP.-\r(.*)")
+    local pattern = "(.-) (.-) HTTP.-\r(.*)"
+    if response then
+        pattern = "(.-) (.-)\r(.*)"
+    end
+    local method, url, header = data:match(pattern)
 
     -- it can happen we received literally just METHOD url HTTP/version
     if not header then
-        method, url = data:match("(.-) (.-) HTTP.*")
+        if response then
+            pattern = "(.-) (.-)"
+        else
+            pattern = "(.-) (.-) HTTP.*"
+        end
+        method, url = data:match(pattern)
         return method, url, headers
     end
 

@@ -2,7 +2,10 @@
 require("aio.aio")
 require("aio.nodes")
 
-nodes:start("SECRET")
+nodes:start {
+    authorization = "SECRET",
+    master = {"localhost", 8080, 0}
+}
 
 aio:http_get("/echo", function (fd, query, headers, body)
     local params = aio:parse_query(query)
@@ -87,9 +90,14 @@ aio:stream_http_get("/chat", function (self, query, headers, body)
         self:write("You: ")
         local data = coroutine.yield("\n")
         if not data then break end
-        -- broadcast it to everyone except sender
-        nodes:broadcast({nodes:get_node(), "chat"}, self:get_name(), "\n" .. name .. ": " .. data .. "\nYou: ")
-        -- also lets try broadcasting it to 8081 node
-        nodes:broadcast({nodes:get_node("localhost", PORT == 8080 and 8081 or 8080, 0), "chat"}, self:get_name(), "\n" .. name .. ": " .. data .. "\nYou: ")
+        if nodes.master then
+            -- if master is set, send the message globally!
+            nodes:broadcast({nodes.global, "chat"}, self:get_name(), "\n" .. name .. ": " .. data .. "\nYou: ")
+        else
+            -- broadcast it to everyone except sender
+            nodes:broadcast({nodes:get_node(), "chat"}, self:get_name(), "\n" .. name .. ": " .. data .. "\nYou: ")
+            -- also lets try broadcasting it to 8081 node
+            nodes:broadcast({nodes:get_node("localhost", PORT == 8080 and 8081 or 8080, 0), "chat"}, self:get_name(), "\n" .. name .. ": " .. data .. "\nYou: ")
+        end
     end
 end)
