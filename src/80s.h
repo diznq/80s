@@ -87,7 +87,7 @@ extern "C" {
 
 struct serve_params;
 struct module_extension;
-struct live_reload;
+struct reload_context;
 
 typedef void*(*dynserve_t)(void*);
 typedef void*(*alloc_t)(void*, void*, size_t, size_t);
@@ -109,7 +109,7 @@ struct node_id {
     const char *name;
 };
 
-struct live_reload {
+struct reload_context {
     int running;
     int loaded;
     int ready;
@@ -136,7 +136,7 @@ struct serve_params {
     // shared across all
     fd_t *els;
     const char *entrypoint;
-    struct live_reload *reload;
+    struct reload_context *reload;
 };
 
 struct fd_holder {
@@ -161,8 +161,8 @@ static void error(const char *msg) {
 void *serve(void *vparams);
 #endif
 
-void *create_context(fd_t elfd, struct node_id *id, const char *entrypoint, struct live_reload *reload);
-void refresh_context(void *ctx, fd_t elfd, struct node_id *id, const char *entrypoint, struct live_reload *reload);
+void *create_context(fd_t elfd, struct node_id *id, const char *entrypoint, struct reload_context *reload);
+void refresh_context(void *ctx, fd_t elfd, struct node_id *id, const char *entrypoint, struct reload_context *reload);
 void close_context(void *ctx);
 void on_receive(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *buf, int readlen);
 void on_close(void *ctx, fd_t elfd, fd_t childfd);
@@ -174,7 +174,8 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
 int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype);
 int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port);
 int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args);
-int s80_reload(struct live_reload *reload);
+int s80_reload(struct reload_context *reload);
+int s80_quit(struct reload_context *reload);
 void s80_enable_async(fd_t fd);
 
 #ifdef S80_DEBUG

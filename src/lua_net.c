@@ -107,11 +107,11 @@ static int l_net_readfile(lua_State *L) {
 
 static int l_net_reload(lua_State *L) {
     const char *entrypoint;
-    struct live_reload *reload;
+    struct reload_context *reload;
     int status;
 
     if(lua_gettop(L) == 1 && lua_type(L, 1) == LUA_TLIGHTUSERDATA) {
-        reload = (struct live_reload*)lua_touserdata(L, 1);
+        reload = (struct reload_context*)lua_touserdata(L, 1);
         lua_pushboolean(L, s80_reload(reload) >= 0);
         return 1;
     } else {
@@ -126,6 +126,18 @@ static int l_net_reload(lua_State *L) {
 
     lua_pushboolean(L, status == 0);
     return 1;
+}
+
+static int l_net_quit(lua_State *L) {
+    struct reload_context *reload;
+    int status;
+
+    if(lua_gettop(L) == 1 && lua_type(L, 1) == LUA_TLIGHTUSERDATA) {
+        reload = (struct reload_context*)lua_touserdata(L, 1);
+        lua_pushboolean(L, s80_quit(reload) >= 0);
+        return 1;
+    }
+    return 0;
 }
 
 static int l_net_inotify_init(lua_State *L) {
@@ -422,6 +434,7 @@ int luaopen_net(lua_State *L) {
         {"connect", l_net_connect},
         {"sockname", l_net_sockname},
         {"reload", l_net_reload},
+        {"quit", l_net_quit},
         {"listdir", l_net_listdir},
         {"readfile", l_net_readfile},
         {"inotify_init", l_net_inotify_init},

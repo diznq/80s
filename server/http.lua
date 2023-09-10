@@ -25,7 +25,7 @@ local function create_endpoint(base, method, endpoint, mime, content, dynamic)
     end
     aio:http_any(method, endpoint, function (self, query, headers, body)
         --for i, v in pairs(headers) do print(i, v) end
-        if dynamic then
+        if dynamic and ctx then
             -- process as dynamic template
             local session = {}
             local parsed_query = aio:parse_query(query, aio.master_key and endpoint or nil)

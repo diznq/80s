@@ -265,7 +265,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
     return 0;
 }
 
-int s80_reload(struct live_reload *reload) {
+int s80_reload(struct reload_context *reload) {
 #ifdef S80_DYNAMIC
     int i;
     char buf[4];
@@ -283,6 +283,18 @@ int s80_reload(struct live_reload *reload) {
 #else
     return -1;
 #endif
+}
+
+int s80_quit(struct reload_context *reload) {
+    char buf[1];
+    int i;
+    buf[0] = S80_SIGNAL_QUIT;
+    for(i=0; i < reload->workers; i++) {
+        write(reload->pipes[i][1], buf, 1);
+    }
+    reload->ready = 0;
+    reload->running++;
+    return 0;
 }
 
 static int cleanup_pipes(fd_t elfd, fd_t *pipes, int allocated) {

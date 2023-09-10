@@ -12,6 +12,7 @@
 --- @field close fun(elfd: lightuserdata, childfd: lightuserdata, fdtype: lightuserdata): boolean close a file descriptor
 --- @field connect fun(elfd: lightuserdata, host: string, port: integer): fd: lightuserdata|nil, err: string|nil open a new network connection
 --- @field reload fun(c_reload: lightuserdata|nil) reload server, if c_reload == S80_RELOAD, C binary is reloaded given executable was built with DYNAMIC=true
+--- @field quit fun(c_reload: lightuserdata|nil) exit the worker
 --- @field listdir fun(dir: string): string[] list files in directory
 --- @field readfile fun(path: string, mode: string): string|nil read file contents
 --- @field inotify_init fun(elfd: lightuserdata): fd: lightuserdata|nil, error: string|nil initialize inotify

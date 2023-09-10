@@ -96,30 +96,6 @@ Naming conventions:
 - `_G.on_write(elfd, childfd)`: called when socket sbecomes writeable (also on connect)
 - `_G.on_init(elfd, parentfd)`: called when event loop is initialized
 
-### Lua APIs
-- `net.connect(elfd, hostName, port)`: create new TCP socket, returns `socket, error`
-- `net.write(elfd, childfd, data)`: write data on socket
-- `net.close(elfd, childfd)`: close a socket
-- `net.reload(live_reload)`: reload entrypoint Lua, if live_reload == S80_RELOAD, full reload of C binary is performed
-- `net.listdir(dir)`: list files in a directory, directories will end with `/` in returned result
-- `crypto.sha1(data)`: returns raw SHA1 of data
-- `crypto.sha256(data)`: returns raw SHA256 of data
-- `crypto.cipher(data, key, iv, encrypt)`: encrypt or decrypt data, key must be at least 128 bits, if IV is false, IV is set to all zeroes
-- `crypto.to64(data)`: base64 encode data
-- `crypto.from64(data)`: base64 decode data
-- `crypto.random(n)`: generate n bytes of random data
-- `codec.json_encode(table)`: encode table into sring
-- `codec.url_encode(data)`: URL encode data
-- `codec.mysql_encode(data)`: MySQL encode data
-
-For systems supporting inotify API following additional APIs are available:
-
-- `net.inotify_init(elfd)`: initialize inotify listener, returns fd
-- `net.inotify_add(elfd, fd, path)`: adds path to watchlist and returns wd (watch descriptor)
-- `net.inotify_remove(elfd, fd, wd)`: remove wd from inotify listener
-- `net.inotify_read(data)`: decode inotify event to Lua table structure
-
-
 ## Creating custom C modules
 
 To extend the C functionality, custom modules can be created that contain `on_load` and `on_unload` procedures.

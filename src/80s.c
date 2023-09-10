@@ -30,7 +30,7 @@
 #endif
 #endif
 
-struct live_reload reload;
+struct reload_context reload;
 
 union addr_common {
     struct sockaddr_in6 v6;
@@ -91,7 +91,7 @@ static void* run(void *params_) {
     // in first place as files that are loaded cannot be overwritten
     // during the run!
     struct serve_params *params = (struct serve_params*)params_;
-    struct live_reload *reload = params->reload;
+    struct reload_context *reload = params->reload;
     dynserve_t serve;
     reload->dlcurrent = (void*)LoadLibraryA(S80_DYNAMIC_SO);
     if(reload->dlcurrent == NULL) {
@@ -104,7 +104,7 @@ static void* run(void *params_) {
     return reload->serve(params_);
 #else
     struct serve_params *params = (struct serve_params*)params_;
-    struct live_reload *reload = params->reload;
+    struct reload_context *reload = params->reload;
     struct module_extension *module = reload->modules;
     void *result = NULL;
     dynserve_t serve;
@@ -279,12 +279,12 @@ int main(int argc, const char **argv) {
 
     setlocale(LC_ALL, "en_US.UTF-8");
 
-    if (argc < 2) {
+    if (argc < 1) {
         fprintf(stderr, "usage: %s <lua entrypoint> [-p <port> -c <cpus>]\n", argv[0]);
         exit(1);
     }
 
-    entrypoint = argv[1];
+    entrypoint = argc >= 2 ? argv[1] : "server/simple_http.lua";
 
     #ifdef _WIN32
     WSADATA wsa;
@@ -316,8 +316,6 @@ int main(int argc, const char **argv) {
         serveraddr.v4.sin_port = htons((unsigned short)portno);
         inet_ntop(AF_INET, &serveraddr.v4.sin_addr, resolved, sizeof(serveraddr.v4));
     }
-
-    printf("ip: %s, port: %d, cpus: %d, v6: %d\n", resolved, portno, workers, !!v6);
 
     if (bind((sock_t)parentfd, (struct sockaddr *)(v6 ? (void *)&serveraddr.v6 : (void *)&serveraddr.v4), v6 ? sizeof(serveraddr.v6) : sizeof(serveraddr.v4)) < 0)
         error("main: failed to bind server socket");
