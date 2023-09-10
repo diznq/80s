@@ -644,7 +644,11 @@ static int l_codec_url_decode(lua_State *L) {
     size_t len, i, j = 0;
     struct dynstr str;
     char buffer[2048], c;
-    char lut[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 10, 11, 12, 13, 14, 15};
+    char lut[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 
+                // A   B   C   D   E   F  G  H  I  J  K  L  M  N  O  P  Q  R  S  T  U  V  W  X  Y  Z
+                  10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                // [  \  ]  ^  _  `   a   b   c   d   e   f
+                   0, 0, 0, 0, 0, 0, 10, 11, 12, 13, 14, 15};
     const char *data = lua_tolstring(L, 1, &len);
     char *ptr;
     dynstr_init(&str, buffer, sizeof(buffer));
@@ -658,7 +662,7 @@ static int l_codec_url_decode(lua_State *L) {
                     ptr[j++] = ' ';
                     break;
                 case '%': {
-                    if (((data[i + 1] >= '0' && data[i + 1] <= '9') || (data[i + 1] >= 'A' && data[i + 1] <= 'F')) && ((data[i + 2] >= '0' && data[i + 2] <= '9') || (data[i + 2] >= 'A' && data[i + 2] <= 'F'))) {
+                    if (((data[i + 1] >= '0' && data[i + 1] <= '9') || (data[i + 1] >= 'A' && data[i + 1] <= 'F') || (data[i + 1] >= 'a' && data[i + 1] <= 'f')) && ((data[i + 2] >= '0' && data[i + 2] <= '9') || (data[i + 2] >= 'A' && data[i + 2] <= 'F') || (data[i + 2] >= 'a' && data[i + 2] <= 'f'))) {
                         ptr[j++] = (lut[data[i + 1] - '0'] << 4) | (lut[data[i + 2] - '0']);
                         i += 2;
                     } else {
