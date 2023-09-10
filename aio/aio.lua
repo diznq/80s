@@ -1076,6 +1076,11 @@ function aio:reload(full)
     return net.reload()
 end
 
+--- Exit the worker
+function aio:quit()
+    net.quit(S80_RELOAD)
+end
+
 --- Default HTTP request handler
 --- @param fd aiosocket file descriptor
 --- @param method string http method
