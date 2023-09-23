@@ -373,8 +373,8 @@ static int l_crypto_ssl_bio_new(lua_State *L) {
     SSL_CTX* ssl_ctx = (SSL_CTX*)lua_touserdata(L, 1);
     #ifdef USE_KTLS
     ctx->ktls_state = do_ktls ? KTLS_INIT : KTLS_NONE;
-    ctx->elfd = (fd_t)lua_touserdata(L, 2);
-    ctx->fd = (fd_t)lua_touserdata(L, 3);
+    ctx->elfd = void_to_fd(lua_touserdata(L, 2));
+    ctx->fd = void_to_fd(lua_touserdata(L, 3));
     #endif
     ctx->rdbio = BIO_new(BIO_s_mem());
     ctx->wrbio = BIO_new(BIO_s_mem());

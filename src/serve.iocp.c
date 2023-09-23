@@ -7,9 +7,9 @@ union addr_common {
 };
 
 // create a new iocp context
-struct context_holder* new_context_holder(fd_t fd, int fdtype) {
-    struct context_holder *ctx = (struct context_holder*)malloc(sizeof(struct context_holder));
-    memset(ctx, 0, sizeof(struct context_holder));
+context_holder* new_context_holder(fd_t fd, int fdtype) {
+    context_holder *ctx = (context_holder*)malloc(sizeof(context_holder));
+    memset(ctx, 0, sizeof(context_holder));
     ctx->ol.Pointer = ctx;
     ctx->wsaBuf.buf = ctx->data;
     ctx->wsaBuf.len = BUFSIZE;
@@ -20,9 +20,9 @@ struct context_holder* new_context_holder(fd_t fd, int fdtype) {
 }
 
 // create a new tied iocp context that contains both recv and send contexts tied together
-struct context_holder* new_fd_context(fd_t childfd, int fdtype) {
-    struct context_holder *recv_helper = new_context_holder(childfd, fdtype);
-    struct context_holder *send_helper = new_context_holder(childfd, fdtype);
+context_holder* new_fd_context(fd_t childfd, int fdtype) {
+    context_holder *recv_helper = new_context_holder(childfd, fdtype);
+    context_holder *send_helper = new_context_holder(childfd, fdtype);
     // tie them together so we don't lose track
     recv_helper->op = S80_WIN_OP_ACCEPT;
     send_helper->op = S80_WIN_OP_WRITE;
@@ -44,7 +44,7 @@ void *serve(void *vparams) {
     module_extension *module;
     OVERLAPPED_ENTRY events[MAX_EVENTS];
     ULONG nfds, n;
-    struct context_holder *cx;
+    context_holder *cx;
     serve_params *params;
     int flags, fdtype, status, readlen, workers, id, running = 1, is_reload = 0;
     unsigned accepts;
@@ -130,7 +130,7 @@ void *serve(void *vparams) {
         // the main difference from unix versions is that fd being sent to on_receive, on_write etc. is not really fd,
         // but it is rather the tied context created by new_fd_context
         for (n = 0; n < nfds; ++n) {
-            cx = (struct context_holder*)events[n].lpOverlapped->Pointer;
+            cx = (context_holder*)events[n].lpOverlapped->Pointer;
             fdtype = cx->fdtype;
             flags = cx->flags;
             childfd = cx->fd;
