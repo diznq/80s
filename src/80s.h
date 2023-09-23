@@ -66,7 +66,7 @@ extern "C" {
     #define S80_WIN_OP_WRITE 3
     #define S80_WIN_OP_CONNECT 4
 
-    struct context_holder {
+    typedef struct context_holder_ {
         int op;
         int fdtype;
         int connected;
@@ -77,7 +77,7 @@ extern "C" {
         char data[BUFSIZE + 128];
         struct context_holder *recv, *send;
         OVERLAPPED ol;
-    };
+    } context_holder;
 
     struct context_holder* new_fd_context(fd_t childfd, int fdtype);
     #define event_t winevent
@@ -85,31 +85,38 @@ extern "C" {
 #error unsupported platform
 #endif
 
-struct serve_params;
-struct module_extension;
-struct reload_context;
+struct serve_params_;
+struct module_extension_;
+struct reload_context_;
+struct node_id_;
+
+typedef struct serve_params_ serve_params;
+typedef struct module_extension_ module_extension;
+typedef struct reload_context_ reload_context;
+typedef struct node_id_ node_id;
+typedef struct fd_holder_ fd_holder;
 
 typedef void*(*dynserve_t)(void*);
 typedef void*(*alloc_t)(void*, void*, size_t, size_t);
 // load/unload(context, params, reload)
-typedef void(*load_module_t)(void*, struct serve_params*, int);
-typedef void(*unload_module_t)(void*, struct serve_params*, int);
+typedef void(*load_module_t)(void*, serve_params*, int);
+typedef void(*unload_module_t)(void*, serve_params*, int);
 
-struct module_extension {
+struct module_extension_ {
     const char *path;
     void *dlcurrent;
     load_module_t load;
     unload_module_t unload;
-    struct module_extension *next;
+    module_extension *next;
 };
 
-struct node_id {
+struct node_id_ {
     int id;
     int port;
     const char *name;
 };
 
-struct reload_context {
+struct reload_context_ {
     int running;
     int loaded;
     int ready;
@@ -117,40 +124,40 @@ struct reload_context {
     dynserve_t serve;
     sem_t serve_lock;
     void *dlcurrent;
-    struct module_extension *modules;
+    module_extension *modules;
     alloc_t allocator;
     void *ud;
     fd_t (*pipes)[2];
 };
 
-struct serve_params {
+struct serve_params_ {
     // local to each thread
     void *ctx;
     int workerid;
     int workers;
     int initialized;
     int quit;
-    struct node_id node;
+    node_id node;
     fd_t parentfd;
     fd_t extra[4];
     // shared across all
     fd_t *els;
     const char *entrypoint;
-    struct reload_context *reload;
+    reload_context *reload;
 };
 
-struct fd_holder {
+struct fd_holder_ {
     int type;
     fd_t fd;
 };
 
 #define SET_FD_HOLDER(ptr, Type, Fd) do {\
-    ((struct fd_holder*)ptr)->type = Type;\
-    ((struct fd_holder*)ptr)->fd = Fd;\
+    ((fd_holder*)ptr)->type = Type;\
+    ((fd_holder*)ptr)->fd = Fd;\
 } while(0)
 
-#define FD_HOLDER_TYPE(ptr) ((struct fd_holder*)ptr)->type
-#define FD_HOLDER_FD(ptr) ((struct fd_holder*)ptr)->fd
+#define FD_HOLDER_TYPE(ptr) ((fd_holder*)ptr)->type
+#define FD_HOLDER_FD(ptr) ((fd_holder*)ptr)->fd
 
 static void error(const char *msg) {
     perror(msg);
@@ -161,9 +168,10 @@ static void error(const char *msg) {
 void *serve(void *vparams);
 #endif
 
-void *create_context(fd_t elfd, struct node_id *id, const char *entrypoint, struct reload_context *reload);
-void refresh_context(void *ctx, fd_t elfd, struct node_id *id, const char *entrypoint, struct reload_context *reload);
+void *create_context(fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload);
+void refresh_context(void *ctx, fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload);
 void close_context(void *ctx);
+
 void on_receive(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *buf, int readlen);
 void on_close(void *ctx, fd_t elfd, fd_t childfd);
 void on_write(void *ctx, fd_t elfd, fd_t childfd, int written);
@@ -174,8 +182,8 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
 int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype);
 int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port);
 int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args);
-int s80_reload(struct reload_context *reload);
-int s80_quit(struct reload_context *reload);
+int s80_reload(reload_context *reload);
+int s80_quit(reload_context *reload);
 void s80_enable_async(fd_t fd);
 
 #ifdef S80_DEBUG

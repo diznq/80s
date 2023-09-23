@@ -31,23 +31,23 @@ void *serve(void *vparams) {
     int running = 1, is_reload = 0;
     sigset_t sigmask;
     socklen_t clientlen = sizeof(union addr_common);
-    struct module_extension *module;
+    module_extension *module;
     struct signalfd_siginfo siginfo;
     unsigned accepts;
     void *ctx;
     union addr_common clientaddr;
     struct epoll_event ev, events[MAX_EVENTS];
-    struct serve_params *params;
+    serve_params *params;
     char buf[BUFSIZE];
 
     memset(&clientaddr, 0, sizeof(clientaddr));
 
-    if(sizeof(struct fd_holder) != sizeof(uint64_t)) {
+    if(sizeof(fd_holder) != sizeof(uint64_t)) {
         error("serve: sizeof(fdholder) != sizeof(uint64_t)");
     }
 
     accepts = 0;
-    params = (struct serve_params *)vparams;
+    params = (serve_params *)vparams;
     parentfd = params->parentfd;
     els = params->els;
     id = params->workerid;

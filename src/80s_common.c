@@ -265,7 +265,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
     return 0;
 }
 
-int s80_reload(struct reload_context *reload) {
+int s80_reload(reload_context *reload) {
 #ifdef S80_DYNAMIC
     int i;
     char buf[4];
@@ -285,7 +285,7 @@ int s80_reload(struct reload_context *reload) {
 #endif
 }
 
-int s80_quit(struct reload_context *reload) {
+int s80_quit(reload_context *reload) {
     char buf[1];
     int i;
     buf[0] = S80_SIGNAL_QUIT;

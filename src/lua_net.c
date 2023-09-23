@@ -1,4 +1,5 @@
 #include "80s.h"
+#include "lua_shared.h"
 #include "lua_net.h"
 #include "algo.h"
 #include "dynstr.h"
@@ -24,9 +25,9 @@
 
 static int l_net_write(lua_State *L) {
     size_t len;
-    fd_t elfd = (fd_t)lua_touserdata(L, 1);
-    fd_t childfd = (fd_t)lua_touserdata(L, 2);
-    int fdtype = (int)lua_touserdata(L, 3);
+    fd_t elfd = void_to_fd(lua_touserdata(L, 1));
+    fd_t childfd = void_to_fd(lua_touserdata(L, 2));
+    int fdtype = void_to_int(lua_touserdata(L, 3));
     const char *data = lua_tolstring(L, 4, &len);
     size_t offset = (size_t)lua_tointeger(L, 5);
     int writelen = s80_write((void *)L, elfd, childfd, fdtype, data, offset, len);
@@ -41,16 +42,16 @@ static int l_net_write(lua_State *L) {
 }
 
 static int l_net_close(lua_State *L) {
-    fd_t elfd = (fd_t)lua_touserdata(L, 1);
-    fd_t childfd = (fd_t)lua_touserdata(L, 2);
-    int fdtype = (int)lua_touserdata(L, 3);
+    fd_t elfd = void_to_fd(lua_touserdata(L, 1));
+    fd_t childfd = void_to_fd(lua_touserdata(L, 2));
+    int fdtype = void_to_int(lua_touserdata(L, 3));
     int status = s80_close((void *)L, elfd, childfd, fdtype);
     lua_pushboolean(L, status >= 0);
     return 1;
 }
 
 static int l_net_connect(lua_State *L) {
-    fd_t elfd = (fd_t)lua_touserdata(L, 1);
+    fd_t elfd = void_to_fd(lua_touserdata(L, 1));
     const char *addr = (const char *)lua_tostring(L, 2);
     int portno = (int)lua_tointeger(L, 3);
 
@@ -59,7 +60,7 @@ static int l_net_connect(lua_State *L) {
         lua_pushnil(L);
         lua_pushstring(L, strerror(errno));
     } else {
-        lua_pushlightuserdata(L, (void *)childfd);
+        lua_pushlightuserdata(L, fd_to_void(childfd));
         lua_pushnil(L);
     }
     return 2;
@@ -68,7 +69,7 @@ static int l_net_connect(lua_State *L) {
 static int l_net_sockname(lua_State *L) {
     char buf[500];
     int port;
-    fd_t fd = (fd_t)lua_touserdata(L, 1);
+    fd_t fd = void_to_fd(lua_touserdata(L, 1));
     int status = s80_peername(fd, buf, sizeof(buf), &port);
 
     if (!status) {
@@ -107,11 +108,11 @@ static int l_net_readfile(lua_State *L) {
 
 static int l_net_reload(lua_State *L) {
     const char *entrypoint;
-    struct reload_context *reload;
+    reload_context *reload;
     int status;
 
     if(lua_gettop(L) == 1 && lua_type(L, 1) == LUA_TLIGHTUSERDATA) {
-        reload = (struct reload_context*)lua_touserdata(L, 1);
+        reload = (reload_context*)lua_touserdata(L, 1);
         lua_pushboolean(L, s80_reload(reload) >= 0);
         return 1;
     } else {
@@ -129,11 +130,11 @@ static int l_net_reload(lua_State *L) {
 }
 
 static int l_net_quit(lua_State *L) {
-    struct reload_context *reload;
+    reload_context *reload;
     int status;
 
     if(lua_gettop(L) == 1 && lua_type(L, 1) == LUA_TLIGHTUSERDATA) {
-        reload = (struct reload_context*)lua_touserdata(L, 1);
+        reload = (reload_context*)lua_touserdata(L, 1);
         lua_pushboolean(L, s80_quit(reload) >= 0);
         return 1;
     }
@@ -146,7 +147,7 @@ static int l_net_inotify_init(lua_State *L) {
     fd_t elfd, childfd;
     struct event_t ev;
 
-    elfd = (fd_t)lua_touserdata(L, 1);
+    elfd = void_to_fd(lua_touserdata(L, 1));
     childfd = (fd_t)inotify_init();
 
 #ifdef USE_EPOLL
@@ -161,7 +162,7 @@ static int l_net_inotify_init(lua_State *L) {
         return 2;
     }
 
-    lua_pushlightuserdata(L, (void *)childfd);
+    lua_pushlightuserdata(L, fd_to_void(childfd));
     return 1;
 #else
     return 0;
@@ -175,11 +176,11 @@ static int l_net_inotify_add(lua_State *L) {
     const char *target;
     struct event_t ev;
 
-    elfd = (fd_t)lua_touserdata(L, 1);
-    childfd = (fd_t)lua_touserdata(L, 2);
+    elfd = void_to_fd(lua_touserdata(L, 1));
+    childfd = void_to_fd(lua_touserdata(L, 2));
     target = lua_tostring(L, 3);
     wd = inotify_add_watch(childfd, target, IN_MODIFY | IN_CREATE | IN_DELETE);
-    lua_pushlightuserdata(L, (void *)wd);
+    lua_pushlightuserdata(L, fd_to_void(wd));
     return 1;
 #else
     return 0;
@@ -191,9 +192,9 @@ static int l_net_inotify_remove(lua_State *L) {
     int result;
     fd_t elfd, childfd, wd;
 
-    elfd = (fd_t)lua_touserdata(L, 1);
-    childfd = (fd_t)lua_touserdata(L, 2);
-    wd = (fd_t)lua_touserdata(L, 3);
+    elfd = void_to_fd(lua_touserdata(L, 1));
+    childfd = void_to_fd(lua_touserdata(L, 2));
+    wd = void_to_fd(lua_touserdata(L, 3));
 
     result = inotify_rm_watch(childfd, wd);
     if (result < 0) {
@@ -230,7 +231,7 @@ static int l_net_inotify_read(lua_State *L) {
             lua_settable(L, -3);
 
             lua_pushstring(L, "wd");
-            lua_pushlightuserdata(L, (void *)evt->wd);
+            lua_pushlightuserdata(L, fd_to_void(evt->wd));
             lua_settable(L, -3);
 
             lua_pushstring(L, "dir");
@@ -363,7 +364,7 @@ static int l_net_partscan(lua_State *L) {
 static int l_net_popen(lua_State *L) {
     int i, status;
     fd_t pipes[2];
-    fd_t elfd = (fd_t)lua_touserdata(L, 1);
+    fd_t elfd = void_to_fd(lua_touserdata(L, 1));
     const char* args[lua_gettop(L) - 1];
     const char* cmd = lua_tostring(L, 2);
     args[0] = (const char*)NULL;
@@ -377,8 +378,8 @@ static int l_net_popen(lua_State *L) {
         lua_pushstring(L, strerror(errno));
         return 2;
     }
-    lua_pushlightuserdata(L, (void*)pipes[0]);
-    lua_pushlightuserdata(L, (void*)pipes[1]);
+    lua_pushlightuserdata(L, fd_to_void(pipes[0]));
+    lua_pushlightuserdata(L, fd_to_void(pipes[1]));
     return 2;
 }
 

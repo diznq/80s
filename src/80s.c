@@ -30,7 +30,7 @@
 #endif
 #endif
 
-struct reload_context reload;
+reload_context reload;
 
 union addr_common {
     struct sockaddr_in6 v6;
@@ -90,8 +90,8 @@ static void* run(void *params_) {
     // Windows support not required as it doesn't support live-reload
     // in first place as files that are loaded cannot be overwritten
     // during the run!
-    struct serve_params *params = (struct serve_params*)params_;
-    struct reload_context *reload = params->reload;
+    serve_params *params = (serve_params*)params_;
+    reload_context *reload = params->reload;
     dynserve_t serve;
     reload->dlcurrent = (void*)LoadLibraryA(S80_DYNAMIC_SO);
     if(reload->dlcurrent == NULL) {
@@ -103,9 +103,9 @@ static void* run(void *params_) {
     }
     return reload->serve(params_);
 #else
-    struct serve_params *params = (struct serve_params*)params_;
-    struct reload_context *reload = params->reload;
-    struct module_extension *module = reload->modules;
+    serve_params *params = (serve_params*)params_;
+    reload_context *reload = params->reload;
+    module_extension *module = reload->modules;
     void *result = NULL;
     dynserve_t serve;
     for(;;) {
@@ -181,7 +181,7 @@ int main(int argc, const char **argv) {
         v6 = get_arg("-6", 0, 1, argc, argv);
     fd_t parentfd;
     union addr_common serveraddr;
-    struct module_extension *module = NULL, 
+    module_extension *module = NULL, 
                             *module_head = NULL, 
                             *modules = NULL;
     const char *entrypoint;
@@ -189,8 +189,8 @@ int main(int argc, const char **argv) {
     const char *node_name = get_sz_arg("-n", argc, argv, "NODE", "localhost");
     const char *addr = v6 ? "::" : "0.0.0.0";
     char *module_names = NULL;
-    struct serve_params params[workers];
-    struct node_id node;
+    serve_params params[workers];
+    node_id node;
     sem_t serve_lock;
     #ifdef _WIN32
     HANDLE handles[workers];
@@ -217,7 +217,7 @@ int main(int argc, const char **argv) {
         while(1) {
             // if we encountered \0, load library located at str[q:p]
             if(*p == 0 && p != q) {
-                module = (struct module_extension*)calloc(1, sizeof(struct module_extension));
+                module = (module_extension*)calloc(1, sizeof(module_extension));
                 if(module_head == NULL) {
                     module_head = module;
                     modules = module;

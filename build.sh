@@ -76,7 +76,7 @@ fi
 
 LUA_INC=$(echo "$LUA_INC" | sed 's/lua.h//g')
 
-FLAGS="$FLAGS -march=native -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast"
+FLAGS="$FLAGS -march=native"
 
 echo "Defines: $DEFINES"
 echo "Libraries: $LIBS"
