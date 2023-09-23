@@ -26,20 +26,20 @@ void *serve(void *vparams) {
     fd_t *els, elfd, parentfd, childfd, selfpipe;
     int nfds, flags, fdtype, status, n, readlen, workers, id, running = 1, is_reload = 0;
     socklen_t clientlen = sizeof(union addr_common);
-    struct module_extension *module;
+    module_extension *module;
     unsigned accepts;
     void *ctx;
     union addr_common clientaddr;
     struct kevent ev, events[MAX_EVENTS];
     struct msghdr msg;
     struct iovec iov[1];
-    struct serve_params *params;
+    serve_params *params;
     char buf[BUFSIZE];
     
     memset(&clientaddr, 0, sizeof(clientaddr));
 
     accepts = 0;
-    params = (struct serve_params *)vparams;
+    params = (serve_params *)vparams;
     parentfd = params->parentfd;
     els = params->els;
     id = params->workerid;

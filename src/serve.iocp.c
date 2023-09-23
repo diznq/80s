@@ -41,17 +41,17 @@ struct context_holder* new_fd_context(fd_t childfd, int fdtype) {
 
 void *serve(void *vparams) {
     fd_t *els, elfd, parentfd, childfd, selfpipe;
-    struct module_extension *module;
+    module_extension *module;
     OVERLAPPED_ENTRY events[MAX_EVENTS];
     ULONG nfds, n;
     struct context_holder *cx;
-    struct serve_params *params;
+    serve_params *params;
     int flags, fdtype, status, readlen, workers, id, running = 1, is_reload = 0;
     unsigned accepts;
     void *ctx;
     
     accepts = 0;
-    params = (struct serve_params *)vparams;
+    params = (serve_params *)vparams;
     parentfd = params->parentfd;
     els = params->els;
     id = params->workerid;

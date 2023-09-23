@@ -7,14 +7,14 @@
 #include <lualib.h>
 #include <stdio.h>
 
-static lua_State *create_lua(fd_t elfd, struct node_id *id, const char *entrypoint, struct reload_context *reload);
-static void refresh_lua(lua_State *L, fd_t elfd, struct node_id *id, const char *entrypoint, struct reload_context *reload);
+static lua_State *create_lua(fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload);
+static void refresh_lua(lua_State *L, fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload);
 
-void *create_context(fd_t elfd, struct node_id *id, const char *entrypoint, struct reload_context *reload) {
+void *create_context(fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
     return (void *)create_lua(elfd, id, entrypoint, reload);
 }
 
-void refresh_context(void *ctx, fd_t elfd, struct node_id *id, const char *entrypoint, struct reload_context *reload) {
+void refresh_context(void *ctx, fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
     refresh_lua((lua_State*)ctx, elfd, id, entrypoint, reload);
 }
 
@@ -80,7 +80,7 @@ static void clean_global(lua_State *L, const char *name) {
 #endif
 }
 
-static void refresh_lua(lua_State *L, fd_t elfd, struct node_id *id, const char *entrypoint, struct reload_context *reload) {
+static void refresh_lua(lua_State *L, fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
 
 #if (LUA_VERSION_NUM > 501) && defined(S80_DYNAMIC)
     // remove already existing packages to force reload on openlibs
@@ -140,7 +140,7 @@ static void refresh_lua(lua_State *L, fd_t elfd, struct node_id *id, const char 
     }
 }
 
-static lua_State *create_lua(fd_t elfd, struct node_id *id, const char *entrypoint, struct reload_context *reload) {
+static lua_State *create_lua(fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
     lua_State *L = lua_newstate(reload->allocator, reload->ud);
 
     if (L == NULL) {
