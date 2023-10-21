@@ -1,4 +1,4 @@
-local mysql = require("server.mysql")
+local mysql = require("aio.lib.mysql")
 
 --- Convert to integer
 ---@param x string|number|nil
@@ -153,7 +153,7 @@ function orm:create(sql, repo)
                 local value = item[key]
                 local def = entity[key]
                 if def == nil then
-                    print("orm.repo(" .. source .. ").save: missing entity definition for " .. key .. ", using NULL for insert")
+                    print("[orm] orm.repo(" .. source .. ").save: missing entity definition for " .. key .. ", using NULL for insert")
                     value = "NULL"
                 elseif value == nil then
                     value = "NULL"
@@ -357,7 +357,8 @@ function orm:create_method(sql, query, types, decoders, single, count, parent, d
                 if single then
                     local result = nil
                     if #results == 1 then result = results[1] end
-                    if count then result = result.c end
+                    ---@diagnostic disable-next-line: need-check-nil
+                    if count then result = result["c"] end
                     on_resolved(result)
                 else
                     on_resolved(results)

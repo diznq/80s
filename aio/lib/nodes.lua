@@ -1,3 +1,4 @@
+---@diagnostic disable: inject-field
 require("aio.aio")
 
 SELF_NODE = SELF_NODE or {NODE, PORT, WORKERID}
@@ -160,7 +161,7 @@ function nodes:announce(from, selector, except, method, endpoint, message)
             end)
             connection = fd
         else
-            print("nodes.broadcast: failed to create new connection due to ", err)
+            print("[nodes] nodes.broadcast: failed to create new connection due to ", err)
         end
     end
     if connection then

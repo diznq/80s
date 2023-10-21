@@ -1,3 +1,4 @@
+---@diagnostic disable: inject-field
 --- @class inotify_event
 --- @field name string file name
 --- @field wd lightuserdata watch descriptor
@@ -916,7 +917,7 @@ function aio:popen(elfd, command, ...)
     local rd, wr = net.popen(elfd, command, unpack(args))
     if rd == nil or type(wr) == "string" then
         ---@diagnostic disable-next-line: return-type-mismatch
-        return nil, err
+        return nil, wr
     end
     self.fds[rd] = aiosocket:new(elfd, rd, S80_FD_PIPE, false)
     self.fds[wr] = aiosocket:new(elfd, wr, S80_FD_PIPE, false)
@@ -951,6 +952,7 @@ function aio:watch(elfd, targets, on_change)
     if fd ~= nil then
         local sock = aiosocket:new(elfd, fd, S80_FD_OTHER, true)
         self.fds[fd] = sock
+        ---@diagnostic disable-next-line: inject-field
         sock.watching = {}
         sock.on_data = function (self, elfd, childfd, data, length)
             local events = net.inotify_read(data)
@@ -988,7 +990,9 @@ function aio:on_close(elfd, childfd)
 
     -- notify with close event, only once
     if fd ~= nil and not fd.closed then
+        ---@diagnostic disable-next-line: inject-field
         fd.closed = true
+        ---@diagnostic disable-next-line: inject-field
         fd.buf = {}
         pcall(fd.on_close, fd, elfd, childfd)
         self:invoke_close(fd)

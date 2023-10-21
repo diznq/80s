@@ -1,6 +1,6 @@
 ---@type aio
 require("aio.aio")
-require("aio.nodes")
+require("aio.lib.nodes")
 
 nodes:start {
     authorization = "SECRET",

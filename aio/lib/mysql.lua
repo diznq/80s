@@ -200,6 +200,7 @@ function mysql_pool:new(size)
                 least_i = i
             end
         end
+        ---@diagnostic disable-next-line: need-check-nil
         utilization[least_i] = utilization[least_i] + 1
         return least_conn
     end
@@ -219,6 +220,7 @@ function mysql_pool:new(size)
             else
                 local conn = pick()
                 return function(self, ...)
+                    ---@diagnostic disable-next-line: need-check-nil
                     return conn[k](conn, ...)
                 end
             end
@@ -309,7 +311,7 @@ function mysql:connect(user, password, db, host, port)
             while true do
                 local seq, command = self:read_packet()
                 if seq == nil then
-                    print("mysql.on_data: seq returned empty response")
+                    print("[mysql] mysql.on_data: seq returned empty response")
                 end
 
                 -- responses from MySQL arrive sequentially, so we can call on_resolved callbacks in that fashion too
@@ -318,7 +320,7 @@ function mysql:connect(user, password, db, host, port)
                 if self.active_callback ~= nil then
                     local ok, res = pcall(self.active_callback, seq, command)
                     if not ok then
-                        print("mysql.on_data: next call failed: ", res)
+                        print("[mysql] mysql.on_data: next call failed: ", res)
                         self.active_callback = nil
                     elseif res ~= true then
                         self.active_callback = nil
@@ -330,7 +332,7 @@ function mysql:connect(user, password, db, host, port)
                     -- if it returns true, it means more sequences are needed!
                     local ok, res = pcall(first, seq, command)
                     if not ok then
-                        print("mysql.on_data: first call failed: ", res)
+                        print("[mysql] mysql.on_data: first call failed: ", res)
                     elseif res == true then
                         self.active_callback = first
                     end
@@ -381,7 +383,7 @@ end
 ---@return boolean ok true if write was ok
 function mysql:write_packet(seq, packet)
     if not self.fd then
-        print("mysql.write_packet: self.fd is nil")
+        print("[mysql] mysql.write_packet: self.fd is nil")
         self:reset()
         return false
     end
@@ -390,7 +392,7 @@ function mysql:write_packet(seq, packet)
 
     local res = self.fd:write(pkt, false)
     if not res then
-        print("mysql.write_packet: socket write failed")
+        print("[mysql] mysql.write_packet: socket write failed")
         self:reset()
     end
     return res

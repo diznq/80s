@@ -1,5 +1,5 @@
-local mysql = require("server.mysql")
-local orm = require("server.orm")
+local mysql = require("aio.lib.mysql")
+local orm = require("aio.lib.orm")
 
 if not SQL then
     SQL = mysql:new()
