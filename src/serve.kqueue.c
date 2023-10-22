@@ -36,6 +36,12 @@ void *serve(void *vparams) {
     serve_params *params;
     char buf[BUFSIZE];
     
+    struct read_params_ params_read;
+    struct init_params_ params_init;
+    struct close_params_ params_close;
+    struct write_params_ params_write;
+    struct accept_params_ params_accept;
+
     memset(&clientaddr, 0, sizeof(clientaddr));
 
     accepts = 0;
@@ -46,8 +52,10 @@ void *serve(void *vparams) {
     ctx = params->ctx;
     workers = params->workers;
     module = params->reload->modules;
-    selfpipe = params->reload->pipes[id][0];
+    selfpipe = params->reload->mailboxes[id].pipes[0];
     elfd = els[id];
+
+    params_init.parentfd = parentfd;
 
     if(params->initialized == 0) {
         s80_enable_async(selfpipe);
@@ -58,6 +66,8 @@ void *serve(void *vparams) {
         elfd = els[id] = kqueue();
         if (elfd < 0)
             error("serve: failed to create kqueue");
+
+        params_read.elfd = params_write.elfd = params_close.elfd = params_init.elfd = params_accept.elfd = elfd;
 
         EV_SET(&ev, selfpipe, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_PIPE);
         if(kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
@@ -73,12 +83,13 @@ void *serve(void *vparams) {
         }
 
         ctx = create_context(elfd, &params->node, params->entrypoint, params->reload);
+        params_read.ctx = params_write.ctx = params_close.ctx = params_init.ctx = params_accept.ctx = ctx;
 
         if (ctx == NULL) {
             error("failed to initialize context");
         }
 
-        on_init(ctx, elfd, parentfd);
+        on_init(params_init);
         params->ctx = ctx;
         params->initialized = 1;
     } else {
@@ -148,10 +159,13 @@ void *serve(void *vparams) {
                             if(close(childfd) < 0) {
                                 dbg("serve: failed to close write socket");
                             }
-                            on_close(ctx, elfd, childfd);
+                            params_close.childfd = childfd;
+                            on_close(params_close);
                         }
                     } else if(events[n].data > 0) {
-                        on_write(ctx, elfd, childfd, 0);
+                        params_write.childfd = childfd;
+                        params_write.written = 0;
+                        on_write(params_write);
                     }
                     break;
                 case EVFILT_READ:
@@ -166,19 +180,28 @@ void *serve(void *vparams) {
                         readlen = read(childfd, buf, BUFSIZE);
                     }
                     if(readlen > 0) {
-                        on_receive(ctx, elfd, childfd, fdtype, buf, readlen);
+                        params_read.childfd = childfd;
+                        params_read.fdtype = fdtype;
+                        params_read.buf = buf;
+                        params_read.readlen = readlen;
+                        on_receive(params_read);
                     }
                     // if length is <= 0 or error happens, remove the socket from event loop
                     if (readlen <= 0 || (flags & (EV_EOF | EV_ERROR))) {
                         while(fdtype == S80_FD_PIPE && readlen > 0) {
                             readlen = read(childfd, buf, BUFSIZE);
                             if(readlen <= 0) break;
-                            on_receive(ctx, elfd, childfd, fdtype, buf, readlen);
+                            params_read.childfd = childfd;
+                            params_read.fdtype = fdtype;
+                            params_read.buf = buf;
+                            params_read.readlen = readlen;
+                            on_receive(params_read);
                         }
                         if (close(childfd) < 0) {
                             dbg("serve: failed to close child socket");
                         }
-                        on_close(ctx, elfd, childfd);
+                        params_close.childfd = childfd;
+                        on_close(params_close);
                     }
                     break;
                 case EVFILT_PROC:

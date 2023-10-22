@@ -32,45 +32,45 @@ void close_context(void *ctx) {
     lua_close((lua_State *)ctx);
 }
 
-void on_receive(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *buf, int readlen) {
-    lua_State *L = (lua_State *)ctx;
+void on_receive(struct read_params_ params) {
+    lua_State *L = (lua_State *)params.ctx;
     lua_getglobal(L, "on_data");
-    lua_pushlightuserdata(L, fd_to_void(elfd));
-    lua_pushlightuserdata(L, fd_to_void(childfd));
-    lua_pushlightuserdata(L, int_to_void(fdtype));
-    lua_pushlstring(L, buf, readlen);
-    lua_pushinteger(L, readlen);
+    lua_pushlightuserdata(L, fd_to_void(params.elfd));
+    lua_pushlightuserdata(L, fd_to_void(params.childfd));
+    lua_pushlightuserdata(L, int_to_void(params.fdtype));
+    lua_pushlstring(L, params.buf, params.readlen);
+    lua_pushinteger(L, params.readlen);
     if (lua_pcall(L, 5, 0, 0) != 0) {
         printf("on_receive: error running on_data: %s\n", lua_tostring(L, -1));
     }
 }
 
-void on_close(void *ctx, fd_t elfd, fd_t childfd) {
-    lua_State *L = (lua_State *)ctx;
+void on_close(struct close_params_ params) {
+    lua_State *L = (lua_State *)params.ctx;
     lua_getglobal(L, "on_close");
-    lua_pushlightuserdata(L, fd_to_void(elfd));
-    lua_pushlightuserdata(L, fd_to_void(childfd));
+    lua_pushlightuserdata(L, fd_to_void(params.elfd));
+    lua_pushlightuserdata(L, fd_to_void(params.childfd));
     if (lua_pcall(L, 2, 0, 0) != 0) {
         printf("on_close: error running on_data: %s\n", lua_tostring(L, -1));
     }
 }
 
-void on_write(void *ctx, fd_t elfd, fd_t childfd, int written) {
-    lua_State *L = (lua_State *)ctx;
+void on_write(struct write_params_ params) {
+    lua_State *L = (lua_State *)params.ctx;
     lua_getglobal(L, "on_write");
-    lua_pushlightuserdata(L, fd_to_void(elfd));
-    lua_pushlightuserdata(L, fd_to_void(childfd));
-    lua_pushinteger(L, written);
+    lua_pushlightuserdata(L, fd_to_void(params.elfd));
+    lua_pushlightuserdata(L, fd_to_void(params.childfd));
+    lua_pushinteger(L, params.written);
     if (lua_pcall(L, 3, 0, 0) != 0) {
         printf("on_write: error running on_write: %s\n", lua_tostring(L, -1));
     }
 }
 
-void on_init(void *ctx, fd_t elfd, fd_t parentfd) {
-    lua_State *L = (lua_State *)ctx;
+void on_init(struct init_params_ params) {
+    lua_State *L = (lua_State *)params.ctx;
     lua_getglobal(L, "on_init");
-    lua_pushlightuserdata(L, fd_to_void(elfd));
-    lua_pushlightuserdata(L, fd_to_void(parentfd));
+    lua_pushlightuserdata(L, fd_to_void(params.elfd));
+    lua_pushlightuserdata(L, fd_to_void(params.parentfd));
     if (lua_pcall(L, 2, 0, 0) != 0) {
         printf("on_init: error running on_data: %s\n", lua_tostring(L, -1));
     }

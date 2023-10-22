@@ -49,6 +49,12 @@ void *serve(void *vparams) {
     int flags, fdtype, status, readlen, workers, id, running = 1, is_reload = 0;
     unsigned accepts;
     void *ctx;
+
+    struct read_params_ params_read;
+    struct init_params_ params_init;
+    struct close_params_ params_close;
+    struct write_params_ params_write;
+    struct accept_params_ params_accept;
     
     accepts = 0;
     params = (serve_params *)vparams;
@@ -61,14 +67,18 @@ void *serve(void *vparams) {
     selfpipe = params->reload->pipes[id][0];
     elfd = els[id];
 
+    params_init.parentfd = parentfd;
+
     if(params->initialized == 0) {
         //s80_enable_async(selfpipe);
         s80_enable_async(parentfd);
 
-        // create local kqueue and assign it to context's array of els, so others can reach it
+        // create local IOCP and assign it to context's array of els, so others can reach it
         elfd = els[id] = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, (ULONG_PTR)1, 1);
         if (elfd == NULL)
             error("serve: failed to create iocp");
+
+        params_read.elfd = params_write.elfd = params_close.elfd = params_init.elfd = params_accept.elfd = elfd;
 
         // only one thread can poll on server socket and accept others!
         if (id == 0) {
@@ -102,12 +112,13 @@ void *serve(void *vparams) {
         }
 
         ctx = create_context(elfd, &params->node, params->entrypoint, params->reload);
+        params_read.ctx = params_write.ctx = params_close.ctx = params_init.ctx = params_accept.ctx = ctx;
 
         if (ctx == NULL) {
             error("failed to initialize context");
         }
 
-        on_init(ctx, elfd, parentfd);
+        on_init(params_init);
         params->ctx = ctx;
         params->initialized = 1;
     } else {
@@ -173,13 +184,18 @@ void *serve(void *vparams) {
                 if(events[n].dwNumberOfBytesTransferred == 0) {
                     // when in read state, check if we received zero bytes as that is error
                     cx->recv->connected = 0;
-                    on_close(ctx, elfd, (fd_t)cx->recv);
+                    params_close.childfd = (fd_t)cx->recv;
+                    on_close(params_close);
                     free(cx->recv->send);
                     free(cx->recv);
                 } else {
                     // if we received some bytes, call on_receive and carry on with wsarecv as this is pro-actor pattern
                     readlen = events[n].dwNumberOfBytesTransferred;
-                    on_receive(ctx, elfd, (fd_t)cx->recv, cx->fdtype, cx->recv->data, readlen);
+                    params_read.childfd = (fd_t)cx->recv;
+                    params_read.fdtype = cx->fdtype;
+                    params_read.buf = cx->recv->data;
+                    params_read.readlen = readlen;
+                    on_receive(params_read);
                     // only continue if no closesockets happened along the way
                     if(cx->recv->connected) {
                         if(cx->recv->fdtype == S80_FD_PIPE) {
@@ -190,8 +206,10 @@ void *serve(void *vparams) {
                                     cx->send->connected = 0;
                                     CloseHandle(cx->fd);
                                     CloseHandle(cx->send->fd);
-                                    on_close(ctx, elfd, (fd_t)cx->recv);
-                                    on_close(ctx, elfd, (fd_t)cx->send);
+                                    params_close.childfd = (fd_t)cx->recv;
+                                    on_close(params_close);
+                                    params_close.childfd = (fd_t)cx->send;
+                                    on_close(params_close);
                                     free(cx->recv->send);
                                     free(cx->recv);
                                 } else {
@@ -218,7 +236,9 @@ void *serve(void *vparams) {
                     }
                     // the one advantage over reactor here is that this gets called only when the write
                     // is really complete, not partially complete, which is a nice thing
-                    on_write(ctx, elfd, (fd_t)cx->recv, events[n].dwNumberOfBytesTransferred);
+                    params_write.childfd = (fd_t)cx->recv;
+                    params_write.written = events[n].dwNumberOfBytesTransferred;
+                    on_write(params_write);
                 }
                 break;
             case S80_WIN_OP_CONNECT:
@@ -230,7 +250,8 @@ void *serve(void *vparams) {
                     dbgf("[%d] connect to %llu, setsockopt failed with %d\n", id, cx->fd, GetLastError());
                     cx->recv->connected = 0;
                     closesocket((sock_t)cx->fd);
-                    on_close(ctx, elfd, (fd_t)cx->recv);
+                    params_close.childfd = (fd_t)cx->recv;
+                    on_close(params_close);
                     // at this time there couldn't have been send->wsaBuf.buf allocated
                     free(cx->recv->send);
                     free(cx->recv);
@@ -238,7 +259,9 @@ void *serve(void *vparams) {
                     cx->recv->connected = 1;
                     dbgf("[%d] connect to %llu successful\n", id, cx->fd);
                     // tell the handlers that this fd is ready for writing, thus also for reading if it's a socket
-                    on_write(ctx, elfd, (fd_t)cx->recv, events[n].dwNumberOfBytesTransferred);
+                    params_write.childfd = (fd_t)cx->recv;
+                    params_write.written = events[n].dwNumberOfBytesTransferred;
+                    on_write(params_write);
                     // as we are ini proactor mode, we need to force out WSARecv
                     status = WSARecv((sock_t)childfd, &cx->recv->wsaBuf, 1, NULL, &cx->recv->flags, &cx->recv->ol, NULL);
                     if(status > 0 || (status == SOCKET_ERROR && GetLastError() != WSA_IO_PENDING)) {

@@ -22,6 +22,11 @@ extern "C" {
 #define S80_SIGNAL_STOP 0
 #define S80_SIGNAL_QUIT 1
 
+#define S80_MB_ACCEPT 0
+#define S80_MB_READ 1
+#define S80_MB_WRITE 2
+#define S80_MB_CLOSE 3
+
 #define BUFSIZE 16384
 #define MAX_EVENTS 4096
 
@@ -89,12 +94,15 @@ struct serve_params_;
 struct module_extension_;
 struct reload_context_;
 struct node_id_;
+struct mailbox_;
 
 typedef struct serve_params_ serve_params;
 typedef struct module_extension_ module_extension;
 typedef struct reload_context_ reload_context;
 typedef struct node_id_ node_id;
 typedef struct fd_holder_ fd_holder;
+typedef struct mailbox_ mailbox;
+typedef struct mailbox_message_ mailbox_message;
 
 typedef void*(*dynserve_t)(void*);
 typedef void*(*alloc_t)(void*, void*, size_t, size_t);
@@ -116,18 +124,74 @@ struct node_id_ {
     const char *name;
 };
 
+struct read_params_ {
+    void *ctx;
+    fd_t elfd;
+    fd_t childfd;
+    int fdtype;
+    const char *buf;
+    int readlen;
+};
+
+struct close_params_ {
+    void *ctx;
+    fd_t elfd;
+    fd_t childfd;
+};
+
+struct write_params_ {
+    void *ctx;
+    fd_t elfd;
+    fd_t childfd;
+    int written;
+};
+
+struct init_params_ {
+    void *ctx;
+    fd_t elfd;
+    fd_t parentfd;
+};
+
+struct accept_params_ {
+    void *ctx;
+    fd_t elfd;
+    fd_t parentfd;
+    fd_t childfd;
+};
+
+struct mailbox_message_ {
+    fd_t sender_elfd;
+    fd_t sender_fd;
+    fd_t receiver_fd;
+    int type;
+    int length;
+    char *message;
+};
+
+struct mailbox_ {
+    sem_t lock;
+    fd_t pipes[2];
+    struct mailbox_message_ *messages;
+    int size;
+    int reserved;
+};
+
 struct reload_context_ {
     int running;
     int loaded;
     int ready;
     int workers;
+
     dynserve_t serve;
     sem_t serve_lock;
+
     void *dlcurrent;
     module_extension *modules;
+    
     alloc_t allocator;
     void *ud;
-    fd_t (*pipes)[2];
+    
+    mailbox *mailboxes;
 };
 
 struct serve_params_ {
@@ -172,10 +236,10 @@ void *create_context(fd_t elfd, node_id *id, const char *entrypoint, reload_cont
 void refresh_context(void *ctx, fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload);
 void close_context(void *ctx);
 
-void on_receive(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *buf, int readlen);
-void on_close(void *ctx, fd_t elfd, fd_t childfd);
-void on_write(void *ctx, fd_t elfd, fd_t childfd, int written);
-void on_init(void *ctx, fd_t elfd, fd_t parentfd);
+void on_receive(struct read_params_ params);
+void on_close(struct close_params_ params);
+void on_write(struct write_params_ params);
+void on_init(struct init_params_ params);
 
 fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int port);
 int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, size_t offset, size_t len);
@@ -184,6 +248,7 @@ int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port);
 int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args);
 int s80_reload(reload_context *reload);
 int s80_quit(reload_context *reload);
+int s80_mail(mailbox *mailbox, mailbox_message *message);
 void s80_enable_async(fd_t fd);
 
 #ifdef S80_DEBUG

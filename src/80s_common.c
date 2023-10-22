@@ -24,6 +24,9 @@ union addr_common {
 
 static int cleanup_pipes(fd_t elfd, fd_t* pipes, int allocated);
 
+static void acquire_mailbox(mailbox *mailbox);
+static void release_mailbox(mailbox *mailbox);
+
 void s80_enable_async(fd_t fd) {
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
 }
@@ -152,6 +155,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
 
 int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
     struct event_t ev;
+    struct close_params_ params;
     int status = 0;
 #ifdef USE_EPOLL
     ev.events = EPOLLIN | EPOLLOUT;
@@ -168,7 +172,11 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
     if (status < 0) {
         dbg("l_net_close: failed to close childfd");
     }
-    on_close(ctx, elfd, childfd);
+
+    params.ctx = ctx;
+    params.elfd = elfd;
+    params.childfd = childfd;
+    on_close(params);
 
     return status;
 }
@@ -274,7 +282,9 @@ int s80_reload(reload_context *reload) {
     } else {
         buf[0] = S80_SIGNAL_STOP;
         for(i=0; i < reload->workers; i++) {
-            write(reload->pipes[i][1], buf, 1);
+            acquire_mailbox(reload->mailboxes + i);
+            write(reload->mailboxes[i].pipes[1], buf, 1);
+            release_mailbox(reload->mailboxes + i);
         }
         reload->ready = 0;
         reload->running++;
@@ -290,11 +300,21 @@ int s80_quit(reload_context *reload) {
     int i;
     buf[0] = S80_SIGNAL_QUIT;
     for(i=0; i < reload->workers; i++) {
-        write(reload->pipes[i][1], buf, 1);
+        acquire_mailbox(reload->mailboxes + i);
+        write(reload->mailboxes[i].pipes[1], buf, 1);
+        release_mailbox(reload->mailboxes + i);
     }
     reload->ready = 0;
     reload->running = 0;
     return 0;
+}
+
+static void acquire_mailbox(mailbox *mailbox) {
+    sem_wait(&mailbox->lock);
+}
+
+static void release_mailbox(mailbox *mailbox) {
+    sem_post(&mailbox->lock);
 }
 
 static int cleanup_pipes(fd_t elfd, fd_t *pipes, int allocated) {

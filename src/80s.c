@@ -210,7 +210,7 @@ int main(int argc, const char **argv) {
     pthread_t handles[workers];
     #endif
     fd_t els[workers];
-    fd_t pipes[workers][2];
+    mailbox mailboxes[workers];
 
     if(module_list) {
         // go over all comma separated values, replacing comma with \0
@@ -273,7 +273,7 @@ int main(int argc, const char **argv) {
     reload.workers = workers;
     reload.allocator = allocator;
     reload.ud = &reload;
-    reload.pipes = pipes;
+    reload.mailboxes = mailboxes;
     reload.modules = modules;
 
     #ifdef UNIX_BASED
@@ -337,13 +337,23 @@ int main(int argc, const char **argv) {
 
     for (i = 0; i < workers; i++) {
         #ifdef UNIX_BASED
-        if(pipe(pipes[i]) < 0) 
+        if(pipe(mailboxes[i].pipes) < 0) 
         #else
-        if(CreatePipe(&pipes[i][0], &pipes[i][1], NULL, 0) == FALSE)
+        if(CreatePipe(&mailboxes[i].pipes[0], &mailboxes[i].pipes[1], NULL, 0) == FALSE)
         #endif
         {
             error("main: failed to create self-pipe");
         }
+
+        #ifdef UNIX_BASED
+        sem_init(&mailboxes[i].lock, 0, 1);
+        #else
+        mailboxes[i].lock = CreateSemaphoreA(NULL, 1, 1, NULL);
+        #endif
+
+        mailboxes[i].size = 0;
+        mailboxes[i].reserved = 32;
+        mailboxes[i].messages = calloc(mailboxes[i].reserved, sizeof(mailbox_message));
         params[i].initialized = 0;
         params[i].reload = &reload;
         params[i].parentfd = parentfd;

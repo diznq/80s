@@ -40,6 +40,12 @@ void *serve(void *vparams) {
     serve_params *params;
     char buf[BUFSIZE];
 
+    struct read_params_ params_read;
+    struct init_params_ params_init;
+    struct close_params_ params_close;
+    struct write_params_ params_write;
+    struct accept_params_ params_accept;
+
     memset(&clientaddr, 0, sizeof(clientaddr));
 
     if(sizeof(fd_holder) != sizeof(uint64_t)) {
@@ -56,7 +62,9 @@ void *serve(void *vparams) {
     elfd = params->els[id];
     module = params->reload->modules;
     sigfd = params->extra[S80_EXTRA_SIGNALFD];
-    selfpipe = params->reload->pipes[id][0];
+    selfpipe = params->reload->mailboxes[id].pipes[0];
+
+    params_init.parentfd = parentfd;
 
     if(params->initialized == 0) {
         s80_enable_async(selfpipe);
@@ -73,6 +81,8 @@ void *serve(void *vparams) {
         if(epoll_ctl(elfd, EPOLL_CTL_ADD, selfpipe, &ev) < 0) {
             error("serve: failed to add self pipe to epoll");
         }
+
+        params_read.elfd = params_write.elfd = params_close.elfd = params_init.elfd = params_accept.elfd = elfd;
 
         // only one thread can poll on server socket and accept others!
         if (id == 0) {
@@ -105,12 +115,13 @@ void *serve(void *vparams) {
         }
 
         ctx = create_context(elfd, &params->node, params->entrypoint, params->reload);
+        params_read.ctx = params_write.ctx = params_close.ctx = params_init.ctx = params_accept.ctx = ctx;
 
         if (ctx == NULL) {
             error("failed to initialize context");
         }
 
-        on_init(ctx, elfd, parentfd);
+        on_init(params_init);
         params->ctx = ctx;
         params->initialized = 1;
     } else {
@@ -185,7 +196,9 @@ void *serve(void *vparams) {
                             dbg("serve: failed to move child socket from out to in");
                         }
                     }
-                    on_write(ctx, elfd, childfd, 0);
+                    params_write.childfd = childfd;
+                    params_write.written = 0;
+                    on_write(params_write);
                 }
                 if ((flags & EPOLLIN) == EPOLLIN) {
                     readlen = read(childfd, buf, BUFSIZE);
@@ -199,10 +212,15 @@ void *serve(void *vparams) {
                         if (close(childfd) < 0) {
                             dbg("serve: failed to close child socket");
                         }
-                        on_close(ctx, elfd, childfd);
+                        params_close.childfd = childfd;
+                        on_close(params_close);
                         closed = 1;
                     } else if(readlen > 0) {
-                        on_receive(ctx, elfd, childfd, fdtype, buf, readlen);
+                        params_read.childfd = childfd;
+                        params_read.fdtype = fdtype;
+                        params_read.buf = buf;
+                        params_read.readlen = readlen;
+                        on_receive(params_read);
                     }
                 }
                 if (!closed && (flags & (EPOLLERR | EPOLLHUP))) {
@@ -210,7 +228,11 @@ void *serve(void *vparams) {
                     while(fdtype == S80_FD_PIPE) {
                         readlen = read(childfd, buf, BUFSIZE);
                         if(readlen <= 0) break;
-                        on_receive(ctx, elfd, childfd, fdtype, buf, readlen);
+                        params_read.childfd = childfd;
+                        params_read.fdtype = fdtype;
+                        params_read.buf = buf;
+                        params_read.readlen = readlen;
+                        on_receive(params_read);
                     }
                     ev.events = EPOLLIN | EPOLLOUT;
                     SET_FD_HOLDER(&ev.data, fdtype, childfd);
@@ -220,7 +242,8 @@ void *serve(void *vparams) {
                     if (close(childfd) < 0) {
                         dbg("serve: failed to close hungup child");
                     }
-                    on_close(ctx, elfd, childfd);
+                    params_close.childfd = childfd;
+                    on_close(params_close);
                     break;
                 }
             }
