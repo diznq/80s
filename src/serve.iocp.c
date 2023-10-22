@@ -122,6 +122,7 @@ void *serve(void *vparams) {
 
     while(running)
     {
+        if(!params->reload->running) break;
         // wait for new events
         if (!GetQueuedCompletionStatusEx(elfd, events, MAX_EVENTS, &nfds, INFINITE, FALSE)) {
             error("serve: error on iocp");
@@ -246,10 +247,6 @@ void *serve(void *vparams) {
                 }
                 break;
             }
-        }
-
-        if(!params->reload->running) {
-            running = 0;
         }
     }
 
