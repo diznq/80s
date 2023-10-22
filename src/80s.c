@@ -206,11 +206,13 @@ int main(int argc, const char **argv) {
     serve_params params[workers];
     node_id node;
     sem_t serve_lock;
-    #ifdef _WIN32
+#ifdef _WIN32
     HANDLE handles[workers];
-    #else
+    char pipe_names[2][255];
+    SECURITY_ATTRIBUTES saAttr;
+#else
     pthread_t handles[workers];
-    #endif
+#endif
     fd_t els[workers];
     pvoid ctxes[workers];
     mailbox mailboxes[workers];
@@ -339,20 +341,26 @@ int main(int argc, const char **argv) {
         error("main: failed to listen on server socket");
 
     for (i = 0; i < workers; i++) {
-        #ifdef UNIX_BASED
-        if(pipe(mailboxes[i].pipes) < 0) 
-        #else
-        if(CreatePipe(&mailboxes[i].pipes[0], &mailboxes[i].pipes[1], NULL, 0) == FALSE)
-        #endif
-        {
+    #ifdef UNIX_BASED
+        if(pipe(mailboxes[i].pipes) < 0) {
             error("main: failed to create self-pipe");
         }
-
-        #ifdef UNIX_BASED
         sem_init(&mailboxes[i].lock, 0, 1);
-        #else
+    #else
+        sprintf(pipe_names[0], "\\\\.\\pipe\\80s_SPI_%d_%d", GetCurrentProcessId(), i);
+        sprintf(pipe_names[1], "\\\\.\\pipe\\80s_SPO_%d_%d",  GetCurrentProcessId(), i);
+        
+        memset(&saAttr, 0, sizeof(saAttr));
+        saAttr.nLength = sizeof(SECURITY_ATTRIBUTES); 
+        saAttr.bInheritHandle = TRUE; 
+        saAttr.lpSecurityDescriptor = NULL; 
+        
+        mailboxes[i].pipes[0] = CreateNamedPipeA(pipe_names[0], PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED, PIPE_TYPE_BYTE, 1, 4096, 4096, 1000, &saAttr);
+        mailboxes[i].pipes[1] = CreateFileA(pipe_names[0], GENERIC_WRITE, 0, &saAttr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        
+        SetHandleInformation(mailboxes[i].pipes[0], HANDLE_FLAG_INHERIT, 0);
         mailboxes[i].lock = CreateSemaphoreA(NULL, 1, 1, NULL);
-        #endif
+    #endif
 
         mailboxes[i].size = 0;
         mailboxes[i].reserved = 32;

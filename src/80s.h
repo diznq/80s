@@ -76,6 +76,7 @@ extern "C" {
         int op;
         int fdtype;
         int connected;
+        int worker;
         fd_t fd;
         DWORD length;
         DWORD flags;
@@ -171,7 +172,7 @@ struct mailbox_message_ {
 
 struct mailbox_ {
     void *ctx;
-    int elfd;
+    fd_t elfd;
     sem_t lock;
     fd_t pipes[2];
     struct mailbox_message_ *messages;

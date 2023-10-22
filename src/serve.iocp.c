@@ -42,13 +42,14 @@ context_holder* new_fd_context(fd_t childfd, int fdtype) {
 void *serve(void *vparams) {
     fd_t *els, elfd, parentfd, childfd, selfpipe;
     module_extension *module;
+    mailbox_message *message, outbound_message;
     OVERLAPPED_ENTRY events[MAX_EVENTS];
     ULONG nfds, n;
     context_holder *cx;
     serve_params *params;
     int flags, fdtype, status, readlen, workers, id, running = 1, is_reload = 0;
     unsigned accepts;
-    void *ctx;
+    void *ctx, **ctxes;
 
     read_params params_read;
     init_params params_init;
@@ -62,9 +63,10 @@ void *serve(void *vparams) {
     els = params->els;
     id = params->workerid;
     ctx = params->ctx;
+    ctxes = params->ctxes;
     workers = params->workers;
     module = params->reload->modules;
-    selfpipe = params->reload->pipes[id][0];
+    selfpipe = params->reload->mailboxes[id].pipes[0];
     elfd = els[id];
 
     params_init.parentfd = parentfd;
@@ -78,7 +80,18 @@ void *serve(void *vparams) {
         if (elfd == NULL)
             error("serve: failed to create iocp");
 
+        params->reload->mailboxes[id].elfd = elfd;
         params_read.elfd = params_write.elfd = params_close.elfd = params_init.elfd = params_accept.elfd = elfd;
+
+        if(CreateIoCompletionPort(selfpipe, elfd, (ULONG_PTR)S80_FD_PIPE, 0) != NULL) {
+            cx = new_fd_context(selfpipe, S80_FD_SOCKET);
+            cx->recv->op = S80_WIN_OP_READ;
+            cx->worker = id;
+            ReadFile(cx->recv->fd, cx->recv->wsaBuf.buf, cx->recv->wsaBuf.len, NULL, &cx->recv->ol);
+        } else {
+            printf("last error: %d\n", GetLastError());
+            error("serve: failed to add self pipe to epoll");
+        }
 
         // only one thread can poll on server socket and accept others!
         if (id == 0) {
@@ -93,6 +106,7 @@ void *serve(void *vparams) {
                 // prepare overlapped structs for both recv and send for newly accepted socket
                 cx = new_fd_context(childfd, S80_FD_SOCKET);
                 cx->recv->op = S80_WIN_OP_ACCEPT;
+                cx->worker = accepts;
                 
                 if(
                     AcceptEx(
@@ -111,7 +125,8 @@ void *serve(void *vparams) {
             }
         }
 
-        ctx = create_context(elfd, &params->node, params->entrypoint, params->reload);
+        ctx = ctxes[id] = create_context(elfd, &params->node, params->entrypoint, params->reload);
+        params->reload->mailboxes[id].ctx = ctx;
         params_read.ctx = params_write.ctx = params_close.ctx = params_init.ctx = params_accept.ctx = ctx;
 
         if (ctx == NULL) {
@@ -139,6 +154,8 @@ void *serve(void *vparams) {
             error("serve: error on iocp");
         }
 
+        resolve_mail(params, id);
+
         // the main difference from unix versions is that fd being sent to on_receive, on_write etc. is not really fd,
         // but it is rather the tied context created by new_fd_context
         for (n = 0; n < nfds; ++n) {
@@ -157,12 +174,39 @@ void *serve(void *vparams) {
                 if(status == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
                     dbgf("[%d] accept %llu failed, error: %d\n", id, cx->fd, WSAGetLastError());
                 }
+
+                // call on_accept, in case it is supposed to run in another worker
+                // send it to it's mailbox
+                params_accept.ctx = ctxes[cx->worker]; // different worker has different context!
+                params_accept.elfd = els[cx->worker];  // same with event loop
+                params_accept.parentfd = parentfd;
+                params_accept.childfd = childfd;
+                params_accept.fdtype = S80_FD_SOCKET;
+                if(cx->worker == id) {
+                    on_accept(params_accept);
+                } else {
+                    message = &outbound_message;
+                    message->sender_elfd = elfd;
+                    message->sender_fd = parentfd;
+                    message->receiver_fd = childfd;
+                    message->type = S80_MB_ACCEPT;
+                    message->message = calloc(sizeof(accept_params), 1);
+                    if(message->message) {
+                        memmove(message->message, &params_accept, sizeof(accept_params));
+                        if(s80_mail(params->reload->mailboxes + cx->worker, message) < 0) {
+                            dbg("serve: failed to send mailbox message");
+                        }
+                    } else {
+                        dbg("serve: failed to allocate message");
+                    }
+                }
                 
                 // prepare for next accept, scheduled for next IOCP (accepts++)
                 childfd = (fd_t)WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
                 s80_enable_async(childfd);
                 cx = new_fd_context(childfd, S80_FD_SOCKET);
                 cx->recv->op = S80_WIN_OP_ACCEPT;
+                cx->worker = accepts;
 
                 if(
                     AcceptEx(
@@ -171,9 +215,11 @@ void *serve(void *vparams) {
                         &cx->recv->length, &cx->recv->ol
                     ) == FALSE && WSAGetLastError() == WSA_IO_PENDING
                 ) {
-                    if(CreateIoCompletionPort(childfd, els[accepts++], (ULONG_PTR)S80_FD_SOCKET, 0) == NULL) {
+                    if(CreateIoCompletionPort(childfd, els[accepts], (ULONG_PTR)S80_FD_SOCKET, 0) == NULL) {
                         dbg("serve: failed to associate/2");
                     }
+
+                    accepts++;
                     if(accepts == workers) accepts = 0;
                 } else {
                     dbg("serve: acceptex/1 failed");
@@ -181,7 +227,9 @@ void *serve(void *vparams) {
                 break;
             case S80_WIN_OP_READ:
                 dbgf("[%d] recv from %llu (%d), flags: %d, length: %d (%d)\n", id, cx->fd, cx->fdtype, cx->flags, events[n].dwNumberOfBytesTransferred, cx->length);
-                if(events[n].dwNumberOfBytesTransferred == 0) {
+                if(cx->fd == selfpipe) {
+                    ReadFile(cx->recv->fd, cx->recv->wsaBuf.buf, cx->recv->wsaBuf.len, NULL, &cx->recv->ol);
+                } else if(events[n].dwNumberOfBytesTransferred == 0) {
                     // when in read state, check if we received zero bytes as that is error
                     cx->recv->connected = 0;
                     params_close.childfd = (fd_t)cx->recv;

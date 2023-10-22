@@ -196,6 +196,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
 
 int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
     int status = 0;
+    close_params params;
 
     if (status < 0) {
         dbg("l_net_close: failed to remove child from epoll");
@@ -219,7 +220,11 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
     if (status < 0) {
         dbg("l_net_close: failed to close childfd");
     }
-    on_close(ctx, elfd, childfd);
+
+    params.ctx = ctx;
+    params.elfd = elfd;
+    params.childfd = childfd;
+    on_close(params);
 
     return status;
 }
@@ -401,11 +406,67 @@ int s80_quit(reload_context *reload) {
     int i;
     buf[0] = S80_SIGNAL_QUIT;
     for(i=0; i < reload->workers; i++) {
-        WriteFile(reload->pipes[i][1], buf, 1, NULL, NULL);
+        WriteFile(reload->mailboxes[i].pipes[1], buf, 1, NULL, NULL);
     }
     reload->ready = 0;
     reload->running = 0;
     return 0;
+}
+
+int s80_mail(mailbox *mailbox, mailbox_message *message) {
+    char buf[1];
+    int i;
+    buf[0] = S80_SIGNAL_MAIL;
+    s80_acquire_mailbox(mailbox);
+    if(mailbox->size >= mailbox->reserved) {
+        mailbox->reserved = mailbox->reserved + 1000;
+        mailbox->messages = realloc(mailbox->messages, sizeof(mailbox_message) * mailbox->reserved);
+        if(!mailbox->messages) {
+            s80_release_mailbox(mailbox);
+            return -1;
+        }
+    }
+    mailbox->messages[mailbox->size++] = *message;
+    WriteFile(mailbox->pipes[1], buf, 1, NULL, NULL);
+    s80_release_mailbox(mailbox);
+    return 0;
+}
+
+void s80_acquire_mailbox(mailbox *mailbox) {
+    WaitForSingleObject(mailbox->lock, 0);
+}
+
+void s80_release_mailbox(mailbox *mailbox) {
+    ReleaseSemaphore(mailbox->lock, 1, NULL);
+}
+
+void resolve_mail(serve_params *params, int id) {
+    int i;
+    mailbox_message *message;
+    s80_acquire_mailbox(params->reload->mailboxes + id);
+    for(i = 0; i < params->reload->mailboxes[id].size; i++) {
+        message = &params->reload->mailboxes[id].messages[i];
+        switch(message->type) {
+            case S80_MB_READ:
+                on_receive(*(read_params*)message->message);
+                break;
+            case S80_MB_WRITE:
+                on_write(*(write_params*)message->message);
+                break;
+            case S80_MB_CLOSE:
+                on_close(*(close_params*)message->message);
+                break;
+            case S80_MB_ACCEPT:
+                on_accept(*(accept_params*)message->message);
+                break;
+        }
+        if(message->message) {
+            free(message->message);
+            message->message = NULL;
+        }
+    }
+    params->reload->mailboxes[id].size = 0;
+    s80_release_mailbox(params->reload->mailboxes + id);
 }
 
 static int cleanup_pipes(fd_t elfd, fd_t *pipes, int allocated) {
