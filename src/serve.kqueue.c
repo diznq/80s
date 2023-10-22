@@ -24,11 +24,12 @@ union addr_common {
 
 void *serve(void *vparams) {
     fd_t *els, elfd, parentfd, childfd, selfpipe;
-    int nfds, flags, fdtype, status, n, readlen, workers, id, running = 1, is_reload = 0;
+    int nfds, flags, fdtype, status, n, readlen, workers, id, running = 1, is_reload = 0, i = 0;
     socklen_t clientlen = sizeof(union addr_common);
     module_extension *module;
+    mailbox_message *message, outbound_message;
     unsigned accepts;
-    void *ctx;
+    void *ctx, **ctxes;
     union addr_common clientaddr;
     struct kevent ev, events[MAX_EVENTS];
     struct msghdr msg;
@@ -50,6 +51,7 @@ void *serve(void *vparams) {
     els = params->els;
     id = params->workerid;
     ctx = params->ctx;
+    ctxes = params->ctxes;
     workers = params->workers;
     module = params->reload->modules;
     selfpipe = params->reload->mailboxes[id].pipes[0];
@@ -67,6 +69,7 @@ void *serve(void *vparams) {
         if (elfd < 0)
             error("serve: failed to create kqueue");
 
+        params->reload->mailboxes[id].elfd = elfd;
         params_read.elfd = params_write.elfd = params_close.elfd = params_init.elfd = params_accept.elfd = elfd;
 
         EV_SET(&ev, selfpipe, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_PIPE);
@@ -82,7 +85,8 @@ void *serve(void *vparams) {
             }
         }
 
-        ctx = create_context(elfd, &params->node, params->entrypoint, params->reload);
+        ctx = ctxes[id] = create_context(elfd, &params->node, params->entrypoint, params->reload);
+        params->reload->mailboxes[id].ctx = ctx;
         params_read.ctx = params_write.ctx = params_close.ctx = params_init.ctx = params_accept.ctx = ctx;
 
         if (ctx == NULL) {
@@ -128,17 +132,43 @@ void *serve(void *vparams) {
                 EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
                 // add the child socket to the event loop it belongs to based on modulo
                 // with number of workers, to balance the load to other threads
-                if (kevent(els[accepts++], &ev, 1, NULL, 0, NULL) < 0) {
+                if (kevent(els[accepts], &ev, 1, NULL, 0, NULL) < 0) {
                     dbg("serve: on add child socket to kqueue");
                 }
+                // call on_accept, in case it is supposed to run in another worker
+                // send it to it's mailbox
+                params_accept.ctx = ctxes[accepts]; // different worker has different context!
+                params_accept.elfd = els[accepts];  // same with event loop
+                params_accept.parentfd = parentfd;
+                params_accept.childfd = childfd;
+                params_accept.fdtype = S80_FD_SOCKET;
+                if(accepts == id) {
+                    on_accept(params_accept);
+                } else {
+                    message = &outbound_message;
+                    message->sender_elfd = elfd;
+                    message->sender_fd = parentfd;
+                    message->receiver_fd = childfd;
+                    message->type = S80_MB_ACCEPT;
+                    message->message = calloc(sizeof(accept_params), 1);
+                    if(message->message) {
+                        memmove(message->message, &params_accept, sizeof(accept_params));
+                        if(s80_mail(params->reload->mailboxes + accepts, message) < 0) {
+                            dbg("serve: failed to send mailbox message");
+                        }
+                    } else {
+                        dbg("serve: failed to allocate message");
+                    }
+                }
+                accepts++;
                 if (accepts == workers) {
                     accepts = 0;
                 }
             } else if(childfd == selfpipe) {
                 if(events[n].filter == EVFILT_READ) {
                     readlen = read(childfd, buf, BUFSIZE);
-                    if(readlen > 0) {
-                        switch(buf[0]) {
+                    for(i = 0; i <readlen; i++) {
+                        switch(buf[i]) {
                             case S80_SIGNAL_STOP:
                                 running = 0;
                                 break;
@@ -146,6 +176,7 @@ void *serve(void *vparams) {
                                 params->quit = 1;
                                 running = 0;
                                 break;
+                            default: break;
                         }
                     }
                 }
