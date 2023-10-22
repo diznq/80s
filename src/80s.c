@@ -50,6 +50,18 @@ static int get_arg(const char *arg, int default_value, int flag, int argc, const
     return flag ? 0 : default_value;
 }
 
+static const char *get_sz_arg_no_flag(const char *default_value, int argc, const char **argv) {
+    int i;
+    for(i = 1; i < argc; i++) {
+        if(argv[i][0] == '-') {
+            i++;
+            continue;
+        }
+        return argv[i];
+    }
+    return default_value;
+}
+
 static const char *get_sz_arg(const char *arg, int argc, const char **argv, const char *env, const char *default_value) {
     int i;
     const char *env_value = env ? getenv(env) : NULL;
@@ -284,7 +296,7 @@ int main(int argc, const char **argv) {
         exit(1);
     }
 
-    entrypoint = argc >= 2 ? argv[1] : "server/simple_http.lua";
+    entrypoint = get_sz_arg_no_flag("server/simple_http.lua", argc, argv);
 
     #ifdef _WIN32
     WSADATA wsa;
