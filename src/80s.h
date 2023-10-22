@@ -75,11 +75,11 @@ extern "C" {
         DWORD flags;
         WSABUF wsaBuf;
         char data[BUFSIZE + 128];
-        struct context_holder *recv, *send;
+        struct context_holder_ *recv, *send;
         OVERLAPPED ol;
     } context_holder;
 
-    struct context_holder* new_fd_context(fd_t childfd, int fdtype);
+    context_holder* new_fd_context(fd_t childfd, int fdtype);
     #define event_t winevent
 #else
 #error unsupported platform
@@ -128,6 +128,9 @@ struct reload_context_ {
     alloc_t allocator;
     void *ud;
     fd_t (*pipes)[2];
+    #ifdef _WIN32
+    int quit;
+    #endif
 };
 
 struct serve_params_ {

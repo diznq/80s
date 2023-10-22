@@ -247,6 +247,10 @@ void *serve(void *vparams) {
                 break;
             }
         }
+
+        if(!params->reload->running) {
+            running = 0;
+        }
     }
 
     module = params->reload->modules;

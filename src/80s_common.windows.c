@@ -129,7 +129,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
     }
 
     // finally initialize new tied fd context
-    struct context_holder *cx = new_fd_context(childfd, S80_FD_SOCKET);
+    context_holder *cx = new_fd_context(childfd, S80_FD_SOCKET);
 
     if(usev6) {
         sa = (const struct sockaddr *)&ipv6addr;
@@ -159,7 +159,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
 int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, size_t offset, size_t len) {
     int status;
 
-    struct context_holder *cx = (struct context_holder*)childfd;
+    context_holder *cx = (context_holder*)childfd;
     // if there was some previous buffer, free it, although this shouldn't happen
     if(cx->send->wsaBuf.buf != NULL) {
         free(cx->send->wsaBuf.buf);
@@ -203,7 +203,7 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
     }
     
     // on iocp we get tied fd context, we need to resolve ->fd from it later
-    struct context_holder* cx = (struct context_holder*)childfd;
+    context_holder* cx = (context_holder*)childfd;
     if(cx->recv->connected) {
         // only close if it wasn't closed already
         cx->recv->connected = 0;
@@ -229,7 +229,7 @@ int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port) {
     socklen_t clientlen = sizeof(addr);
 
     // on iocp we get tied fd context, we need to resolve ->fd from it
-    struct context_holder *cx = (struct context_holder*)fd;
+    context_holder *cx = (context_holder*)fd;
     fd = cx->fd;
 
     if (getsockname((sock_t)fd, (struct sockaddr *)&addr, &clientlen) < 0) {
@@ -257,7 +257,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
     BOOL bSuccess = FALSE;
     fd_t piperd[2] = {INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE}, pipewr[2] = {INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE};
     fd_t childfd;
-    struct context_holder *cx;
+    context_holder *cx;
     struct dynstr ds;
     char buf[8192];
     int i, j;
@@ -326,7 +326,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
     }
 
     // perform the very first read to start-up the proactor pattern
-    cx = (struct context_holder*)pipes_out[0];
+    cx = (context_holder*)pipes_out[0];
     // if it failed here, return right away and clean-up all allocated memory
     if(!ReadFile(STDOUT_RD, cx->recv->data, BUFSIZE, NULL, &cx->recv->ol) && GetLastError() != ERROR_IO_PENDING) {
         printf("s80_popen: first readfile failed with %d\n", GetLastError());
@@ -396,14 +396,26 @@ int s80_reload(reload_context *reload) {
 #endif
 }
 
+int s80_quit(reload_context *reload) {
+    char buf[1];
+    int i;
+    buf[0] = S80_SIGNAL_QUIT;
+    for(i=0; i < reload->workers; i++) {
+        WriteFile(reload->pipes[i][1], buf, 1, NULL, NULL);
+    }
+    reload->ready = 0;
+    reload->running = 0;
+    return 0;
+}
+
 static int cleanup_pipes(fd_t elfd, fd_t *pipes, int allocated) {
     int i;
     fd_t childfd;
-    struct context_holder *cx;
+    context_holder *cx;
     for(i=0; i<allocated; i++) {
         childfd = pipes[i];
         if(i < 2 && childfd != 0) {
-            cx = (struct context_holder*)childfd;
+            cx = (context_holder*)childfd;
             free(cx->recv->send);
             free(cx->recv);
         }

@@ -293,7 +293,7 @@ int s80_quit(reload_context *reload) {
         write(reload->pipes[i][1], buf, 1);
     }
     reload->ready = 0;
-    reload->running++;
+    reload->running = 0;
     return 0;
 }
 

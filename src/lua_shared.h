@@ -15,7 +15,7 @@ static inline fd_t void_to_fd(void *ptr) {
     return (fd_t)(intptr_t)ptr;
 }
 
-static inline fd_t void_to_int(void *ptr) {
+static inline int void_to_int(void *ptr) {
     return (int)(intptr_t)ptr;
 }
 
