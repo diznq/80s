@@ -50,11 +50,11 @@ void *serve(void *vparams) {
     unsigned accepts;
     void *ctx;
 
-    struct read_params_ params_read;
-    struct init_params_ params_init;
-    struct close_params_ params_close;
-    struct write_params_ params_write;
-    struct accept_params_ params_accept;
+    read_params params_read;
+    init_params params_init;
+    close_params params_close;
+    write_params params_write;
+    accept_params params_accept;
     
     accepts = 0;
     params = (serve_params *)vparams;

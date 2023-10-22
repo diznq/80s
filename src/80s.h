@@ -124,40 +124,40 @@ struct node_id_ {
     const char *name;
 };
 
-struct read_params_ {
+typedef struct read_params_ {
     void *ctx;
     fd_t elfd;
     fd_t childfd;
     int fdtype;
     const char *buf;
     int readlen;
-};
+} read_params;
 
-struct close_params_ {
+typedef struct close_params_ {
     void *ctx;
     fd_t elfd;
     fd_t childfd;
-};
+} close_params;
 
-struct write_params_ {
+typedef struct write_params_ {
     void *ctx;
     fd_t elfd;
     fd_t childfd;
     int written;
-};
+} write_params;
 
-struct init_params_ {
+typedef struct init_params_ {
     void *ctx;
     fd_t elfd;
     fd_t parentfd;
-};
+} init_params;
 
-struct accept_params_ {
+typedef struct accept_params_ {
     void *ctx;
     fd_t elfd;
     fd_t parentfd;
     fd_t childfd;
-};
+} accept_params;
 
 struct mailbox_message_ {
     fd_t sender_elfd;
