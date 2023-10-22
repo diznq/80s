@@ -174,8 +174,10 @@ void *serve(void *vparams) {
                 if (epoll_ctl(els[accepts], EPOLL_CTL_ADD, childfd, &ev) < 0) {
                     dbg("serve: on add child socket to epoll");
                 }
-                params_accept.ctx = ctxes[accepts];
-                params_accept.elfd = els[accepts];
+                // call on_accept, in case it is supposed to run in another worker
+                // send it to it's mailbox
+                params_accept.ctx = ctxes[accepts]; // different worker has different context!
+                params_accept.elfd = els[accepts];  // same with event loop
                 params_accept.parentfd = parentfd;
                 params_accept.childfd = childfd;
                 params_accept.fdtype = S80_FD_SOCKET;
