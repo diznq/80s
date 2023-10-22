@@ -128,9 +128,6 @@ struct reload_context_ {
     alloc_t allocator;
     void *ud;
     fd_t (*pipes)[2];
-    #ifdef _WIN32
-    int quit;
-    #endif
 };
 
 struct serve_params_ {
