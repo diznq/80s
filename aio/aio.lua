@@ -144,6 +144,8 @@ if not aiosocket then
     ---
     --- @class aiosocket
     aiosocket = {
+        --- @type boolean initialized
+        init = false,
         --- @type lightuserdata socket file scriptor
         fd = nil,
         --- @type lightuserdata event loop file descriptor
@@ -341,6 +343,7 @@ end
 --- @return aiosocket
 function aiosocket:new(elfd, childfd, fdtype, connected)
     local socket = { 
+        init = false,
         elfd = elfd, 
         fd = childfd, 
         ft = fdtype,
@@ -390,6 +393,24 @@ if not aio then
     }
 end
 
+--- Accept handler
+---@param elfd lightuserdata event loop
+---@param parentfd lightuserdata parent fd (server)
+---@param childfd lightuserdata socket handle
+---@param fdtype lightuserdata fd type
+function aio:on_accept(elfd, parentfd, childfd, fdtype)
+    local fd = self.fds[childfd]
+    if fd == nil then
+        fd = aiosocket:new(elfd, childfd, fdtype, true)
+        self.fds[childfd] = fd
+    end
+    for _, handler in pairs(self.protocols) do
+        if type(handler.on_accept) == "function" then
+            handler.on_accept(fd, parentfd)
+        end
+    end
+end
+
 --- Generic handler called when data is received
 ---
 --- @param elfd lightuserdata epoll handle
@@ -399,9 +420,26 @@ end
 --- @param len integer length of data
 function aio:on_data(elfd, childfd, fdtype, data, len)
     local fd = self.fds[childfd]
-    if fd ~= nil then
+
+    -- this scenario shouldn't ever happen as on_accept should be called always
+    -- prior to this, but just to be safe...
+    if fd == nil then
+        fd = aiosocket:new(elfd, childfd, fdtype, true)
+        self.fds[childfd] = fd
+    end
+    
+    if fd.init then
         fd:on_data(elfd, childfd, data, len)
         return
+    end
+
+    for _, handler in pairs(self.protocols) do
+        if handler.matches(data) then
+            handler.handle(fd)
+            fd.init = true
+            fd:on_data(elfd, childfd, data, len)
+            return
+        end
     end
 
     -- G as for GET, P as for POST/PUT, D as for DELETE, O as for OPTIONS, H as for HEAD
@@ -409,20 +447,9 @@ function aio:on_data(elfd, childfd, fdtype, data, len)
     local initial = data:sub(1, 1)
     -- detect the protocol and add correct handler
     if is_http[initial] then
-        local fd = aiosocket:new(elfd, childfd, fdtype, true)
-        self.fds[childfd] = fd
         self:handle_as_http(fd)
+        fd.init = true
         fd:on_data(elfd, childfd, data, len)
-    else
-        for _, handler in pairs(self.protocols) do
-            if handler.matches(data) then
-                local fd = aiosocket:new(elfd, childfd, fdtype, true)
-                self.fds[childfd] = fd
-                handler.handle(fd)
-                fd:on_data(elfd, childfd, data, len)
-                break
-            end
-        end
     end
 end
 
@@ -1060,6 +1087,15 @@ function aio:start()
     --- @param childfd lightuserdata
     _G.on_write = function(elfd, childfd, written)
         aio:on_write(elfd, childfd, written)
+    end
+
+    --- Accept handler
+    ---@param elfd lightuserdata
+    ---@param parentfd lightuserdata
+    ---@param childfd lightuserdata
+    ---@param fdtype lightuserdata
+    _G.on_accept = function(elfd, parentfd, childfd, fdtype)
+        aio:on_accept(elfd, parentfd, childfd, fdtype)
     end
 end
 

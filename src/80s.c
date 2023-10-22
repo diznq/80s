@@ -37,6 +37,8 @@ union addr_common {
     struct sockaddr_in v4;
 };
 
+typedef void* pvoid;
+
 static int get_arg(const char *arg, int default_value, int flag, int argc, const char **argv) {
     int i, off = flag ? 0 : 1;
     for (i = 1; i < argc - off; i++) {
@@ -210,6 +212,7 @@ int main(int argc, const char **argv) {
     pthread_t handles[workers];
     #endif
     fd_t els[workers];
+    pvoid ctxes[workers];
     mailbox mailboxes[workers];
 
     if(module_list) {
@@ -359,6 +362,7 @@ int main(int argc, const char **argv) {
         params[i].parentfd = parentfd;
         params[i].workerid = i;
         params[i].els = els;
+        params[i].ctxes = ctxes;
         params[i].workers = workers;
         params[i].entrypoint = entrypoint;
         params[i].node.id = i;

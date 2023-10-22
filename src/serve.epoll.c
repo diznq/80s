@@ -28,13 +28,14 @@ union addr_common {
 void *serve(void *vparams) {
     fd_t *els, elfd, parentfd, childfd, sigfd, selfpipe;
     int nfds, status, n, readlen, workers, id, flags, fdtype, closed = 0;
-    int running = 1, is_reload = 0;
+    int running = 1, is_reload = 0, i = 0;
     sigset_t sigmask;
     socklen_t clientlen = sizeof(union addr_common);
     module_extension *module;
+    mailbox_message *message, outbound_message;
     struct signalfd_siginfo siginfo;
     unsigned accepts;
-    void *ctx;
+    void *ctx, **ctxes;
     union addr_common clientaddr;
     struct epoll_event ev, events[MAX_EVENTS];
     serve_params *params;
@@ -56,6 +57,7 @@ void *serve(void *vparams) {
     params = (serve_params *)vparams;
     parentfd = params->parentfd;
     els = params->els;
+    ctxes = params->ctxes;
     id = params->workerid;
     workers = params->workers;
     ctx = params->ctx;
@@ -82,6 +84,7 @@ void *serve(void *vparams) {
             error("serve: failed to add self pipe to epoll");
         }
 
+        params->reload->mailboxes[id].elfd = elfd;
         params_read.elfd = params_write.elfd = params_close.elfd = params_init.elfd = params_accept.elfd = elfd;
 
         // only one thread can poll on server socket and accept others!
@@ -114,7 +117,8 @@ void *serve(void *vparams) {
             signal(SIGCHLD, SIG_IGN);
         }
 
-        ctx = create_context(elfd, &params->node, params->entrypoint, params->reload);
+        ctx = ctxes[id] = create_context(elfd, &params->node, params->entrypoint, params->reload);
+        params->reload->mailboxes[id].ctx = ctx;
         params_read.ctx = params_write.ctx = params_close.ctx = params_init.ctx = params_accept.ctx = ctx;
 
         if (ctx == NULL) {
@@ -143,6 +147,8 @@ void *serve(void *vparams) {
             error("serve: error on epoll_wait");
         }
 
+        resolve_mail(params, id);
+
         for (n = 0; n < nfds; ++n) {
             childfd = FD_HOLDER_FD(&events[n].data);
             fdtype = FD_HOLDER_TYPE(&events[n].data);
@@ -165,22 +171,48 @@ void *serve(void *vparams) {
                 SET_FD_HOLDER(&ev.data, S80_FD_SOCKET, childfd);
                 // add the child socket to the event loop it belongs to based on modulo
                 // with number of workers, to balance the load to other threads
-                if (epoll_ctl(els[accepts++], EPOLL_CTL_ADD, childfd, &ev) < 0) {
+                if (epoll_ctl(els[accepts], EPOLL_CTL_ADD, childfd, &ev) < 0) {
                     dbg("serve: on add child socket to epoll");
                 }
+                params_accept.ctx = ctxes[accepts];
+                params_accept.elfd = els[accepts];
+                params_accept.parentfd = parentfd;
+                params_accept.childfd = childfd;
+                params_accept.fdtype = S80_FD_SOCKET;
+                if(accepts == id) {
+                    on_accept(params_accept);
+                } else {
+                    message = &outbound_message;
+                    message->sender_elfd = elfd;
+                    message->sender_fd = parentfd;
+                    message->receiver_fd = childfd;
+                    message->type = S80_MB_ACCEPT;
+                    message->message = calloc(sizeof(accept_params), 1);
+                    if(message->message) {
+                        memmove(message->message, &params_accept, sizeof(accept_params));
+                        if(s80_mail(params->reload->mailboxes + accepts, message) < 0) {
+                            dbg("serve: failed to send mailbox message");
+                        }
+                    } else {
+                        dbg("serve: failed to allocate message");
+                    }
+                }
+                accepts++;
                 if (accepts == workers) {
                     accepts = 0;
                 }
             } else if(childfd == selfpipe) {
                 readlen = read(childfd, buf, BUFSIZE);
-                if(readlen > 0) {
-                    switch(buf[0]) {
+                for(i=0; i < readlen; i++) {
+                    switch(buf[i]) {
                         case S80_SIGNAL_STOP:
                             running = 0;
                             break;
                         case S80_SIGNAL_QUIT:
                             params->quit = 1;
                             running = 0;
+                            break;
+                        default:
                             break;
                     }
                 }

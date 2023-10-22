@@ -66,6 +66,18 @@ void on_write(struct write_params_ params) {
     }
 }
 
+void on_accept(struct accept_params_ params) {
+    lua_State *L = (lua_State *)params.ctx;
+    lua_getglobal(L, "on_accept");
+    lua_pushlightuserdata(L, fd_to_void(params.elfd));
+    lua_pushlightuserdata(L, fd_to_void(params.parentfd));
+    lua_pushlightuserdata(L, fd_to_void(params.childfd));
+    lua_pushlightuserdata(L, int_to_void(params.fdtype));
+    if (lua_pcall(L, 4, 0, 0) != 0) {
+        printf("on_accept: error running on_accept: %s\n", lua_tostring(L, -1));
+    }
+}
+
 void on_init(struct init_params_ params) {
     lua_State *L = (lua_State *)params.ctx;
     lua_getglobal(L, "on_init");

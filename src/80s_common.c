@@ -24,9 +24,6 @@ union addr_common {
 
 static int cleanup_pipes(fd_t elfd, fd_t* pipes, int allocated);
 
-static void acquire_mailbox(mailbox *mailbox);
-static void release_mailbox(mailbox *mailbox);
-
 void s80_enable_async(fd_t fd) {
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
 }
@@ -282,9 +279,9 @@ int s80_reload(reload_context *reload) {
     } else {
         buf[0] = S80_SIGNAL_STOP;
         for(i=0; i < reload->workers; i++) {
-            acquire_mailbox(reload->mailboxes + i);
+            s80_acquire_mailbox(reload->mailboxes + i);
             write(reload->mailboxes[i].pipes[1], buf, 1);
-            release_mailbox(reload->mailboxes + i);
+            s80_release_mailbox(reload->mailboxes + i);
         }
         reload->ready = 0;
         reload->running++;
@@ -300,21 +297,69 @@ int s80_quit(reload_context *reload) {
     int i;
     buf[0] = S80_SIGNAL_QUIT;
     for(i=0; i < reload->workers; i++) {
-        acquire_mailbox(reload->mailboxes + i);
+        s80_acquire_mailbox(reload->mailboxes + i);
         write(reload->mailboxes[i].pipes[1], buf, 1);
-        release_mailbox(reload->mailboxes + i);
+        s80_release_mailbox(reload->mailboxes + i);
     }
     reload->ready = 0;
     reload->running = 0;
     return 0;
 }
 
-static void acquire_mailbox(mailbox *mailbox) {
+int s80_mail(mailbox *mailbox, mailbox_message *message) {
+    char buf[1];
+    int i;
+    buf[0] = S80_SIGNAL_MAIL;
+    s80_acquire_mailbox(mailbox);
+    if(mailbox->size >= mailbox->reserved) {
+        mailbox->reserved = mailbox->reserved + 1000;
+        mailbox->messages = realloc(mailbox->messages, sizeof(mailbox_message) * mailbox->reserved);
+        if(!mailbox->messages) {
+            s80_release_mailbox(mailbox);
+            return -1;
+        }
+    }
+    mailbox->messages[mailbox->size++] = *message;
+    write(mailbox->pipes[1], buf, 1);
+    s80_release_mailbox(mailbox);
+    return 0;
+}
+
+void s80_acquire_mailbox(mailbox *mailbox) {
     sem_wait(&mailbox->lock);
 }
 
-static void release_mailbox(mailbox *mailbox) {
+void s80_release_mailbox(mailbox *mailbox) {
     sem_post(&mailbox->lock);
+}
+
+void resolve_mail(serve_params *params, int id) {
+    int i;
+    mailbox_message *message;
+    s80_acquire_mailbox(params->reload->mailboxes + id);
+    for(i = 0; i < params->reload->mailboxes[id].size; i++) {
+        message = &params->reload->mailboxes[id].messages[i];
+        switch(message->type) {
+            case S80_MB_READ:
+                on_receive(*(read_params*)message->message);
+                break;
+            case S80_MB_WRITE:
+                on_write(*(write_params*)message->message);
+                break;
+            case S80_MB_CLOSE:
+                on_close(*(close_params*)message->message);
+                break;
+            case S80_MB_ACCEPT:
+                on_accept(*(accept_params*)message->message);
+                break;
+        }
+        if(message->message) {
+            free(message->message);
+            message->message = NULL;
+        }
+    }
+    params->reload->mailboxes[id].size = 0;
+    s80_release_mailbox(params->reload->mailboxes + id);
 }
 
 static int cleanup_pipes(fd_t elfd, fd_t *pipes, int allocated) {

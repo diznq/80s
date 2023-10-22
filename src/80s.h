@@ -10,22 +10,23 @@ extern "C" {
 #include <stdio.h>
 #include <stdlib.h>
 
-#define S80_FD_SOCKET 0
-#define S80_FD_KTLS_SOCKET 1
-#define S80_FD_PIPE 2
-#define S80_FD_OTHER 3
+#define S80_FD_SOCKET 1
+#define S80_FD_KTLS_SOCKET 2
+#define S80_FD_PIPE 3
+#define S80_FD_OTHER 4
 
 #ifndef S80_DYNAMIC_SO
     #define S80_DYNAMIC_SO "bin/80s.so"
 #endif
 
-#define S80_SIGNAL_STOP 0
-#define S80_SIGNAL_QUIT 1
+#define S80_SIGNAL_STOP 1
+#define S80_SIGNAL_QUIT 2
+#define S80_SIGNAL_MAIL 3
 
-#define S80_MB_ACCEPT 0
-#define S80_MB_READ 1
-#define S80_MB_WRITE 2
-#define S80_MB_CLOSE 3
+#define S80_MB_ACCEPT 1
+#define S80_MB_READ 2
+#define S80_MB_WRITE 3
+#define S80_MB_CLOSE 4
 
 #define BUFSIZE 16384
 #define MAX_EVENTS 4096
@@ -157,6 +158,7 @@ typedef struct accept_params_ {
     fd_t elfd;
     fd_t parentfd;
     fd_t childfd;
+    int fdtype;
 } accept_params;
 
 struct mailbox_message_ {
@@ -164,11 +166,12 @@ struct mailbox_message_ {
     fd_t sender_fd;
     fd_t receiver_fd;
     int type;
-    int length;
     char *message;
 };
 
 struct mailbox_ {
+    void *ctx;
+    int elfd;
     sem_t lock;
     fd_t pipes[2];
     struct mailbox_message_ *messages;
@@ -206,6 +209,7 @@ struct serve_params_ {
     fd_t extra[4];
     // shared across all
     fd_t *els;
+    void **ctxes;
     const char *entrypoint;
     reload_context *reload;
 };
@@ -239,6 +243,7 @@ void close_context(void *ctx);
 void on_receive(struct read_params_ params);
 void on_close(struct close_params_ params);
 void on_write(struct write_params_ params);
+void on_accept(struct accept_params_ params);
 void on_init(struct init_params_ params);
 
 fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int port);
@@ -249,7 +254,11 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
 int s80_reload(reload_context *reload);
 int s80_quit(reload_context *reload);
 int s80_mail(mailbox *mailbox, mailbox_message *message);
+void s80_acquire_mailbox(mailbox *mailbox);
+void s80_release_mailbox(mailbox *mailbox);
 void s80_enable_async(fd_t fd);
+
+void resolve_mail(serve_params *params, int id);
 
 #ifdef S80_DEBUG
     #ifdef USE_IOCP
