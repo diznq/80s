@@ -340,10 +340,11 @@ end
 --- @param childfd lightuserdata
 --- @param fdtype lightuserdata
 --- @param connected boolean
+--- @param initialized boolean
 --- @return aiosocket
-function aiosocket:new(elfd, childfd, fdtype, connected)
+function aiosocket:new(elfd, childfd, fdtype, connected, initialized)
     local socket = { 
-        init = false,
+        init = initialized or false,
         elfd = elfd, 
         fd = childfd, 
         ft = fdtype,
@@ -921,7 +922,7 @@ function aio:connect(elfd, host, port)
     if sock == nil then
         return nil, err
     end
-    self.fds[sock] = aiosocket:new(elfd, sock, S80_FD_SOCKET, false)
+    self.fds[sock] = aiosocket:new(elfd, sock, S80_FD_SOCKET, false, true)
     return self.fds[sock], nil
 end
 
