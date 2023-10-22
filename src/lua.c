@@ -3,13 +3,22 @@
 #include "lua_net.h"
 #include "lua_codec.h"
 #include "lua_crypto.h"
+#include "dynstr.h"
 
 #include <lauxlib.h>
 #include <lualib.h>
 #include <stdio.h>
+#include <string.h>
+
+#ifdef _WIN32
+#include <Windows.h>
+#else
+#include <unistd.h>
+#endif
 
 static lua_State *create_lua(fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload);
 static void refresh_lua(lua_State *L, fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload);
+static void set_package_path(lua_State *L);
 
 void *create_context(fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
     return (void *)create_lua(elfd, id, entrypoint, reload);
@@ -136,6 +145,8 @@ static void refresh_lua(lua_State *L, fd_t elfd, node_id *id, const char *entryp
     lua_setglobal(L, "KTLS");
 #endif
 
+    set_package_path(L);
+
     if (luaL_dofile(L, entrypoint)) {
         fprintf(stderr, "serve: error running %s: %s\n", entrypoint, lua_tostring(L, -1));
     }
@@ -150,4 +161,50 @@ static lua_State *create_lua(fd_t elfd, node_id *id, const char *entrypoint, rel
 
     refresh_lua(L, elfd, id, entrypoint, reload);
     return L;
+}
+
+
+static void set_package_path(lua_State *L) {
+    const char *current_path;
+    char buf[500];
+    char exe_path[1000];
+    struct dynstr str;
+    int parents = 0;
+    size_t len;
+    memset(exe_path, 0, sizeof(exe_path));
+    dynstr_init(&str, buf, sizeof(buf));
+    lua_getglobal( L, "package" );
+    lua_getfield( L, -1, "path" ); 
+    current_path = lua_tostring( L, -1 );
+
+    dynstr_putsz(&str, current_path);
+    dynstr_putc(&str, ';');
+
+#if defined(__FreeBSD__) || defined(__APPLE__)
+    readlink("/proc/curproc/file", exe_path, sizeof(exe_path) - 1);
+#elif defined(__linux__)
+    readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+#elif defined(_WIN32)
+    GetModuleFileName(NULL, exe_path, sizeof(exe_path) - 1);
+#endif
+    len = strlen(exe_path) - 1;
+    for(; len > 0; len--) {
+        if(exe_path[len] == '/' || exe_path[len] == '\\') {
+            parents++;
+            if(parents == 2) {
+                exe_path[len + 1] = 0;
+                break;
+            }
+        }
+    }
+
+    dynstr_putsz(&str, exe_path);
+    dynstr_putsz(&str, "?.lua");
+
+    lua_pop( L, 1 );
+    lua_pushlstring( L, str.ptr, str.length);
+    lua_setfield( L, -2, "path" );
+    lua_pop( L, 1 );
+
+    dynstr_release(&str);
 }
