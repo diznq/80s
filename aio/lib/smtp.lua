@@ -51,18 +51,18 @@ function smtp:handle_as_smtp(fd)
                     local raw_from = line:sub(11)
                     local parsed_from = self:extract_email(raw_from)
                     if from ~= nil then
-                        fd:write("555 MAIL FROM was already sent previously\r\n")
+                        fd:write("503 MAIL FROM was already sent previously\r\n")
                         handled = true
                     elseif parsed_from then
                         from = parsed_from
                         fd:write("250 OK\r\n")
                         handled = true
                     else
-                        fd:write("555 Invalid address\r\n")
+                        fd:write("501 Invalid address\r\n")
                         handled = true
                     end
                 else
-                    fd:write("555 Invalid MAIL command\r\n")
+                    fd:write("500 Invalid MAIL command\r\n")
                     handled = true
                 end
             elseif msg_type == "RCPT" then
@@ -72,7 +72,7 @@ function smtp:handle_as_smtp(fd)
                     if raw_to then
                         if to == nil then to = {} end
                         if #to >= 100 then
-                            fd:write("555 Limit for number of recipients is 100\r\n")
+                            fd:write("501 Limit for number of recipients is 100\r\n")
                             handled = true
                         else
                             to[#to + 1] = parsed_to
@@ -80,11 +80,11 @@ function smtp:handle_as_smtp(fd)
                             handled = true
                         end
                     else
-                        fd:write("555 Invalid address\r\n")
+                        fd:write("501 Invalid address\r\n")
                         handled = true
                     end
                 else
-                    fd:write("555 Invalid RCPT command\r\n")
+                    fd:write("500 Invalid RCPT command\r\n")
                 end
             elseif msg_type == "DATA" then
                 if from and to and #to > 0 and hello then
@@ -93,6 +93,7 @@ function smtp:handle_as_smtp(fd)
                     if message ~= nil then
                         self.counter = self.counter + 1
                         local messageId = NODE_ID .. "-" .. self.counter
+                        local handle_ok = true
                         for key, callback in pairs(self.on_mail_received_callbacks) do
                             local cb_ok, result = pcall(callback, {
                                 from = from,
@@ -102,25 +103,30 @@ function smtp:handle_as_smtp(fd)
                                 id = messageId
                             })
                             if not cb_ok then
+                                handle_ok = false
                                 print("[smtp] mail handler " .. key .. " failed with " .. result)
                             end
                         end
                         from = nil
                         message = nil
                         to = {}
-                        fd:write("250 OK: queued as " .. messageId .. "\r\n")
+                        if handle_ok then
+                            fd:write("250 OK: queued as " .. messageId .. "\r\n")
+                        else
+                            fd:write("451 Server failed to handle the message, try again later\r\n")
+                        end
                         handled = true
                     else
-                        fd:write("555 Message was missing\r\n")
+                        fd:write("500 Message was missing\r\n")
                         handled = true
                     end
                 else
-                    local errors = {"555-There were following errors:"}
-                    if not hello then errors[#errors+1] = "555- No hello has been sent" end
-                    if not from then errors[#errors+1] = "555- MAIL FROM has been never sent" end
-                    if not to then errors[#errors+1] = "555- RCPT TO has been never sent" end
-                    if to and #to == 0 then errors[#errors+1] = "555- There were zero recipients" end
-                    errors[#errors+1] = "555 Please, fill the missing information"
+                    local errors = {"503-There were following errors:"}
+                    if not hello then errors[#errors+1] = "503- No hello has been sent" end
+                    if not from then errors[#errors+1] = "503- MAIL FROM has been never sent" end
+                    if not to then errors[#errors+1] = "503- RCPT TO has been never sent" end
+                    if to and #to == 0 then errors[#errors+1] = "503- There were zero recipients" end
+                    errors[#errors+1] = "503 Please, fill the missing information"
                     fd:write(table.concat(errors, "\r\n") .. "\r\n")
                     handled = true
                 end
@@ -129,7 +135,7 @@ function smtp:handle_as_smtp(fd)
                 handled = true
             end
             if not handled then
-                fd:write("555 Unhandled message type\r\n")
+                fd:write("502 Command not implemented\r\n")
             end
         end
     end)
