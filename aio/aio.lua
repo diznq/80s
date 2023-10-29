@@ -99,6 +99,7 @@ if KTLS and (os.getenv("KTLS") or "true") == "false" then KTLS = false end
 --- @alias aiohttpquery {[string]: string, e: {[string]: string}}
 --- @alias aiomatches fun(data: string): boolean Matcher function
 --- @alias aiohandler fun(fd: aiosocket) Handler function
+--- @alias aioonaccept fun(fd: aiosocket, parentfd: lightuserdata) On accept protocol handler
 
 --- @generic V : string
 --- @alias aiopromise<V> fun(on_resolved: fun(result: V)) AIO promise
@@ -456,7 +457,7 @@ end
 
 --- Add new protocol handler for unknown protocols
 ---@param name string unique name of protocol
----@param handler {matches: aiomatches, handle: aiohandler} protocol handler
+---@param handler {matches: aiomatches, handle: aiohandler, on_accept: aioonaccept|nil} protocol handler
 function aio:add_protocol_handler(name, handler)
     self.protocols[name] = handler
 end
@@ -514,76 +515,105 @@ function aio:wrap_tls(fd, ssl)
     local on_data = fd.on_data
     local on_close = fd.on_close
     local raw_write = fd.write
-    fd.on_data = function(self, elfd, childfd, data, length)
-        if self.closed then return end
-        if not self.bio then
-            local bio = crypto.ssl_bio_new(ssl, elfd, childfd, KTLS)
-            if bio then
-                self.bio = bio
-                self.tls = false
-            else
-                self.on_data = on_data
-                self.on_close = on_close
-                self.write = raw_write
-            end
-        end
-        if not self.tls then 
-            crypto.ssl_bio_write(self.bio, data)
-            local ok = crypto.ssl_accept(self.bio)
-            if ok then
-                while true do
-                    local rd = crypto.ssl_bio_read(self.bio)
-                    if not rd or #rd == 0 then break end
-                raw_write(self, rd)
-                end
-            end
-            self.tls = crypto.ssl_init_finished(self.bio)
-            if self.tls and KTLS then
-                self.ktls = true
-                crypto.ssl_bio_release(self.bio, 1)
-                fd.on_data = on_data
-                fd.write = raw_write
-            end
+    local initialized = true
+
+    if not fd.bio then
+        local bio = crypto.ssl_bio_new(ssl, fd.elfd, fd.fd, KTLS)
+        if bio then
+            fd.bio = bio
+            fd.tls = false
         else
+            initialized = false
+        end
+    end
+
+    if initialized then
+        fd.on_data = function(self, elfd, childfd, data, length)
+            if self.closed or not self.bio then
+                return
+            end
             crypto.ssl_bio_write(self.bio, data)
-            local ok = true
-            while ok do
-                local rd, wr = crypto.ssl_read(self.bio)
-                if not rd or #rd == 0 then
-                    ok = false
-                else
-                    pcall(on_data, self, elfd, childfd, rd, #rd)
-                end
-                if wr == true then
+            if not self.tls then 
+                local ok = crypto.ssl_accept(self.bio)
+                -- make sure accept is either true or false, not nil
+                if ok == nil then return end
+                if ok == true then
+                    -- if we accepted, write back response from SSL layer
                     while true do
                         local rd = crypto.ssl_bio_read(self.bio)
                         if not rd or #rd == 0 then break end
                         raw_write(self, rd)
                     end
                 end
+                self.tls = crypto.ssl_init_finished(self.bio)
+                -- if TLS is ok and we use kTLS, revert back to raw handlers
+                if self.tls and KTLS then
+                    self.ktls = true
+                    crypto.ssl_bio_release(self.bio, 1)
+                    fd.on_data = on_data
+                    fd.write = raw_write
+                    -- dont continue any furher
+                    return
+                end
+            end
+            -- if SSL is prepared, try to read from bio if possible
+            -- it might also be possible that there is some stuff left
+            -- from initialization in case multiple messages arrived
+            -- over TCP all at once
+            if self.tls then
+                local ok = true
+                while ok and self.bio do
+                    -- try to read from bio
+                    local rd, wr = crypto.ssl_read(self.bio)
+                    if not rd or #rd == 0 then
+                        -- if no furher data left, end here
+                        ok = false
+                    else
+                        -- call the original on_data handler
+                        local ok, err = pcall(on_data, self, elfd, childfd, rd, #rd)
+                        if not ok then
+                            print("[wrap_tls] error on handler layer: ", err)
+                        end
+                    end
+                    -- if there is some data to write back coming from SSL layer
+                    -- perform the raw_write here
+                    if wr == true then
+                        while self.bio do
+                            local rd = crypto.ssl_bio_read(self.bio)
+                            if not rd or #rd == 0 then break end
+                            raw_write(self, rd)
+                        end
+                    end
+                end
             end
         end
-    end
-    fd.write = function(self, data, ...)
-        if not self.tls then 
-            return raw_write(self, data, ...) 
+        fd.write = function(self, data, ...)
+            -- do not do anything in case bio is nil or SSL is not ready yet
+            if not self.tls or not self.bio then 
+                return raw_write(self, data, ...) 
+            end
+            -- write plaintext message to bio
+            local wr = crypto.ssl_write(self.bio, data)
+            while wr >= 0 and self.bio do
+                -- read encrypted message from bio back and send it
+                local rd = crypto.ssl_bio_read(self.bio)
+                if not rd or #rd == 0 then break end
+                return raw_write(self, rd)
+            end
         end
-
-        local wr = crypto.ssl_write(self.bio, data)
-        while wr >= 0 and true do
-            local rd = crypto.ssl_bio_read(self.bio)
-            if not rd or #rd == 0 then break end
-            raw_write(self, rd)
+        fd.on_close = function(self)
+            if self.bio then
+                -- make sure to release all the resources properly
+                -- in case of kTLS we only have to release context
+                -- as bio was released already previously in kTLS
+                -- initialization
+                crypto.ssl_bio_release(self.bio, self.ktls and 2 or 3)
+                self.bio = nil
+            end
+            if self.closed then return end
+            pcall(on_close, self, fd.elfd, fd.fd)
+            self.closed = true
         end
-    end
-    fd.on_close = function(self)
-        if self.bio then
-            crypto.ssl_bio_release(self.bio, self.ktls and 2 or 3)
-            self.bio = nil
-        end
-        if self.closed then return end
-        pcall(on_close, self, fd.elfd, fd.fd)
-        self.closed = true
     end
 end
 

@@ -165,11 +165,15 @@ function httpd:initialize(params)
             print("[httpd] Failed to initialize TLS: " .. tostring(err))
         else
             aio:add_protocol_handler("tls", {
+                on_accept = function (fd, parentfd)
+                    fd.init = true
+                    aio:wrap_tls(aio:handle_as_http(fd), SSL)
+                end,
                 matches = function()
                     return true
                 end,
                 handle = function(fd)
-                    aio:wrap_tls(aio:handle_as_http(fd), SSL)
+                    -- ...
                 end,
             })
         end
@@ -180,9 +184,19 @@ end
 ---Default initializeer using env variables
 function httpd:default_initialize()
     local master_key = os.getenv("MASTER_KEY") or nil
+    local use_tls = (os.getenv("TLS") or "false") == "true"
+    local tls_pubkey = os.getenv("TLS_PUBKEY") or nil
+    local tls_privkey = os.getenv("TLS_PRIVKEY") or nil
     local no_static = (os.getenv("NO_STATIC") or "false") == "true"
     local root = os.getenv("PUBLIC_HTML") or "server/www/"
-    self:initialize({root = root, master_key = master_key, no_static = no_static})
+    self:initialize({
+        root = root,
+        master_key = master_key,
+        no_static = no_static,
+        tls = use_tls,
+        pubkey = tls_pubkey,
+        privkey = tls_privkey
+    })
     if (os.getenv("RELOAD") or "false") == "true" then
         self:enable_live_reload()
     end
