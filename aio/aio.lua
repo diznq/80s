@@ -402,7 +402,7 @@ end
 function aio:on_accept(elfd, parentfd, childfd, fdtype)
     local fd = self.fds[childfd]
     if fd == nil then
-        fd = aiosocket:new(elfd, childfd, fdtype, true)
+        fd = aiosocket:new(elfd, childfd, fdtype, true, false)
         self.fds[childfd] = fd
     end
     for _, handler in pairs(self.protocols) do
@@ -425,7 +425,7 @@ function aio:on_data(elfd, childfd, fdtype, data, len)
     -- this scenario shouldn't ever happen as on_accept should be called always
     -- prior to this, but just to be safe...
     if fd == nil then
-        fd = aiosocket:new(elfd, childfd, fdtype, true)
+        fd = aiosocket:new(elfd, childfd, fdtype, true, false)
         self.fds[childfd] = fd
     end
     
@@ -947,8 +947,8 @@ function aio:popen(elfd, command, ...)
         ---@diagnostic disable-next-line: return-type-mismatch
         return nil, wr
     end
-    self.fds[rd] = aiosocket:new(elfd, rd, S80_FD_PIPE, false)
-    self.fds[wr] = aiosocket:new(elfd, wr, S80_FD_PIPE, false)
+    self.fds[rd] = aiosocket:new(elfd, rd, S80_FD_PIPE, false, false)
+    self.fds[wr] = aiosocket:new(elfd, wr, S80_FD_PIPE, false, false)
     return self.fds[rd], self.fds[wr]
 end
 
@@ -978,7 +978,7 @@ end
 function aio:watch(elfd, targets, on_change)
     local fd, err = net.inotify_init(elfd)
     if fd ~= nil then
-        local sock = aiosocket:new(elfd, fd, S80_FD_OTHER, true)
+        local sock = aiosocket:new(elfd, fd, S80_FD_OTHER, true, false)
         self.fds[fd] = sock
         ---@diagnostic disable-next-line: inject-field
         sock.watching = {}
