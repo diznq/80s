@@ -7,25 +7,37 @@ require("aio.aio")
 smtp = {
     counter = 0,
     host = "localhost",
+    --- @type lightuserdata|nil
+    tls = nil,
     --- @type {[string]: mailreceived}
     on_mail_received_callbacks = {}
 }
 
 --- Initialize SMTP server
----@param params {host: string}
+---@param params {host: string, tls: boolean|nil, privkey: string|nil, pubkey: string|nil, server: boolean|nil}
 function smtp:init(params)
     self.host = params.host
-    aio:add_protocol_handler("smtp", {
-        matches = function (data)
-            return true
-        end,
-        on_accept = function (fd, parentfd)
-            fd:write("220 " .. params.host .. " ESMTP 80s\r\n")
-        end,
-        handle = function (fd)
-            self:handle_as_smtp(fd)
+    if params.tls and params.privkey and params.pubkey then
+        local SSL, err = crypto.ssl_new_server(params.pubkey, params.privkey)
+        if not SSL then
+            print("[smtp] Failed to initialize TLS: " .. tostring(err))
+        else
+            self.tls = SSL
         end
-    })
+    end
+    if params.server then
+        aio:add_protocol_handler("smtp", {
+            matches = function (data)
+                return true
+            end,
+            on_accept = function (fd, parentfd)
+                fd:write("220 " .. params.host .. " ESMTP 80s\r\n")
+            end,
+            handle = function (fd)
+                self:handle_as_smtp(fd)
+            end
+        })
+    end
 end
 
 function smtp:handle_as_smtp(fd)
@@ -33,19 +45,41 @@ function smtp:handle_as_smtp(fd)
         local ok = true
         local hello = false
         local from, message, to = nil, nil, {}
+        local tls_capability = ""
+        if self.tls then
+            tls_capability = "250-STARTTLS\r\n"
+        end
         while ok do
+            --- @type string|nil
             local line = coroutine.yield("\r\n")
             if line == nil then return end
-            local msg_type = line:sub(1, 4)
+            --- @type string|nil
+            local msg_type = line:match("^([A-Za-z]+)")
             local handled = false
-            if msg_type == "HELO" then
+            if msg_type ~= nil then msg_type = msg_type:upper() end
+            if msg_type == nil then
+                fd:write("502 Invalid command\r\n")
+                handled = true
+            elseif msg_type == "HELO" then
                 hello = true
                 fd:write("250 HELO " .. line:sub(6) .. "\r\n")
                 handled = true
             elseif msg_type == "EHLO" then
                 hello = true
-                fd:write("250-".. self.host .. " is my domain name. Hello " .. line:sub(6) .. "!\r\n250-8BITMIME\r\n250-ENHANCEDSTATUSCODES\r\n250 SIZE 1000000\r\n")
+                fd:write("250-".. self.host .. " is my domain name. Hello " .. line:sub(6) .. "!\r\n250-8BITMIME\r\n" .. tls_capability .. "250 SIZE 1000000\r\n")
                 handled = true
+            elseif msg_type == "STARTTLS" then
+                if self.tls then
+                    if hello then
+                        fd:write("220 Go ahead\r\n")
+                        aio:wrap_tls(fd, self.tls)
+                        handled = true
+                        hello = false
+                    else
+                        fd:write("503 HELO or EHLO was not sent previously!\r\n")
+                        handled = true
+                    end
+                end
             elseif msg_type == "MAIL" then
                 if line:sub(6, 10) == "FROM:" then
                     local raw_from = line:sub(11)
@@ -159,8 +193,16 @@ function smtp:register_handler(name, handler)
 end
 
 function smtp:default_initialize()
+    local use_tls = (os.getenv("TLS") or "false") == "true"
+    local tls_pubkey = os.getenv("TLS_PUBKEY") or nil
+    local tls_privkey = os.getenv("TLS_PRIVKEY") or nil
+
     self:init({
-        host = os.getenv("SMTP_HOST") or "smtp.localhost"
+        host = os.getenv("SMTP_HOST") or "smtp.localhost",
+        tls = use_tls,
+        privkey = tls_privkey,
+        pubkey = tls_pubkey,
+        server = true
     })
 
     self:register_handler("main", function (mail)

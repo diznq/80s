@@ -36,12 +36,15 @@ net = net or {}
 --- @field from64 fun(data: string): string decode from base64
 --- @field random fun(n: integer): string generate n random bytes
 --- @field ssl_new_server fun(pubkey: string, privkey: string): lightuserdata|nil initialize new global SSL context
+--- @field ssl_new_client fun(ca_path: string|nil, ca_file: string|nil, pubkey: string|nil, privkey: string|nil) initialize new SSL client context
 --- @field ssl_release fun(ssl: lightuserdata) release SSL context
 --- @field ssl_bio_new fun(ssl: lightuserdata, elfd: lightuserdata, childfd: lightuserdata, ktls: boolean|nil): lightuserdata|nil initialize new non-blocking SSL BIO context
+--- @field ssl_bio_new_connect fun(ssl: lightuserdata, hostport: string, elfd: lightuserdata, childfd: lightuserdata, ktls: boolean|nil) intialize new non-blocking SSL BIO client context
 --- @field ssl_bio_release fun(bio: lightuserdata, flags: integer) release BIO context, flags, 1 to release just BIO, 2 to release just context
 --- @field ssl_bio_write fun(bio: lightuserdata, data: string): integer write to BIO, returns written bytes, <0 if error
 --- @field ssl_bio_read fun(bio: lightuserdata): string|nil read from BIO, nil if error
 --- @field ssl_accept fun(bio: lightuserdata): boolean|nil perform SSL accept, nil if error, true if IO request, false otherwise
+--- @field ssl_connect fun(bio: lightuserdata): boolean|nil perform SSL connect, nil if error, true if IO request, false otherwise
 --- @field ssl_init_finished fun(bio: lightuserdata): boolean true if SSL accept is finished
 --- @field ssl_read fun(bio: lightuserdata): string|nil, integer|nil read from SSL, returns decrypted data or nil on error, return true if write is requested
 --- @field ssl_write fun(bio: lightuserdata, data: string): integer write data to SSL, encrypted data can be retrieved using bio_read later
@@ -511,14 +514,23 @@ end
 ---
 --- @param fd aiosocket AIO socket to be handled
 --- @param ssl lightuserdata global SSL context
-function aio:wrap_tls(fd, ssl)
+--- @param client string|nil true host name if client connection
+--- @return aiopromise<aiosocket|{error: string}> connection established promise
+function aio:wrap_tls(fd, ssl, client)
+    local resolve, resolver = aio:prepare_promise()
     local on_data = fd.on_data
     local on_close = fd.on_close
     local raw_write = fd.write
     local initialized = true
+    local to_write = {}
 
     if not fd.bio then
-        local bio = crypto.ssl_bio_new(ssl, fd.elfd, fd.fd, KTLS)
+        local bio = nil
+        if client then
+            bio = crypto.ssl_bio_new_connect(ssl, client, fd.elfd, fd.fd, KTLS)
+        else
+            bio = crypto.ssl_bio_new(ssl, fd.elfd, fd.fd, KTLS)
+        end
         if bio then
             fd.bio = bio
             fd.tls = false
@@ -528,15 +540,40 @@ function aio:wrap_tls(fd, ssl)
     end
 
     if initialized then
+        --- @type boolean|nil
+        local connect_ok = nil
+        if client then
+            connect_ok = crypto.ssl_connect(fd.bio)
+            if connect_ok == nil then
+                resolve(make_error("ssl connect failed"))
+                return resolver
+            end
+            if connect_ok == true then
+                -- if we connected, write back response from SSL layer
+                while true do
+                    local rd = crypto.ssl_bio_read(fd.bio)
+                    if not rd or #rd == 0 then break end
+                    raw_write(fd, rd)
+                end
+            end
+        end
         fd.on_data = function(self, elfd, childfd, data, length)
             if self.closed or not self.bio then
                 return
             end
             crypto.ssl_bio_write(self.bio, data)
             if not self.tls then 
-                local ok = crypto.ssl_accept(self.bio)
+                local ok = nil
+                if not client then
+                    ok = crypto.ssl_accept(self.bio)
+                else
+                    ok = crypto.ssl_connect(self.bio)
+                end
                 -- make sure accept is either true or false, not nil
-                if ok == nil then return end
+                if ok == nil then
+                    resolve(make_error(client and "ssl handshake failed" or "ssl accept failed"))
+                    return
+                end
                 if ok == true then
                     -- if we accepted, write back response from SSL layer
                     while true do
@@ -552,8 +589,52 @@ function aio:wrap_tls(fd, ssl)
                     crypto.ssl_bio_release(self.bio, 1)
                     fd.on_data = on_data
                     fd.write = raw_write
+                    -- send all the enqueued data previously
+                    for _, data in ipairs(to_write) do
+                        fd:write(unpack(data))
+                    end
+                    to_write = {}
                     -- dont continue any furher
+                    resolve(fd)
                     return
+                elseif self.tls then
+                    -- send all the previously enqueued data
+                    for _, data in ipairs(to_write) do
+                        fd:write(unpack(data))
+                    end
+                    to_write = {}
+                    -- in case of client, we must construct a fake fd, so
+                    -- on_data events are decrypted and not raw data
+                    if client then
+                        local fake_fd = {
+                            elfd = fd.elfd,
+                            fd = fd.fd,
+                            init = fd.init,
+                            co = true,
+                            write = function (fd_, ...)
+                                return fd:write(...)
+                            end,
+                            close = function (fd_, ...)
+                                return fd:close()
+                            end,
+                            http_response = function(fd_, ...)
+                                return fd:http_response(...)
+                            end,
+                            on_data = function (...)
+                                -- ...
+                            end,
+                            on_close = function(...)
+                                -- ...
+                            end,
+                        }
+                        on_data = function (fd_, ...)
+                            fake_fd:on_data(...)
+                        end
+                        on_close = function(fd_, ...)
+                            fake_fd:on_close(...)
+                        end
+                        resolve(fake_fd)
+                    end
                 end
             end
             -- if SSL is prepared, try to read from bio if possible
@@ -590,7 +671,9 @@ function aio:wrap_tls(fd, ssl)
         fd.write = function(self, data, ...)
             -- do not do anything in case bio is nil or SSL is not ready yet
             if not self.tls or not self.bio then 
-                return raw_write(self, data, ...) 
+                -- enqueue the data for future sending
+                to_write[#to_write+1] = {data, ...}
+                return true
             end
             -- write plaintext message to bio
             local wr = crypto.ssl_write(self.bio, data)
@@ -611,10 +694,12 @@ function aio:wrap_tls(fd, ssl)
                 self.bio = nil
             end
             if self.closed then return end
+            print("_on_close")
             pcall(on_close, self, fd.elfd, fd.fd)
             self.closed = true
         end
     end
+    return resolver
 end
 
 ---Get IP address of a socket
@@ -954,6 +1039,36 @@ function aio:connect(elfd, host, port)
     end
     self.fds[sock] = aiosocket:new(elfd, sock, S80_FD_SOCKET, false, true)
     return self.fds[sock], nil
+end
+
+--- Create a new TCP socket to host:port, returning a promise when
+--- connection is ready
+--- @param elfd lightuserdata epoll handle
+--- @param host string host name or IP address
+--- @param port integer port
+--- @param ssl lightuserdata|nil ssl context
+--- @return aiopromise<aiosocket|{error: string}>
+function aio:connect2(elfd, host, port, ssl)
+    local resolve, resolver = self:prepare_promise()
+    local fd, err = self:connect(elfd, host, port)
+    if not fd then
+        resolve(make_error("failed to connect: " .. err))
+    else
+        fd.on_connect = function ()
+            if ssl then
+                aio:wrap_tls(fd, ssl, string.format("%s", host, port))(function (result)
+                    if iserror(result) then
+                        resolve(make_error("failed to establish ssl session: " .. result.error))
+                    else
+                        resolve(result)
+                    end
+                end)
+            else
+                resolve(fd)
+            end
+        end
+    end
+    return resolver
 end
 
 ---Read file in synchronous way

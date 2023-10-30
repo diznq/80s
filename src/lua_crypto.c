@@ -351,6 +351,71 @@ static int l_crypto_ssl_new_server(lua_State *L) {
     return 1;
 }
 
+static int l_crypto_ssl_new_client(lua_State *L) {
+    int status;
+    const char *pubkey = NULL, *privkey = NULL;
+    const char *ca_file = NULL, *ca_path = "/etc/ssl/certs";
+    if(lua_gettop(L) >= 1) {
+        if(lua_type(L, 1) == LUA_TSTRING)
+            ca_path = lua_tostring(L, 1);
+        if(lua_gettop(L) >= 2 && lua_type(L, 2) == LUA_TSTRING)
+            ca_file = lua_tostring(L, 2);
+    }
+
+    SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
+    if(!ctx) {
+        lua_pushnil(L);
+        lua_pushstring(L, "failed to allocate ssl ctx");
+        return 2;
+    }
+
+    if (!SSL_CTX_load_verify_locations(ctx, ca_file, ca_path)) {
+        SSL_CTX_free(ctx);
+        lua_pushnil(L);
+        lua_pushstring(L, "failed to load SSL certificates");
+        return 2;
+    }
+
+    if(lua_gettop(L) == 4 && lua_type(L, 3) == LUA_TSTRING && lua_type(L, 4) == LUA_TSTRING) {
+        pubkey = lua_tostring(L, 3);
+        privkey = lua_tostring(L, 4);
+        status = SSL_CTX_use_certificate_file(ctx, pubkey, SSL_FILETYPE_PEM);
+        if(!status) {
+            SSL_CTX_free(ctx);
+            lua_pushnil(L);
+            lua_pushstring(L, "failed to load public key");
+            return 2;
+        }
+        
+        status = SSL_CTX_use_PrivateKey_file(ctx, privkey, SSL_FILETYPE_PEM);
+        if(!status) {
+            SSL_CTX_free(ctx);
+            lua_pushnil(L);
+            lua_pushstring(L, "failed to load private key");
+            return 2;
+        }    
+
+        if (!SSL_CTX_check_private_key(ctx)) {
+            SSL_CTX_free(ctx);
+            lua_pushnil(L);
+            lua_pushstring(L, "keys do not match");
+            return 2;
+        }
+    }
+    SSL_CTX_set_options(ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
+    if(!SSL_CTX_set_cipher_list(ctx, "ECDHE-ECDSA-AES128-GCM-SHA256") || !SSL_CTX_set_ciphersuites(ctx, "TLS_AES_128_GCM_SHA256")) {
+        SSL_CTX_free(ctx);
+        lua_pushnil(L);
+        lua_pushstring(L, "device doesn't support cipher mode");
+        return 2;
+    }
+    #ifdef USE_KTLS
+    SSL_CTX_set_keylog_callback(ctx, ssl_secret_callback);
+    #endif
+    lua_pushlightuserdata(L, (void*)ctx);
+    return 1;
+}
+
 static int l_crypto_ssl_release(lua_State *L) {
     if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TLIGHTUSERDATA) {
         return luaL_error(L, "expecting 1 argument: ssl (lightuserdata)");
@@ -382,6 +447,40 @@ static int l_crypto_ssl_bio_new(lua_State *L) {
     SSL_set_ex_data(ctx->ssl, 0, (void*)ctx);
     SSL_set_accept_state(ctx->ssl);
     SSL_set_bio(ctx->ssl, ctx->rdbio, ctx->wrbio);
+    lua_pushlightuserdata(L, (void*)ctx);
+    return 1;
+}
+
+static int l_crypto_ssl_bio_new_connect(lua_State *L) {
+    if(lua_gettop(L) < 4 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TSTRING || lua_type(L, 3) != LUA_TLIGHTUSERDATA || lua_type(L, 4) != LUA_TLIGHTUSERDATA) {
+        return luaL_error(L, "expecting 4 arguments: ssl context (lightuserdata), host:port (string), elfd (lightuserdata), childfd (lightuserdata)[, ktls (boolean)]");
+    }
+    struct ssl_nb_context *ctx = (struct ssl_nb_context*)malloc(sizeof(struct ssl_nb_context));
+    const char *hostport = lua_tostring(L, 2);
+    int do_ktls = lua_gettop(L) == 5 && lua_type(L, 5) == LUA_TBOOLEAN ? lua_toboolean(L, 5) : 0;
+    if(!ctx) {
+        return 0;
+    }
+    memset(ctx, 0, sizeof(struct ssl_nb_context));
+    SSL_CTX* ssl_ctx = (SSL_CTX*)lua_touserdata(L, 1);
+    X509_VERIFY_PARAM *verify_param = NULL;
+    #ifdef USE_KTLS
+    ctx->ktls_state = do_ktls ? KTLS_INIT : KTLS_NONE;
+    ctx->elfd = void_to_fd(lua_touserdata(L, 2));
+    ctx->fd = void_to_fd(lua_touserdata(L, 3));
+    #endif
+    ctx->rdbio = BIO_new(BIO_s_mem());
+    ctx->wrbio = BIO_new(BIO_s_mem());
+    ctx->ssl = SSL_new(ssl_ctx);
+    BIO_set_nbio(ctx->rdbio, 1);
+    BIO_set_nbio(ctx->wrbio, 1);
+    SSL_set_ex_data(ctx->ssl, 0, (void*)ctx);
+    SSL_set_connect_state(ctx->ssl);
+    SSL_set_bio(ctx->ssl, ctx->rdbio, ctx->wrbio);
+
+    SSL_set1_host(ctx->ssl, hostport);
+    SSL_set_verify(ctx->ssl, SSL_VERIFY_PEER, NULL);
+
     lua_pushlightuserdata(L, (void*)ctx);
     return 1;
 }
@@ -481,6 +580,23 @@ static int l_crypto_ssl_accept(lua_State *L) {
     if(err == SSL_ERROR_NONE) {
         lua_pushboolean(L, 0);
     } else if(err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ) {
+        lua_pushboolean(L, 1);
+    } else {
+        lua_pushnil(L);
+    }
+    return 1;
+}
+
+static int l_crypto_ssl_connect(lua_State *L) {
+    if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TLIGHTUSERDATA) {
+        return luaL_error(L, "expecting 1 argument: bio (lightuserdata)");
+    }
+    struct ssl_nb_context *ctx = (struct ssl_nb_context*)lua_touserdata(L, 1);
+    int n = SSL_do_handshake(ctx->ssl);
+    int err = SSL_get_error(ctx->ssl, n);
+    if(err == SSL_ERROR_NONE) {
+        lua_pushboolean(L, 0);
+    } else if(err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_CONNECT) {
         lua_pushboolean(L, 1);
     } else {
         lua_pushnil(L);
@@ -648,12 +764,15 @@ int luaopen_crypto(lua_State *L) {
         {"from64", l_crypto_from64},
         {"random", l_crypto_random},
         {"ssl_new_server", l_crypto_ssl_new_server},
+        {"ssl_new_client", l_crypto_ssl_new_client},
         {"ssl_release", l_crypto_ssl_release},
         {"ssl_bio_new", l_crypto_ssl_bio_new},
+        {"ssl_bio_new_connect", l_crypto_ssl_bio_new_connect},
         {"ssl_bio_release", l_crypto_ssl_bio_release},
         {"ssl_bio_write", l_crypto_ssl_bio_write},
         {"ssl_bio_read", l_crypto_ssl_bio_read},
         {"ssl_accept", l_crypto_ssl_accept},
+        {"ssl_connect", l_crypto_ssl_connect},
         {"ssl_init_finished", l_crypto_ssl_init_finished},
         {"ssl_read", l_crypto_ssl_read},
         {"ssl_write", l_crypto_ssl_write},
