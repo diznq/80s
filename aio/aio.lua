@@ -1056,7 +1056,7 @@ function aio:connect2(elfd, host, port, ssl)
     else
         fd.on_connect = function ()
             if ssl then
-                aio:wrap_tls(fd, ssl, string.format("%s", host, port))(function (result)
+                aio:wrap_tls(fd, ssl, host)(function (result)
                     if iserror(result) then
                         resolve(make_error("failed to establish ssl session: " .. result.error))
                     else

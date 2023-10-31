@@ -12,7 +12,18 @@
 #include <openssl/sha.h>
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
+#include <openssl/err.h>
 #include <errno.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <wincrypt.h>
+
+#ifdef _MSC_VER
+#pragma comment (lib, "crypt32.lib")
+#endif
+
+#endif
 
 #ifdef USE_KTLS
 #include <sys/ktls.h>
@@ -354,7 +365,7 @@ static int l_crypto_ssl_new_server(lua_State *L) {
 static int l_crypto_ssl_new_client(lua_State *L) {
     int status;
     const char *pubkey = NULL, *privkey = NULL;
-    const char *ca_file = NULL, *ca_path = "/etc/ssl/certs";
+    const char *ca_file = NULL, *ca_path = NULL;
     if(lua_gettop(L) >= 1) {
         if(lua_type(L, 1) == LUA_TSTRING)
             ca_path = lua_tostring(L, 1);
@@ -369,12 +380,50 @@ static int l_crypto_ssl_new_client(lua_State *L) {
         return 2;
     }
 
-    if (!SSL_CTX_load_verify_locations(ctx, ca_file, ca_path)) {
+#ifndef _WIN32
+    if(ca_path == NULL) {
+        ca_path = "/etc/ssl/certs";
+    }
+#endif
+
+    if ((ca_file != NULL || ca_path != NULL) && !SSL_CTX_load_verify_locations(ctx, ca_file, ca_path)) {
         SSL_CTX_free(ctx);
         lua_pushnil(L);
         lua_pushstring(L, "failed to load SSL certificates");
         return 2;
     }
+
+#ifdef _WIN32
+    HCERTSTORE hStore;
+    PCCERT_CONTEXT pContext = NULL;
+    X509 *x509;
+
+    hStore = CertOpenSystemStoreA(0, "ROOT");
+
+    if (!hStore) {
+        SSL_CTX_free(ctx);
+        lua_pushnil(L);
+        lua_pushstring(L, "failed to open system cert store");
+        return 2;
+    }
+
+    X509_STORE *store = SSL_CTX_get_cert_store(ctx);
+
+    while (pContext = CertEnumCertificatesInStore(hStore, pContext))
+    {
+        x509 = NULL;
+        x509 = d2i_X509(NULL, (const unsigned char **)&pContext->pbCertEncoded, pContext->cbCertEncoded);
+        if (x509)
+        {
+            int i = X509_STORE_add_cert(store, x509);
+            
+            X509_free(x509);
+        }
+    }
+
+    CertFreeCertificateContext(pContext);
+    CertCloseStore(hStore, 0);
+#endif
 
     if(lua_gettop(L) == 4 && lua_type(L, 3) == LUA_TSTRING && lua_type(L, 4) == LUA_TSTRING) {
         pubkey = lua_tostring(L, 3);
@@ -402,6 +451,7 @@ static int l_crypto_ssl_new_client(lua_State *L) {
             return 2;
         }
     }
+
     SSL_CTX_set_options(ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
     if(!SSL_CTX_set_cipher_list(ctx, "ECDHE-ECDSA-AES128-GCM-SHA256") || !SSL_CTX_set_ciphersuites(ctx, "TLS_AES_128_GCM_SHA256")) {
         SSL_CTX_free(ctx);
@@ -463,7 +513,6 @@ static int l_crypto_ssl_bio_new_connect(lua_State *L) {
     }
     memset(ctx, 0, sizeof(struct ssl_nb_context));
     SSL_CTX* ssl_ctx = (SSL_CTX*)lua_touserdata(L, 1);
-    X509_VERIFY_PARAM *verify_param = NULL;
     #ifdef USE_KTLS
     ctx->ktls_state = do_ktls ? KTLS_INIT : KTLS_NONE;
     ctx->elfd = void_to_fd(lua_touserdata(L, 2));
@@ -478,8 +527,10 @@ static int l_crypto_ssl_bio_new_connect(lua_State *L) {
     SSL_set_connect_state(ctx->ssl);
     SSL_set_bio(ctx->ssl, ctx->rdbio, ctx->wrbio);
 
+
+    SSL_set_verify(ctx->ssl, SSL_VERIFY_PEER, NULL);
     SSL_set1_host(ctx->ssl, hostport);
-    //SSL_set_verify(ctx->ssl, SSL_VERIFY_PEER, NULL);
+    SSL_set_tlsext_host_name(ctx->ssl, hostport);
 
     lua_pushlightuserdata(L, (void*)ctx);
     return 1;
@@ -592,13 +643,19 @@ static int l_crypto_ssl_connect(lua_State *L) {
         return luaL_error(L, "expecting 1 argument: bio (lightuserdata)");
     }
     struct ssl_nb_context *ctx = (struct ssl_nb_context*)lua_touserdata(L, 1);
+    ERR_load_ERR_strings();
     int n = SSL_do_handshake(ctx->ssl);
     int err = SSL_get_error(ctx->ssl, n);
     if(err == SSL_ERROR_NONE) {
         lua_pushboolean(L, 0);
-    } else if(err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_CONNECT) {
+    } else if(err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ) {
         lua_pushboolean(L, 1);
     } else {
+        unsigned long err;
+        while ((err = ERR_get_error()) != 0) {
+            char *str = ERR_error_string(err, NULL);
+            printf("Error: %s\n", str);
+        }
         lua_pushnil(L);
     }
     return 1;

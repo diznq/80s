@@ -62,7 +62,7 @@ LIBS="-lm -ldl -lpthread -lcrypto -lssl"
 if [ "$(uname -o)" = "Msys" ]; then
   SO_EXT="dll"
   LIBS=$(echo "$LIBS" | sed "s/-ldl//g")
-  LIBS="$LIBS -lws2_32 -lmswsock"
+  LIBS="$LIBS -lws2_32 -lmswsock -lcrypt32"
 fi
 
 if [ "$DEBUG" = "true" ]; then
