@@ -173,7 +173,9 @@ if not aiosocket then
         --- @type boolean|nil true if TLS is ready
         tls = nil,
         --- @type boolean|nil true if KTLS is to be used
-        ktls = nil
+        ktls = nil,
+        --- @type (fun(fd: aiosocket, elfd: lightuserdata, childfd: lightuserdata, data: string, length: integer): string?)[]
+        pre_data = {}
     }
 end
 
@@ -356,6 +358,7 @@ function aiosocket:new(elfd, childfd, fdtype, connected, initialized)
         co = connected or false, 
         wr = connected or false ,
         buf = {},
+        pre_data = {},
         closed = false
     }
     setmetatable(socket, self)
@@ -434,7 +437,16 @@ function aio:on_data(elfd, childfd, fdtype, data, len)
     end
     
     if fd.init then
-        fd:on_data(elfd, childfd, data, len)
+        --- @type string|nil
+        local new_data = data
+        for _, callback in ipairs(fd.pre_data) do
+            if new_data ~= nil then
+                new_data = callback(fd, elfd, childfd, new_data, len)
+            end
+        end
+        if new_data ~= nil then
+            fd:on_data(elfd, childfd, new_data, len)
+        end
         return
     end
 
@@ -442,7 +454,16 @@ function aio:on_data(elfd, childfd, fdtype, data, len)
         if handler.matches(data) then
             handler.handle(fd)
             fd.init = true
-            fd:on_data(elfd, childfd, data, len)
+            --- @type string|nil
+            local new_data = data
+            for _, callback in ipairs(fd.pre_data) do
+                if new_data ~= nil then
+                    new_data = callback(fd, elfd, childfd, new_data, len)
+                end
+            end
+            if new_data ~= nil then
+                fd:on_data(elfd, childfd, new_data, len)
+            end
             return
         end
     end
@@ -454,7 +475,16 @@ function aio:on_data(elfd, childfd, fdtype, data, len)
     if is_http[initial] then
         self:handle_as_http(fd)
         fd.init = true
-        fd:on_data(elfd, childfd, data, len)
+        --- @type string|nil
+        local new_data = data
+        for _, callback in ipairs(fd.pre_data) do
+            if new_data ~= nil then
+                new_data = callback(fd, elfd, childfd, new_data, len)
+            end
+        end
+        if new_data ~= nil then
+            fd:on_data(elfd, childfd, new_data, len)
+        end
     end
 end
 
@@ -510,7 +540,7 @@ function aio:handle_as_http(fd)
     return fd
 end
 
---- Wrap FD into TLS streama
+--- Wrap FD into TLS stream
 ---
 --- @param fd aiosocket AIO socket to be handled
 --- @param ssl lightuserdata global SSL context
@@ -518,7 +548,6 @@ end
 --- @return aiopromise<aiosocket|{error: string}> connection established promise
 function aio:wrap_tls(fd, ssl, client)
     local resolve, resolver = aio:prepare_promise()
-    local on_data = fd.on_data
     local on_close = fd.on_close
     local raw_write = fd.write
     local initialized = true
@@ -557,7 +586,7 @@ function aio:wrap_tls(fd, ssl, client)
                 end
             end
         end
-        fd.on_data = function(self, elfd, childfd, data, length)
+        local process_data = function(self, elfd, childfd, data, length)
             if self.closed or not self.bio then
                 return
             end
@@ -587,7 +616,7 @@ function aio:wrap_tls(fd, ssl, client)
                 if self.tls and KTLS then
                     self.ktls = true
                     crypto.ssl_bio_release(self.bio, 1)
-                    fd.on_data = on_data
+                    fd.pre_data = {}
                     fd.write = raw_write
                     -- send all the enqueued data previously
                     for _, data in ipairs(to_write) do
@@ -595,7 +624,7 @@ function aio:wrap_tls(fd, ssl, client)
                     end
                     to_write = {}
                     -- dont continue any furher
-                    resolve(fd)
+                    resolve(self)
                     return
                 elseif self.tls then
                     -- send all the previously enqueued data
@@ -606,34 +635,7 @@ function aio:wrap_tls(fd, ssl, client)
                     -- in case of client, we must construct a fake fd, so
                     -- on_data events are decrypted and not raw data
                     if client then
-                        local fake_fd = {
-                            elfd = fd.elfd,
-                            fd = fd.fd,
-                            init = fd.init,
-                            co = true,
-                            write = function (fd_, ...)
-                                return fd:write(...)
-                            end,
-                            close = function (fd_, ...)
-                                return fd:close()
-                            end,
-                            http_response = function(fd_, ...)
-                                return fd:http_response(...)
-                            end,
-                            on_data = function (...)
-                                -- ...
-                            end,
-                            on_close = function(...)
-                                -- ...
-                            end,
-                        }
-                        on_data = function (fd_, ...)
-                            fake_fd:on_data(...)
-                        end
-                        on_close = function(fd_, ...)
-                            fake_fd:on_close(...)
-                        end
-                        resolve(fake_fd)
+                        resolve(self)
                     end
                 end
             end
@@ -646,28 +648,27 @@ function aio:wrap_tls(fd, ssl, client)
                 while ok and self.bio do
                     -- try to read from bio
                     local rd, wr = crypto.ssl_read(self.bio)
-                    if not rd or #rd == 0 then
-                        -- if no furher data left, end here
-                        ok = false
-                    else
-                        -- call the original on_data handler
-                        local ok, err = pcall(on_data, self, elfd, childfd, rd, #rd)
-                        if not ok then
-                            print("[wrap_tls] error on handler layer: ", err)
-                        end
-                    end
+                    
                     -- if there is some data to write back coming from SSL layer
                     -- perform the raw_write here
                     if wr == true then
                         while self.bio do
-                            local rd = crypto.ssl_bio_read(self.bio)
-                            if not rd or #rd == 0 then break end
-                            raw_write(self, rd)
+                            local wr_rd = crypto.ssl_bio_read(self.bio)
+                            if not wr_rd or #wr_rd == 0 then break end
+                            raw_write(self, wr_rd)
                         end
+                    end
+
+                    if not rd or #rd == 0 then
+                        -- if no furher data left, end here
+                        ok = false
+                    else
+                        return rd
                     end
                 end
             end
         end
+        fd.pre_data[#fd.pre_data+1] = process_data
         fd.write = function(self, data, ...)
             -- do not do anything in case bio is nil or SSL is not ready yet
             if not self.tls or not self.bio then 
@@ -694,7 +695,6 @@ function aio:wrap_tls(fd, ssl, client)
                 self.bio = nil
             end
             if self.closed then return end
-            print("_on_close")
             pcall(on_close, self, fd.elfd, fd.fd)
             self.closed = true
         end

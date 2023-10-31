@@ -479,7 +479,7 @@ static int l_crypto_ssl_bio_new_connect(lua_State *L) {
     SSL_set_bio(ctx->ssl, ctx->rdbio, ctx->wrbio);
 
     SSL_set1_host(ctx->ssl, hostport);
-    SSL_set_verify(ctx->ssl, SSL_VERIFY_PEER, NULL);
+    //SSL_set_verify(ctx->ssl, SSL_VERIFY_PEER, NULL);
 
     lua_pushlightuserdata(L, (void*)ctx);
     return 1;
