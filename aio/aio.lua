@@ -43,8 +43,8 @@ net = net or {}
 --- @field ssl_bio_release fun(bio: lightuserdata, flags: integer) release BIO context, flags, 1 to release just BIO, 2 to release just context
 --- @field ssl_bio_write fun(bio: lightuserdata, data: string): integer write to BIO, returns written bytes, <0 if error
 --- @field ssl_bio_read fun(bio: lightuserdata): string|nil read from BIO, nil if error
---- @field ssl_accept fun(bio: lightuserdata): boolean|nil perform SSL accept, nil if error, true if IO request, false otherwise
---- @field ssl_connect fun(bio: lightuserdata): boolean|nil perform SSL connect, nil if error, true if IO request, false otherwise
+--- @field ssl_accept fun(bio: lightuserdata): boolean|nil, error: string perform SSL accept, nil if error, true if IO request, false otherwise
+--- @field ssl_connect fun(bio: lightuserdata): boolean|nil, error: string perform SSL connect, nil if error, true if IO request, false otherwise
 --- @field ssl_init_finished fun(bio: lightuserdata): boolean true if SSL accept is finished
 --- @field ssl_read fun(bio: lightuserdata): string|nil, integer|nil read from SSL, returns decrypted data or nil on error, return true if write is requested
 --- @field ssl_write fun(bio: lightuserdata, data: string): integer write data to SSL, encrypted data can be retrieved using bio_read later
@@ -570,11 +570,11 @@ function aio:wrap_tls(fd, ssl, client)
 
     if initialized then
         --- @type boolean|nil
-        local connect_ok = nil
+        local connect_ok, connect_err = nil, nil
         if client then
-            connect_ok = crypto.ssl_connect(fd.bio)
+            connect_ok, connect_err = crypto.ssl_connect(fd.bio)
             if connect_ok == nil then
-                resolve(make_error("ssl connect failed"))
+                resolve(make_error("ssl connect failed: " .. tostring(connect_err)))
                 return resolver
             end
             if connect_ok == true then
@@ -592,15 +592,15 @@ function aio:wrap_tls(fd, ssl, client)
             end
             crypto.ssl_bio_write(self.bio, data)
             if not self.tls then 
-                local ok = nil
+                local ok, accept_err = nil, nil
                 if not client then
-                    ok = crypto.ssl_accept(self.bio)
+                    ok, accept_err = crypto.ssl_accept(self.bio)
                 else
-                    ok = crypto.ssl_connect(self.bio)
+                    ok, connect_err = crypto.ssl_connect(self.bio)
                 end
                 -- make sure accept is either true or false, not nil
                 if ok == nil then
-                    resolve(make_error(client and "ssl handshake failed" or "ssl accept failed"))
+                    resolve(make_error(client and "ssl handshake failed" .. tostring(connect_err) or "ssl accept failed " .. tostring(accept_err)))
                     return
                 end
                 if ok == true then

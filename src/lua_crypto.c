@@ -633,7 +633,14 @@ static int l_crypto_ssl_accept(lua_State *L) {
     } else if(err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ) {
         lua_pushboolean(L, 1);
     } else {
+        n = 1;
         lua_pushnil(L);
+        while ((err = ERR_get_error()) != 0) {
+            char *str = ERR_error_string(err, NULL);
+            lua_pushstring(L, str);
+            n++;
+        }
+        return n;
     }
     return 1;
 }
@@ -643,7 +650,6 @@ static int l_crypto_ssl_connect(lua_State *L) {
         return luaL_error(L, "expecting 1 argument: bio (lightuserdata)");
     }
     struct ssl_nb_context *ctx = (struct ssl_nb_context*)lua_touserdata(L, 1);
-    ERR_load_ERR_strings();
     int n = SSL_do_handshake(ctx->ssl);
     int err = SSL_get_error(ctx->ssl, n);
     if(err == SSL_ERROR_NONE) {
@@ -651,12 +657,14 @@ static int l_crypto_ssl_connect(lua_State *L) {
     } else if(err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ) {
         lua_pushboolean(L, 1);
     } else {
-        unsigned long err;
+        n = 1;
+        lua_pushnil(L);
         while ((err = ERR_get_error()) != 0) {
             char *str = ERR_error_string(err, NULL);
-            printf("Error: %s\n", str);
+            lua_pushstring(L, str);
+            n++;
         }
-        lua_pushnil(L);
+        return n;
     }
     return 1;
 }
