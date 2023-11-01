@@ -645,6 +645,7 @@ function aio:wrap_tls(fd, ssl, client)
             -- over TCP all at once
             if self.tls then
                 local ok = true
+                local all_read = {}
                 while ok and self.bio do
                     -- try to read from bio
                     local rd, wr = crypto.ssl_read(self.bio)
@@ -663,8 +664,13 @@ function aio:wrap_tls(fd, ssl, client)
                         -- if no furher data left, end here
                         ok = false
                     else
-                        return rd
+                        all_read[#all_read+1] = rd
                     end
+                end
+                if #all_read then
+                    return table.concat(all_read)
+                else
+                    return nil
                 end
             end
         end
