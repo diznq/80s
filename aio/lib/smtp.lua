@@ -4,7 +4,7 @@ require("aio.aio")
 ---@alias mailparam {from: maildetail, to: maildetail[], sender: table, id: string, body: string}
 ---@alias mailreceived fun(mail: mailparam)
 
-smtp = {
+local smtp = {
     counter = 0,
     host = "localhost",
     --- @type lightuserdata|nil
