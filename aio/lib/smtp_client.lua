@@ -63,12 +63,12 @@ function smtp_client:send_mail(params)
             end
             
             for _, recipient in ipairs(recipients) do
-                status, response = self:send_command(fd, "RCPT TO:<" .. from .. ">")
+                status, response = self:send_command(fd, "RCPT TO:<" .. recipient .. ">")
                 if not status then
                     return resolve(make_error("failed to read response from server"))
                 elseif status ~= "250" then
                     fd:close()
-                    return resolve(make_error("RCPT TO status was " .. status .. " instead of expected 250 for recipient" .. recipient))
+                    return resolve(make_error("RCPT TO status was " .. status .. " instead of expected 250 for recipient " .. recipient))
                 end
             end
 
@@ -91,6 +91,11 @@ function smtp_client:send_mail(params)
                 headers_list[#headers_list+1] = key .. ": " .. tostring(value)
             end
             email_message = string.format("%s\r\n\r\n%s\r\n.\r\n", table.concat(headers_list, "\r\n"), body)
+            if self.logging then
+                print("----------------------->")
+                print(email_message)
+                print("-----------------------/")
+            end
             fd:write(email_message)
             status, response = self:read_response()
             if not status then
