@@ -50,7 +50,7 @@ function smtp_client:send_mail(params)
         aio:buffered_cor(fd, function (_)
             local first_line = coroutine.yield("\r\n")
             -- Hello
-            local status, response = self:send_command(fd, "EHLO " .. self.host .. "\r\n")
+            local status, response = self:send_command(fd, "EHLO " .. self.host)
             if not status then
                 return resolve(make_error("EHLO failed to read response from server"))
             elseif status ~= "250" then
@@ -76,7 +76,7 @@ function smtp_client:send_mail(params)
                     resolve("STARTTLS failed on " .. res.error)
                     return
                 end
-                status, response = self:send_command(fd, "EHLO " .. self.host .. "\r\n")
+                status, response = self:send_command(fd, "EHLO " .. self.host)
                 if not status then
                     return resolve(make_error("STARTTLS EHLO failed to read response from server"))
                 elseif status ~= "250" then
@@ -204,7 +204,7 @@ end
 function smtp_client:init(params)
     self.host = params.host or "localhost"
     self.logging = params.logging or false
-    if self.ssl then
+    if params.ssl then
         self.tls = crypto.ssl_new_client()
         self.ssl_enforced = true
     end
