@@ -166,6 +166,7 @@ function httpd:initialize(params)
         else
             aio:add_protocol_handler("tls", {
                 on_accept = function (fd, parentfd)
+                    ---@diagnostic disable-next-line: inject-field
                     fd.init = true
                     aio:wrap_tls(aio:handle_as_http(fd), SSL)
                 end,

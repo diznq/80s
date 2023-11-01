@@ -8,7 +8,7 @@ local http_client = {
 }
 
 --- Perform HTTP request
----@param params {method: string, url: string, query: table|nil, headers: table|nil, body: string|nil}
+---@param params {method: string, url: string, query: table|nil, headers: table|nil, body: string|nil, response_file: file*|nil}
 ---@return aiopromise<httpresponse> response
 function http_client:request(params)
     local resolve, resolver = aio:prepare_promise()
@@ -63,8 +63,41 @@ function http_client:request(params)
                 if http_protocol and status_line and response_headers then
                     local response_length = tonumber(response_headers["content-length"] or "0")
                     if response_length > 0 then
-                        response_body = coroutine.yield(response_length)
-                        print(response_body)
+                        if params.response_file then
+                            local to_read = response_length
+                            local did_read = 0
+                            while true do
+                                local chunk_size = math.min(1000000, to_read)
+                                local chunk = coroutine.yield(chunk_size)
+                                if chunk ~= nil then
+                                    local f, err = params.response_file:write(chunk)
+                                    if err then
+                                        fd:close()
+                                        params.response_file:close()
+                                        resolve(make_error("failed to write response to file"))
+                                        return
+                                    end
+                                    did_read = did_read + #chunk
+                                    to_read = to_read - #chunk
+                                else
+                                    params.response_file:close()
+                                    fd:close()
+                                    resolve(make_error("failed to write response stream"))
+                                    return
+                                end
+                                if to_read ~= 0 then
+                                    fd:close()
+                                    params.response_file:close()
+                                    resolve(make_error("repsonse seems to be corrupted, read length: " .. tostring(did_read) .. ", requested length: " .. tostring(response_length)))
+                                    return
+                                else
+                                    params.response_file:close()
+                                    break
+                                end
+                            end
+                        else
+                            response_body = coroutine.yield(response_length)
+                        end
                         if response_body == nil then
                             fd:close()
                             resolve(make_error("failed to read response body"))
