@@ -60,7 +60,10 @@ function smtp_client:send_mail(params)
                 return resolve(make_error("EHLO status was " .. status .. " instead of expected 250"))
             end
 
-            if self.tls and response:find("STARTTLS") ~= nil then
+            if self.tls and self.ssl_enforced and not response:find("STARTTLS") then
+                fd:close()
+                return resolve(make_error("EHLO server doesn't support STARTTLS, but client enforces TLS"))
+            elseif self.tls and response:find("STARTTLS") ~= nil then
                 status, response = self:send_command(fd, "STARTTLS")
                 if not status then
                     return resolve(make_error("STARTTLS failed to read response from server"))
