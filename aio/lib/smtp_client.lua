@@ -15,7 +15,9 @@ local smtp_client = {
 ---@param params {from: string, to: string|string[], ssl: boolean|nil, headers: table|nil, body: string, subject: string|nil, mail_server: string|nil}
 ---@return aiopromise<mailresponse> response
 function smtp_client:send_mail(params)
-    local from, to, headers, body, ssl = params.from, params.to, params.headers, params.body, params.ssl
+    local from, to, headers, body, ssl, subject = params.from, params.to, params.headers, params.body, params.ssl, params.subject
+    body = body or ""
+    subject = subject or ""
     headers = headers or {}
     local resolve, resolver = aio:prepare_promise()
     --- @type string[]
@@ -66,82 +68,97 @@ function smtp_client:send_mail(params)
                     fd:close()
                     return resolve(make_error("STARTTLS status was " .. status .. " instead of expected 220"))
                 end
-                local res = aio:await(aio:wrap_tls(fd, self.tls, host))
-                if not res then
-                    fd:close()
-                    resolve(make_error("STARTTLS failed to wrap TLS"))
-                    return
-                elseif iserror(res) then
-                    fd:close()
-                    resolve("STARTTLS failed on " .. res.error)
-                    return
-                end
-                status, response = self:send_command(fd, "EHLO " .. self.host)
-                if not status then
-                    return resolve(make_error("STARTTLS EHLO failed to read response from server"))
-                elseif status ~= "250" then
-                    fd:close()
-                    return resolve(make_error("STARTTLS EHLO status was " .. status .. " instead of expected 250"))
-                end
+                aio:wrap_tls(fd, self.tls, host)(function (result)
+                    if not result then
+                        fd:close()
+                        resolve(make_error("STARTTLS failed to wrap TLS"))
+                        return
+                    elseif iserror(result) then
+                        fd:close()
+                        resolve("STARTTLS failed on " .. result.error)
+                        return
+                    end
+                    status, response = self:send_command(fd, "EHLO " .. self.host)
+                    if not status then
+                        return resolve(make_error("STARTTLS EHLO failed to read response from server"))
+                    elseif status ~= "250" then
+                        fd:close()
+                        return resolve(make_error("STARTTLS EHLO status was " .. status .. " instead of expected 250"))
+                    end
+                    self:mail_flow(fd, from, recipients, headers, subject, body, resolve)
+                end)
+            else
+                self:mail_flow(fd, from, recipients, headers, subject, body, resolve)
             end
-
-            status, response = self:send_command(fd, "MAIL FROM:<" .. from .. ">")
-            if not status then
-                return resolve(make_error("MAIL FROM failed to read response from server"))
-            elseif status ~= "250" then
-                fd:close()
-                return resolve(make_error("MAIL FROM status was " .. status .. " instead of expected 250"))
-            end
-            
-            for _, recipient in ipairs(recipients) do
-                status, response = self:send_command(fd, "RCPT TO:<" .. recipient .. ">")
-                if not status then
-                    return resolve(make_error("RECPT TO failed to read response from server"))
-                elseif status ~= "250" then
-                    fd:close()
-                    return resolve(make_error("RCPT TO status was " .. status .. " instead of expected 250 for recipient " .. recipient))
-                end
-            end
-
-            status, response = self:send_command(fd, "DATA")
-            if not status then
-                return resolve(make_error("DATA failed to read response from server"))
-            elseif status ~= "354" then
-                fd:close()
-                return resolve(make_error("DATA status was " .. status .. " instead of expected 354"))
-            end
-
-            headers["Message-ID"] = self:generate_message_id()
-            headers["From"] = from
-            headers["To"] = table.concat(recipients, ", ")
-            headers["Subject"] = params.subject or "No subject"
-
-            local email_message = ""
-            local headers_list = {}
-            for key, value in pairs(headers) do
-                headers_list[#headers_list+1] = key .. ": " .. tostring(value)
-            end
-            email_message = string.format("%s\r\n\r\n%s\r\n.\r\n", table.concat(headers_list, "\r\n"), body)
-            if self.logging then
-                print("----------------------->")
-                print(email_message)
-                print("-----------------------/")
-            end
-            fd:write(email_message)
-            status, response = self:read_response()
-            if not status then
-                return resolve(make_error("DATA submission failed to read response from server"))
-            elseif status ~= "250" then
-                fd:close()
-                return resolve(make_error("DATA submission status was " .. status .. " instead of expected 250"))
-            end
-
-            status, response = self:send_command(fd, "QUIT")
-            fd:close()
-            resolve({response = response, stauts=status})
         end)
     end)
     return resolver
+end
+
+--- Perform mail SMTP send mail flow
+---@param fd aiosocket
+---@param from string
+---@param recipients string[]
+---@param headers table
+---@param subject string
+---@param body string
+---@param resolve fun(result: any)|thread
+---@return any
+function smtp_client:mail_flow(fd, from , recipients, headers, subject, body, resolve)
+    local status, response = self:send_command(fd, "MAIL FROM:<" .. from .. ">")
+    if not status then
+        return resolve(make_error("MAIL FROM failed to read response from server"))
+    elseif status ~= "250" then
+        fd:close()
+        return resolve(make_error("MAIL FROM status was " .. status .. " instead of expected 250"))
+    end
+    
+    for _, recipient in ipairs(recipients) do
+        status, response = self:send_command(fd, "RCPT TO:<" .. recipient .. ">")
+        if not status then
+            return resolve(make_error("RECPT TO failed to read response from server"))
+        elseif status ~= "250" then
+            fd:close()
+            return resolve(make_error("RCPT TO status was " .. status .. " instead of expected 250 for recipient " .. recipient))
+        end
+    end
+
+    status, response = self:send_command(fd, "DATA")
+    if not status then
+        return resolve(make_error("DATA failed to read response from server"))
+    elseif status ~= "354" then
+        fd:close()
+        return resolve(make_error("DATA status was " .. status .. " instead of expected 354"))
+    end
+
+    headers["Message-ID"] = self:generate_message_id()
+    headers["From"] = from
+    headers["To"] = table.concat(recipients, ", ")
+    headers["Subject"] = subject or "No subject"
+
+    local email_message = ""
+    local headers_list = {}
+    for key, value in pairs(headers) do
+        headers_list[#headers_list+1] = key .. ": " .. tostring(value)
+    end
+    email_message = string.format("%s\r\n\r\n%s\r\n.\r\n", table.concat(headers_list, "\r\n"), body)
+    if self.logging then
+        print("----------------------->")
+        print(email_message)
+        print("-----------------------/")
+    end
+    fd:write(email_message)
+    status, response = self:read_response()
+    if not status then
+        return resolve(make_error("DATA submission failed to read response from server"))
+    elseif status ~= "250" then
+        fd:close()
+        return resolve(make_error("DATA submission status was " .. status .. " instead of expected 250"))
+    end
+
+    status, response = self:send_command(fd, "QUIT")
+    fd:close()
+    resolve({response = response, stauts=status})
 end
 
 --- Send command to SMTP server
