@@ -25,7 +25,7 @@ function smtp_client:send_mail(params)
         resolve(make_error("zero recipients"))
         return resolver
     end
-    local first = recipients[0]
+    local first = recipients[1]
     local user, host = self:parse_address(first)
     if not user or not host then
         resolve(make_error("invalid first recipient"))
@@ -147,7 +147,7 @@ end
 ---@return string|nil user
 ---@return string host
 function smtp_client:parse_address(address)
-    return address:match("^(.-)@(.+)*")
+    return address:match("^(.-)@(.+)$")
 end
 
 function smtp_client:generate_message_id()
