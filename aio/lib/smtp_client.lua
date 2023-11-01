@@ -78,14 +78,16 @@ function smtp_client:send_mail(params)
                         resolve("STARTTLS failed on " .. result.error)
                         return
                     end
-                    status, response = self:send_command(fd, "EHLO " .. self.host)
-                    if not status then
-                        return resolve(make_error("STARTTLS EHLO failed to read response from server"))
-                    elseif status ~= "250" then
-                        fd:close()
-                        return resolve(make_error("STARTTLS EHLO status was " .. status .. " instead of expected 250"))
-                    end
-                    self:mail_flow(fd, from, recipients, headers, subject, body, resolve)
+                    aio:buffered_cor(fd, function (_)
+                        status, response = self:send_command(fd, "EHLO " .. self.host)
+                        if not status then
+                            return resolve(make_error("STARTTLS EHLO failed to read response from server"))
+                        elseif status ~= "250" then
+                            fd:close()
+                            return resolve(make_error("STARTTLS EHLO status was " .. status .. " instead of expected 250"))
+                        end
+                        self:mail_flow(fd, from, recipients, headers, subject, body, resolve)
+                    end)
                 end)
             else
                 self:mail_flow(fd, from, recipients, headers, subject, body, resolve)
