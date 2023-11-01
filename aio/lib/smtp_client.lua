@@ -2,7 +2,8 @@ require("aio.aio")
 
 local smtp_client = {
     counter = 0,
-    host = "localhost"
+    host = "localhost",
+    logging = false
 }
 
 --- @alias mailresponse {status: string, response: string, error: string|nil}
@@ -42,12 +43,13 @@ function smtp_client:send_mail(params)
             resolve(fd)
             return
         end
-        aio:buffered_cor(fd, function (resolve)
+        aio:buffered_cor(fd, function (_)
+            local first_line = coroutine.yield("\r\n")
             -- Hello
             local status, response = self:send_command(fd, "EHLO " .. self.host .. "\r\n")
             if not status then
                 return resolve(make_error("failed to read response from server"))
-            elseif status ~= "250" then
+            elseif status ~= "220" then
                 fd:close()
                 return resolve(make_error("EHLO status was " .. status .. " instead of expected 250"))
             end
@@ -112,6 +114,9 @@ end
 ---@return string|nil status
 ---@return string body
 function smtp_client:send_command(fd, command)
+    if self.logging then
+        print("-> " .. command)
+    end
     fd:write(command .. "\r\n")
     local status, response = self:read_response()
     if not status then
@@ -129,9 +134,12 @@ function smtp_client:read_response()
     local status = ""
     while true do
         local msg = coroutine.yield("\r\n")
+        if self.logging then
+            print("<- " .. tostring(msg))
+        end
         if msg == nil then return nil, "" end
         local code, continue, body = msg:match("^(%d+)([%- ])(.*)$")
-        if code and continue and body then
+        if code ~= nil and continue ~= nil and body ~= nil then
             messages[#messages+1] = body
             status = code
             if continue ~= "-" then break end
@@ -153,6 +161,20 @@ end
 function smtp_client:generate_message_id()
     self.counter = self.counter + 1
     return string.format("<%s.%d.%f@%s>", NODE_ID:gsub("%/", "-"), self.counter, net.clock(), self.host)
+end
+
+--- Initialize SMTP client
+---@param params {host: string|nil, logging: boolean|nil}
+function smtp_client:init(params)
+    self.host = params.host or "localhost"
+    self.logging = params.logging or false
+end
+
+function smtp_client:default_initialize()
+    self:init({
+        host = os.getenv("HOST") or "localhost",
+        logging = (os.getenv("LOGGING") or "false") == "true"
+    })
 end
 
 return smtp_client
