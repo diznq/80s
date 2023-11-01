@@ -23,6 +23,7 @@ function http_client:request(params)
         end
         aio:connect2(ELFD, host, port, protocol == "https" and self.ssl or nil)(function (fd)
             if iserror(fd) then
+                if params.response_file then params.response_file:close() end
                 resolve(fd)
                 return
             end
@@ -56,6 +57,7 @@ function http_client:request(params)
                 local header = coroutine.yield("\r\n\r\n")
                 if not header then
                     fd:close()
+                    if params.response_file then params.response_file:close() end
                     resolve(make_error("failed to read header"))
                 end
                 local http_protocol, status_line, response_headers = aio:parse_http(header, true)
@@ -100,6 +102,7 @@ function http_client:request(params)
                         end
                         if response_body == nil then
                             fd:close()
+                            if params.response_file then params.response_file:close() end
                             resolve(make_error("failed to read response body"))
                             return
                         end
@@ -113,16 +116,19 @@ function http_client:request(params)
                     })
                 else
                     fd:close()
+                    if params.response_file then params.response_file:close() end
                     resolve(make_error("failed to parse response header"))
                 end
             end)
             local wr_ok = fd:write(request)
             if not wr_ok then
                 fd:close()
+                if params.response_file then params.response_file:close() end
                 resolve(make_error("failed to write data to fd"))
             end
         end)
     else
+        if params.response_file then params.response_file:close() end
         resolve(make_error("failed to parse URL"))
     end
     return resolver
