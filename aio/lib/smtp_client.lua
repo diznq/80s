@@ -42,7 +42,12 @@ function smtp_client:send_mail(params)
     end
     if self.ssl_enforced then ssl = true end
     if ssl and self.tls == nil then
-        self.tls = crypto.ssl_new_client()
+        local ssl_result, err = aio:get_ssl_context()
+        if not ssl_result then
+            resolve(make_error("failed to initialize SSL context: " .. err))
+            return resolver
+        end
+        self.tls = ssl_result
     end
     aio:connect2(ELFD, host, 25)(function (fd)
         if iserror(fd) then
@@ -227,7 +232,6 @@ function smtp_client:init(params)
     self.host = params.host or "localhost"
     self.logging = params.logging or false
     if params.ssl then
-        self.tls = crypto.ssl_new_client()
         self.ssl_enforced = true
     end
 end

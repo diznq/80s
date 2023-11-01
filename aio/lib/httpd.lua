@@ -160,10 +160,11 @@ function httpd:initialize(params)
     self.root = params.root
     aio:set_master_key(params.master_key)
     if params.tls and params.pubkey and params.privkey then
-        local SSL, err = crypto.ssl_new_server(params.pubkey, params.privkey)
+        local SSL, err = aio:get_ssl_context({server = true, pubkey = params.pubkey, privkey = params.privkey})
         if not SSL then
             print("[httpd] Failed to initialize TLS: " .. tostring(err))
         else
+            self.tls = SSL
             aio:add_protocol_handler("tls", {
                 on_accept = function (fd, parentfd)
                     ---@diagnostic disable-next-line: inject-field

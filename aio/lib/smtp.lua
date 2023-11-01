@@ -18,26 +18,24 @@ local smtp = {
 function smtp:init(params)
     self.host = params.host
     if params.tls and params.privkey and params.pubkey then
-        local SSL, err = crypto.ssl_new_server(params.pubkey, params.privkey)
+        local SSL, err = aio:get_ssl_context({server = true, pubkey = params.pubkey, privkey = params.privkey})
         if not SSL then
             print("[smtp] Failed to initialize TLS: " .. tostring(err))
         else
             self.tls = SSL
         end
     end
-    if params.server then
-        aio:add_protocol_handler("smtp", {
-            matches = function (data)
-                return true
-            end,
-            on_accept = function (fd, parentfd)
-                fd:write("220 " .. params.host .. " ESMTP 80s\r\n")
-            end,
-            handle = function (fd)
-                self:handle_as_smtp(fd)
-            end
-        })
-    end
+    aio:add_protocol_handler("smtp", {
+        matches = function (data)
+            return true
+        end,
+        on_accept = function (fd, parentfd)
+            fd:write("220 " .. params.host .. " ESMTP 80s\r\n")
+        end,
+        handle = function (fd)
+            self:handle_as_smtp(fd)
+        end
+    })
 end
 
 function smtp:handle_as_smtp(fd)

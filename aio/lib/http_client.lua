@@ -19,7 +19,12 @@ function http_client:request(params)
     local protocol, host, port, script = self:parse_url(full_url)
     if protocol and host and port and script then
         if protocol == "https" and self.ssl == nil then
-            self.ssl = crypto.ssl_new_client()
+            local ssl, err = aio:get_ssl_context()
+            if not ssl then
+                resolve(make_error("failed to initialize SSL context: " .. err))
+                return resolver
+            end
+            self.ssl = ssl
         end
         aio:connect2(ELFD, host, port, protocol == "https" and self.ssl or nil)(function (fd)
             if iserror(fd) then

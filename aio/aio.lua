@@ -388,6 +388,8 @@ if not aio then
             --- @type {[string]: aiohttphandler}
             POST={},
         },
+        --- @type {[string]: lightuserdata}
+        ssl_contexts = {},
         -- protocol handlers
         protocols = {},
         -- master key
@@ -493,6 +495,24 @@ end
 ---@param handler {matches: aiomatches, handle: aiohandler, on_accept: aioonaccept|nil} protocol handler
 function aio:add_protocol_handler(name, handler)
     self.protocols[name] = handler
+end
+
+--- Get SSL context
+---@param params {server: boolean|nil,  privkey: string|nil, pubkey: string|nil, ca_file: string|nil, ca_path: string|nil}|nil
+function aio:get_ssl_context(params)
+    params = params or {}
+    local index = string.format("%s%s.%s.%s.%s", params.server and "s" or "c", tostring(params.privkey), tostring(params.pubkey), tostring(params.ca_file), tostring(params.ca_path))
+    --- @type lightuserdata|nil
+    local hit = self.ssl_contexts[index]
+    local err = nil
+    if hit then return hit, "" end
+    if params.server then
+        hit, err = crypto.ssl_new_server(params.pubkey, params.privkey)
+    else
+        hit, err = crypto.ssl_new_client(params.ca_path, params.ca_file, params.pubkey, params.privkey)
+    end
+    if hit then self.ssl_contexts[index] = hit end
+    return hit ,err
 end
 
 --- Create new HTTP handler for network stream
