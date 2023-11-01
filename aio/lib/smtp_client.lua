@@ -49,7 +49,7 @@ function smtp_client:send_mail(params)
             local status, response = self:send_command(fd, "EHLO " .. self.host .. "\r\n")
             if not status then
                 return resolve(make_error("failed to read response from server"))
-            elseif status ~= "220" then
+            elseif status ~= "250" then
                 fd:close()
                 return resolve(make_error("EHLO status was " .. status .. " instead of expected 250"))
             end
