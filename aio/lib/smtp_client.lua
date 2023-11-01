@@ -3,7 +3,10 @@ require("aio.aio")
 local smtp_client = {
     counter = 0,
     host = "localhost",
-    logging = false
+    logging = false,
+    --- @type lightuserdata|nil
+    tls = nil,
+    ssl_enforced = false
 }
 
 --- @alias mailresponse {status: string, response: string, error: string|nil}
@@ -35,6 +38,7 @@ function smtp_client:send_mail(params)
     if params.mail_server ~= nil then
         host = tostring(params.mail_server)
     end
+    if self.ssl_enforced then ssl = true end
     if ssl and self.tls == nil then
         self.tls = crypto.ssl_new_client()
     end
@@ -48,15 +52,42 @@ function smtp_client:send_mail(params)
             -- Hello
             local status, response = self:send_command(fd, "EHLO " .. self.host .. "\r\n")
             if not status then
-                return resolve(make_error("failed to read response from server"))
+                return resolve(make_error("EHLO failed to read response from server"))
             elseif status ~= "250" then
                 fd:close()
                 return resolve(make_error("EHLO status was " .. status .. " instead of expected 250"))
             end
 
+            if self.tls and response:find("STARTTLS") ~= nil then
+                status, response = self:send_command(fd, "STARTTLS")
+                if not status then
+                    return resolve(make_error("STARTTLS failed to read response from server"))
+                elseif status ~= "220" then
+                    fd:close()
+                    return resolve(make_error("STARTTLS status was " .. status .. " instead of expected 220"))
+                end
+                local res = aio:await(aio:wrap_tls(fd, self.tls, host))
+                if not res then
+                    fd:close()
+                    resolve(make_error("STARTTLS failed to wrap TLS"))
+                    return
+                elseif iserror(res) then
+                    fd:close()
+                    resolve("STARTTLS failed on " .. res.error)
+                    return
+                end
+                status, response = self:send_command(fd, "EHLO " .. self.host .. "\r\n")
+                if not status then
+                    return resolve(make_error("STARTTLS EHLO failed to read response from server"))
+                elseif status ~= "250" then
+                    fd:close()
+                    return resolve(make_error("STARTTLS EHLO status was " .. status .. " instead of expected 250"))
+                end
+            end
+
             status, response = self:send_command(fd, "MAIL FROM:<" .. from .. ">")
             if not status then
-                return resolve(make_error("failed to read response from server"))
+                return resolve(make_error("MAIL FROM failed to read response from server"))
             elseif status ~= "250" then
                 fd:close()
                 return resolve(make_error("MAIL FROM status was " .. status .. " instead of expected 250"))
@@ -65,7 +96,7 @@ function smtp_client:send_mail(params)
             for _, recipient in ipairs(recipients) do
                 status, response = self:send_command(fd, "RCPT TO:<" .. recipient .. ">")
                 if not status then
-                    return resolve(make_error("failed to read response from server"))
+                    return resolve(make_error("RECPT TO failed to read response from server"))
                 elseif status ~= "250" then
                     fd:close()
                     return resolve(make_error("RCPT TO status was " .. status .. " instead of expected 250 for recipient " .. recipient))
@@ -74,7 +105,7 @@ function smtp_client:send_mail(params)
 
             status, response = self:send_command(fd, "DATA")
             if not status then
-                return resolve(make_error("failed to read response from server"))
+                return resolve(make_error("DATA failed to read response from server"))
             elseif status ~= "354" then
                 fd:close()
                 return resolve(make_error("DATA status was " .. status .. " instead of expected 354"))
@@ -99,7 +130,7 @@ function smtp_client:send_mail(params)
             fd:write(email_message)
             status, response = self:read_response()
             if not status then
-                return resolve(make_error("failed to read response from server"))
+                return resolve(make_error("DATA submission failed to read response from server"))
             elseif status ~= "250" then
                 fd:close()
                 return resolve(make_error("DATA submission status was " .. status .. " instead of expected 250"))
@@ -169,16 +200,21 @@ function smtp_client:generate_message_id()
 end
 
 --- Initialize SMTP client
----@param params {host: string|nil, logging: boolean|nil}
+---@param params {host: string|nil, logging: boolean|nil, ssl: boolean|nil}
 function smtp_client:init(params)
     self.host = params.host or "localhost"
     self.logging = params.logging or false
+    if self.ssl then
+        self.tls = crypto.ssl_new_client()
+        self.ssl_enforced = true
+    end
 end
 
 function smtp_client:default_initialize()
     self:init({
         host = os.getenv("HOST") or "localhost",
-        logging = (os.getenv("LOGGING") or "false") == "true"
+        logging = (os.getenv("LOGGING") or "false") == "true",
+        ssl = (os.getenv("TLS") or "false") == "true"
     })
 end
 
