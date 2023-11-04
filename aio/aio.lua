@@ -97,7 +97,7 @@ if KTLS and (os.getenv("KTLS") or "true") == "false" then KTLS = false end
 --- @alias aiocor fun(stream: aiostream, resolve?: fun(value: any)|thread): nil AIO coroutine
 --- @alias aioresolve fun(result: any): nil AIO resolver
 --- @alias aiothen fun(on_resolved: fun(...: any)|thread) AIO then
---- @alias aiohttphandler fun(self: aiosocket, query: string, headers: {[string]: string}, body: string) AIO HTTP handler
+--- @alias aiohttphandler fun(self: aiosocket, query: string, headers: {[string]: string}, body: string): thread? AIO HTTP handler
 --- @alias aiowritebuf {d: string, o: integer}
 --- @alias aiohttpquery {[string]: string, e: {[string]: string}}
 --- @alias aiomatches fun(data: string): boolean Matcher function
@@ -545,27 +545,40 @@ function aio:handle_as_http(fd)
             -- check if it's a stream and if so, handle it there from now on
             local stream_handler = (self.http_stream[method] or {})[script]
             if stream_handler then
-                stream_handler(fd, query, headers, "")
-                break
-            end
-            -- if it's not a stream, handle it as usual
-            if length and length ~= "0" then
-                body, err = coroutine.yield(tonumber(length), self.http_max_body)
-                if not body then
-                    if "overflow" == err then
-                        fd.cw = true
-                        fd:http_response("413 Content Too Large", "text/plain", string.format("request body is above the limit of %d bytes", self.http_max_body or 0))
-                    else
-                        fd:close()
+                local result = stream_handler(fd, query, headers, "")
+                if type(result) == "thread" then
+                    local stream_ok, stream_result, stream_err = coroutine.resume(result)
+                    while coroutine.status(result) ~= "dead" and stream_result ~= nil and stream_result ~= false and stream_ok do
+                        local stream_value = ""
+                        if stream_result ~= 0 then
+                            stream_value = coroutine.yield(stream_result)
+                        end
+                        stream_ok, stream_result, stream_err = coroutine.resume(result, stream_value)
                     end
+                    if stream_result == false then break end
+                else
                     break
                 end
-            end
-            local close = (headers["connection"] or "close"):lower() == "close"
-            fd.cw = close
-            aio:on_http(fd, method, script, query, headers, body)
-            if close then
-                break
+            else
+                -- if it's not a stream, handle it as usual
+                if length and length ~= "0" then
+                    body, err = coroutine.yield(tonumber(length), self.http_max_body)
+                    if not body then
+                        if "overflow" == err then
+                            fd.cw = true
+                            fd:http_response("413 Content Too Large", "text/plain", string.format("request body is above the limit of %d bytes", self.http_max_body or 0))
+                        else
+                            fd:close()
+                        end
+                        break
+                    end
+                end
+                local close = (headers["connection"] or "close"):lower() == "close"
+                fd.cw = close
+                aio:on_http(fd, method, script, query, headers, body)
+                if close then
+                    break
+                end
             end
         end
     end)
