@@ -1617,7 +1617,6 @@ function aio:buffered_cor(target, reader)
 
         -- iterate over bytes from network as we receive them
         for data in stream do
-            print("Up limit: ", up_limit, read_len, #data)
             if up_limit ~= nil and read_len + #data > up_limit then
                 coroutine.resume(reader, nil, "overflow")
                 break
