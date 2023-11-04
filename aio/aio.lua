@@ -25,6 +25,7 @@
 --- @field clock fun(): number return monotonic clock in seconds
 --- @field popen fun(elfd: lightuserdata, command: string, ...: string): read: lightuserdata|nil, write: lightuserdata|string process
 --- @field info fun(): string return build info and capabilities
+--- @field mkdir fun(dir_name: string): boolean create a directory, returns true if exists or on success
 net = net or {}
 
 --- @class crypto

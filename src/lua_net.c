@@ -332,6 +332,31 @@ static int l_net_listdir(lua_State *L) {
     return 1;
 }
 
+static int l_net_mkdir(lua_State *L) {
+    const char *dir_name = lua_tostring(L, 1);
+#ifdef UNIX_BASED
+    struct stat st = {0};
+    if(stat(dir_na, &st) == -1) {
+        lua_pushboolean(L, mkdir(dir_na) >= 0);
+        return 1;
+    } else {
+        lua_pushboolean(L, 1);
+        return 1;
+    }
+#else
+    const int len = strlen(dir_name);
+    char copy[len + 1];
+    strcpy(copy, dir_name);
+    for(int i = 0; i <len; i++) {
+        if(copy[i] == '/') copy[i] == '\\';
+    }
+    int status = CreateDirectoryA(copy, NULL);
+    if(!status && GetLastError() == ERROR_ALREADY_EXISTS) status = 1;
+    lua_pushboolean(L, status);
+    return 1;
+#endif
+}
+
 static int l_net_clock(lua_State *L) {
     double t;
 #ifdef UNIX_BASED
@@ -445,6 +470,7 @@ int luaopen_net(lua_State *L) {
         {"partscan", l_net_partscan},
         {"clock", l_net_clock},
         {"popen", l_net_popen},
+        {"mkdir", l_net_mkdir},
         {"info", l_net_info},
         {NULL, NULL}};
 #if LUA_VERSION_NUM > 501
