@@ -339,7 +339,7 @@ static int l_net_mkdir(lua_State *L) {
 #ifdef UNIX_BASED
     struct stat st = {0};
     if(stat(dir_name, &st) == -1) {
-        lua_pushboolean(L, mkdir(dir_na, permissions) >= 0);
+        lua_pushboolean(L, mkdir(dir_name, permissions) >= 0);
         return 1;
     } else {
         lua_pushboolean(L, 1);
