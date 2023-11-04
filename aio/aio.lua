@@ -382,6 +382,8 @@ if not aio then
             --- @type {[string]: aiohttphandler}
             POST={},
         },
+        http_max_header = nil,
+        http_max_body = nil,
         http_stream = {
             --- @type {[string]: aiohttphandler}
             GET={},
@@ -522,9 +524,14 @@ end
 function aio:handle_as_http(fd)
     self:buffered_cor(fd, function (resolve)
         while true do
-            local header = coroutine.yield("\r\n\r\n")
+            local header, err = coroutine.yield("\r\n\r\n", self.http_max_header)
             if not header then
-                fd:close()
+                if "overflow" == err then
+                    fd.cw = true
+                    fd:http_response("431 Request Header Fields Too Large", "text/plain", string.format("http header is above limit of %d bytes", self.http_max_header or 0))
+                else
+                    fd:close()
+                end
                 break
             end
             local body = ""
@@ -543,9 +550,14 @@ function aio:handle_as_http(fd)
             end
             -- if it's not a stream, handle it as usual
             if length and length ~= "0" then
-                body = coroutine.yield(tonumber(length))
+                body, err = coroutine.yield(tonumber(length), self.http_max_body)
                 if not body then
-                    fd:close()
+                    if "overflow" == err then
+                        fd.cw = true
+                        fd:http_response("413 Content Too Large", "text/plain", string.format("request body is above the limit of %d bytes", self.http_max_body or 0))
+                    else
+                        fd:close()
+                    end
                     break
                 end
             end
@@ -966,6 +978,18 @@ function aio:set_master_key(key)
         end
     end
     self.master_key = key
+end
+
+--- Set maximum HTTP header size
+---@param size integer|nil max size in bytes
+function aio:set_max_http_header(size)
+    self.http_max_header = size
+end
+
+--- Set maximum HTTP request body size
+---@param size integer|nil
+function aio:set_max_http_body(size)
+    self.http_max_body = size
 end
 
 --- Set max cache size
@@ -1575,7 +1599,7 @@ function aio:buffered_cor(target, reader)
         local reader = self:cor0(reader)
         -- resume the coroutine the first time and receive initial
         -- requested number of bytes to be read
-        local ok, requested = coroutine.resume(reader, resolve)
+        local ok, requested, up_limit = coroutine.resume(reader, resolve)
         local read, read_len = {}, 0
         local req_delim = false
         local exit = requested == nil
@@ -1593,6 +1617,11 @@ function aio:buffered_cor(target, reader)
 
         -- iterate over bytes from network as we receive them
         for data in stream do
+            print("Up limit: ", up_limit, read_len, #data)
+            if up_limit ~= nil and read_len + #data > up_limit then
+                coroutine.resume(reader, nil, "overflow")
+                break
+            end
             table.insert(read, data)
             read_len = read_len + #data
             -- check if state is ok, and if we read >= bytes requested to read
@@ -1649,7 +1678,7 @@ function aio:buffered_cor(target, reader)
                 local str_read = table.concat(read)
                 -- iterate over all surplus we have and resume the receiver coroutine
                 -- with chunks of size requested by it
-                ok, requested = coroutine.resume(reader, str_read:sub(1, pivot))
+                ok, requested, up_limit = coroutine.resume(reader, str_read:sub(1, pivot))
                 req_delim = type(requested) == "string"
 
                 if not ok then

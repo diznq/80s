@@ -153,12 +153,14 @@ function httpd:init_dir(root, base, prefix)
 end
 
 ---Initialize the HTTP dynamic component
----@param params {master_key: string|nil, no_static: boolean|nil, root: string, tls: boolean|nil, pubkey: string|nil, privkey: string|nil}
+---@param params {master_key: string|nil, no_static: boolean|nil, root: string, tls: boolean|nil, pubkey: string|nil, privkey: string|nil, header_size: integer|nil, body_size: integer|nil}
 function httpd:initialize(params)
     self.master_key = params.master_key
     self.no_static = params.no_static
     self.root = params.root
     aio:set_master_key(params.master_key)
+    aio:set_max_http_body(params.body_size)
+    aio:set_max_http_header(params.header_size)
     if params.tls and params.pubkey and params.privkey then
         local SSL, err = aio:get_ssl_context({server = true, pubkey = params.pubkey, privkey = params.privkey})
         if not SSL then
@@ -197,7 +199,9 @@ function httpd:default_initialize()
         no_static = no_static,
         tls = use_tls,
         pubkey = tls_pubkey,
-        privkey = tls_privkey
+        privkey = tls_privkey,
+        header_size = tonumber(os.getenv("HTTP_MAX_HEADER_SIZE")),
+        body_size = tonumber(os.getenv("HTTP_MAX_BODY_SIZE"))
     })
     if (os.getenv("RELOAD") or "false") == "true" then
         self:enable_live_reload()
