@@ -334,10 +334,12 @@ static int l_net_listdir(lua_State *L) {
 
 static int l_net_mkdir(lua_State *L) {
     const char *dir_name = lua_tostring(L, 1);
+    int permissions = 0777;
+    if(lua_gettop(L) == 2 && lua_type(L, 2) == LUA_TNUMBER) permissions = lua_tointeger(L, 2);
 #ifdef UNIX_BASED
     struct stat st = {0};
-    if(stat(dir_na, &st) == -1) {
-        lua_pushboolean(L, mkdir(dir_na) >= 0);
+    if(stat(dir_name, &st) == -1) {
+        lua_pushboolean(L, mkdir(dir_na, permissions) >= 0);
         return 1;
     } else {
         lua_pushboolean(L, 1);
