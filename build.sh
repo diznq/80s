@@ -67,7 +67,7 @@ fi
 
 if [ "$DEBUG" = "true" ]; then
     DEFINES="$DEFINES -DS80_DEBUG=1"
-    FLAGS="-O0 -g"
+    FLAGS="-O2 -ggdb"
 fi
 
 if [ "$JIT" = "true" ]; then
