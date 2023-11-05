@@ -224,6 +224,12 @@ function aiosocket:close()
     return net.close(self.elfd, self.fd, self.ft)
 end
 
+function aiosocket:__gc()
+    if not self.closed then
+        self:close()
+    end
+end
+
 --- Write HTTP respose
 ---@param status string status code
 ---@param headers {[string]: any}|string headers or content-type
