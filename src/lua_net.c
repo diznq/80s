@@ -54,8 +54,9 @@ static int l_net_connect(lua_State *L) {
     fd_t elfd = void_to_fd(lua_touserdata(L, 1));
     const char *addr = (const char *)lua_tostring(L, 2);
     int portno = (int)lua_tointeger(L, 3);
+    int is_udp = lua_gettop(L) == 4 && lua_type(L, 4) == LUA_TBOOLEAN && lua_toboolean(L, 4);
 
-    fd_t childfd = s80_connect((void *)L, elfd, addr, portno);
+    fd_t childfd = s80_connect((void *)L, elfd, addr, portno, is_udp);
     if (childfd < 0) {
         lua_pushnil(L);
         lua_pushstring(L, strerror(errno));

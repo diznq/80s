@@ -247,7 +247,7 @@ void on_write(struct write_params_ params);
 void on_accept(struct accept_params_ params);
 void on_init(struct init_params_ params);
 
-fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int port);
+fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int port, int is_udp);
 int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, size_t offset, size_t len);
 int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype);
 int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port);

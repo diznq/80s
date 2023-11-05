@@ -28,7 +28,7 @@ void s80_enable_async(fd_t fd) {
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
 }
 
-fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
+fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp) {
     struct event_t ev[2];
     struct sockaddr_in ipv4addr;
     struct sockaddr_in6 ipv6addr;
@@ -76,7 +76,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
     }
 
     // create a non-blocking socket
-    childfd = (fd_t)socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    childfd = (fd_t)socket(AF_INET, is_udp ? SOCK_DGRAM : SOCK_STREAM, is_udp ? IPPROTO_UDP : IPPROTO_TCP);
     s80_enable_async(childfd);
 
     if (found6 && v6) {

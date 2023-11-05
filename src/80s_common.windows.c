@@ -28,7 +28,7 @@ void s80_enable_async(fd_t fd) {
     ioctlsocket((sock_t)fd, FIONBIO, &mode);
 }
 
-fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
+fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp) {
     struct sockaddr_in ipv4addr;
     struct sockaddr_in6 ipv6addr;
     int status, i, found4 = 0, found6 = 0, usev6 = 0, found = 0, v6 = 0;
@@ -75,7 +75,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
     }
 
     // create a non-blocking socket
-    childfd = (fd_t)WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
+    childfd = (fd_t)WSASocket(AF_INET, is_udp ? SOCK_DGRAM : SOCK_STREAM, is_udp ? IPPROTO_UDP : IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
     s80_enable_async(childfd);
 
     if (found6 && v6) {
@@ -141,7 +141,13 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno) {
     cx->send->op = S80_WIN_OP_CONNECT;
     cx->recv->op = S80_WIN_OP_READ;
 
-    status = lpConnectEx((sock_t)childfd, sa, usev6 ? sizeof(ipv6addr) : sizeof(ipv4addr), NULL, 0, &cx->send->length, &cx->send->ol);
+    cx->recv->connected = is_udp;
+
+    if(!is_udp) {
+        status = lpConnectEx((sock_t)childfd, sa, usev6 ? sizeof(ipv6addr) : sizeof(ipv4addr), NULL, 0, &cx->send->length, &cx->send->ol);
+    } else {
+        status = connect((sock_t)childfd, sa, usev6 ? sizeof(ipv6addr) : sizeof(ipv4addr)) >= 0;
+    }
     if(status == TRUE || GetLastError() == WSA_IO_PENDING) {
         // this is the state we should always get into
         return (fd_t)cx->recv;

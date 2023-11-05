@@ -49,7 +49,7 @@ function smtp_client:send_mail(params)
         end
         self.tls = ssl_result
     end
-    aio:connect2(ELFD, host, 25)(function (fd)
+    aio:connect2({host = host, port = 25})(function (fd)
         if iserror(fd) then
             resolve(fd)
             return

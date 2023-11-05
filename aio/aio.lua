@@ -11,7 +11,7 @@
 --- @class net
 --- @field write fun(elfd: lightuserdata, childfd: lightuserdata, fdtype: lightuserdata, data: string, offset: integer): boolean write data to file descriptor
 --- @field close fun(elfd: lightuserdata, childfd: lightuserdata, fdtype: lightuserdata): boolean close a file descriptor
---- @field connect fun(elfd: lightuserdata, host: string, port: integer): fd: lightuserdata|nil, err: string|nil open a new network connection
+--- @field connect fun(elfd: lightuserdata, host: string, port: integer, is_udp: boolean|nil): fd: lightuserdata|nil, err: string|nil open a new network connection
 --- @field reload fun(c_reload: lightuserdata|nil) reload server, if c_reload == S80_RELOAD, C binary is reloaded given executable was built with DYNAMIC=true
 --- @field quit fun(c_reload: lightuserdata|nil) exit the worker
 --- @field listdir fun(dir: string): string[] list files in directory
@@ -1094,10 +1094,11 @@ end
 --- @param elfd lightuserdata epoll handle
 --- @param host string host name or IP address
 --- @param port integer port
+--- @param is_udp boolean|nil true if UDP
 --- @return aiosocket|nil socket
 --- @return string|nil error
-function aio:connect(elfd, host, port)
-    local sock, err = net.connect(elfd, host, port)
+function aio:connect(elfd, host, port, is_udp)
+    local sock, err = net.connect(elfd, host, port, is_udp)
     if sock == nil then
         return nil, err
     end
@@ -1107,16 +1108,18 @@ end
 
 --- Create a new TCP socket to host:port, returning a promise when
 --- connection is ready
---- @param elfd lightuserdata epoll handle
---- @param host string host name or IP address
---- @param port integer port
---- @param ssl lightuserdata|nil ssl context
+--- @param params {host: string, port: integer, ssl: lightuserdata|nil, elfd: lightuserdata|nil, udp: boolean|nil} params
 --- @return aiopromise<aiosocket|{error: string}>
-function aio:connect2(elfd, host, port, ssl)
+function aio:connect2(params)
+    local elfd, host, port, ssl = params.elfd or ELFD, params.host, params.port, params.ssl
+    local is_udp = params.udp or false
     local resolve, resolver = self:prepare_promise()
-    local fd, err = self:connect(elfd, host, port)
+    local fd, err = self:connect(elfd, host, port, is_udp)
     if not fd then
         resolve(make_error("failed to connect: " .. err))
+    elseif is_udp then
+        fd.wr = true
+        resolve(fd)
     else
         fd.on_connect = function ()
             if ssl then

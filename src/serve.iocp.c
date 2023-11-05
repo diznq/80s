@@ -294,7 +294,7 @@ void *serve(void *vparams) {
                 cx->send->op = S80_WIN_OP_WRITE;
                 // this is a special state for write when connection is created, use setsockopt to check
                 // if creation was okay, if not, close the socket, if yes, move to write state instead
-                if(setsockopt((sock_t)childfd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0) < 0) {
+                if(((sock_t)childfd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0) < 0) {
                     dbgf("[%d] connect to %llu, setsockopt failed with %d\n", id, cx->fd, GetLastError());
                     cx->recv->connected = 0;
                     closesocket((sock_t)cx->fd);
