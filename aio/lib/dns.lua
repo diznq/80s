@@ -22,8 +22,13 @@ for i, v in pairs(query_types) do
     query_types_rev[v] = i
 end
 
-function dns:add_record(host_name, record_type)
-
+--- Add a record
+---@param host_name string
+---@param record_type string
+---@param value string|cname
+function dns:add_record(host_name, record_type, value)
+    self.cache[host_name] = self.cache[host_name] or {}
+    self.cache[host_name][record_type] = value
 end
 
 --- Read DNS data at given offset
@@ -261,5 +266,21 @@ function dns:get_ip(host_name, record_type)
     end)
     return resolver
 end
+
+--- Initialize DNS
+---@param params {provider: string|nil, host_names: {[string]: string}|nil}|nil
+function dns:init(params)
+    params = params or {}
+    params.provider = params.provider or "8.8.8.8"
+    params.host_names = params.host_names or {
+        localhost = "127.0.0.1"
+    }
+    self.provider = params.provider
+    for i, v in pairs(params.host_names) do
+        self:add_record(i, "A", v)
+    end
+end
+
+dns:init()
 
 return dns
