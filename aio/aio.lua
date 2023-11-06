@@ -63,6 +63,11 @@ crypto = crypto or {}
 --- @field html_encode fun(text: string): string HTML encode text
 codec = codec or {}
 
+--- @alias dnsresponse {ip: string, error: string|nil}
+--- @class dnsprovider
+--- @field get_ip fun(self, host_name: string, record_type: string|nil): aiopromise<dnsresponse>
+local simple_dns = {}
+
 --- @class jit
 jit = jit or nil
 
@@ -373,6 +378,17 @@ function aiosocket:new(elfd, childfd, fdtype, connected, initialized)
     return socket
 end
 
+function simple_dns:get_ip(host_name, record_type)
+    record_type = record_type or "A"
+    local resolve, resolver = aio:prepare_promise()
+    if record_type ~= "A" then
+        resolve(make_error("invalid record type"))
+    else
+        resolve({ip = host_name})
+    end
+    return resolver
+end
+
 if not aio then
     --- AIO object
     --- There can be only one instance of AIO, enabling hot-reloads
@@ -389,6 +405,8 @@ if not aio then
             --- @type {[string]: aiohttphandler}
             POST={},
         },
+        --- @type dnsprovider
+        dns = simple_dns,
         http_max_header = nil,
         http_max_body = nil,
         http_stream = {
@@ -982,6 +1000,12 @@ function aio:to_url(endpoint, params, hash)
     return path
 end
 
+--- Set default DNS provider
+---@param provider dnsprovider provider that implements dnsprovider interface
+function aio:set_dns(provider)
+    self.dns = provider or simple_dns
+end
+
 --- Set master key
 --- Master key must be at least 16 bytes long, if it starts with b64:
 --- then it's decoded from base64 in first step
@@ -1114,33 +1138,38 @@ end
 
 --- Create a new TCP socket to host:port, returning a promise when
 --- connection is ready
---- @param params {host: string, port: integer, ssl: lightuserdata|nil, elfd: lightuserdata|nil, udp: boolean|nil} params
+--- @param params {host: string, dns_type: string|nil, port: integer, ssl: lightuserdata|nil, elfd: lightuserdata|nil, udp: boolean|nil} params
 --- @return aiopromise<aiosocket|{error: string}>
 function aio:connect2(params)
-    local elfd, host, port, ssl = params.elfd or ELFD, params.host, params.port, params.ssl
+    local elfd, host, port, ssl, dns_type = params.elfd or ELFD, params.host, params.port, params.ssl, params.dns_type or "A"
     local is_udp = params.udp or false
     local resolve, resolver = self:prepare_promise()
-    local fd, err = self:connect(elfd, host, port, is_udp)
-    if not fd then
-        resolve(make_error("failed to connect: " .. err))
-    elseif is_udp then
-        fd.wr = true
-        resolve(fd)
-    else
-        fd.on_connect = function ()
-            if ssl then
-                aio:wrap_tls(fd, ssl, host)(function (result)
-                    if iserror(result) then
-                        resolve(make_error("failed to establish ssl session: " .. result.error))
-                    else
-                        resolve(result)
-                    end
-                end)
-            else
-                resolve(fd)
+    self.dns:get_ip(host, dns_type)(function (result)
+        if iserror(result) then
+            return resolve(result)
+        end
+        local fd, err = self:connect(elfd, result.ip, port, is_udp)
+        if not fd then
+            resolve(make_error("failed to connect: " .. err))
+        elseif is_udp then
+            fd.wr = true
+            resolve(fd)
+        else
+            fd.on_connect = function ()
+                if ssl then
+                    aio:wrap_tls(fd, ssl, host)(function (result)
+                        if iserror(result) then
+                            resolve(make_error("failed to establish ssl session: " .. result.error))
+                        else
+                            resolve(result)
+                        end
+                    end)
+                else
+                    resolve(fd)
+                end
             end
         end
-    end
+    end)
     return resolver
 end
 

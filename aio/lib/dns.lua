@@ -1,6 +1,5 @@
 require("aio.aio")
 
---- @alias dnsresponse {ip: string, error: string|nil}
 --- @alias cname {CNAME: string}
 --- @alias dnssingleresponse {CNAME: string|cname|nil, MX: string|cname|nil, A: string|cname|nil, AAAA: string|cname|nil, error: string|nil}
 
@@ -89,8 +88,8 @@ function dns:get_record(host_name, record_type)
         resolve(hit)
         return resolver
     end
-    if query_types_rev[record_type] == nil then
-        resolve(make_error("invalid record type"))
+    if query_types[record_type] == nil then
+        resolve(make_error("invalid record type: " .. record_type))
         return resolver
     end
     hit = hit or {}
