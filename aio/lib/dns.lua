@@ -3,11 +3,13 @@ require("aio.aio")
 --- @alias cname {CNAME: string}
 --- @alias dnssingleresponse {CNAME: string|cname|nil, MX: string|cname|nil, A: string|cname|nil, AAAA: string|cname|nil, error: string|nil}
 
-local dns = {
+_dns = _dns or {
     provider = "8.8.8.8",
     cache = {},
     id = 0,
 }
+
+local dns = _dns
 
 local query_types = {
     A = 1,

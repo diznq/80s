@@ -1,6 +1,6 @@
 require("aio.aio")
 
-local smtp_client = {
+_smtp_client = _smtp_client or {
     counter = 0,
     host = "localhost",
     logging = false,
@@ -8,6 +8,8 @@ local smtp_client = {
     tls = nil,
     ssl_enforced = false
 }
+
+local smtp_client = _smtp_client
 
 --- @alias mailresponse {status: string, response: string, error: string|nil}
 
@@ -49,7 +51,7 @@ function smtp_client:send_mail(params)
         end
         self.tls = ssl_result
     end
-    aio:connect2({host = host, port = 25})(function (fd)
+    aio:connect2({host = host, port = 25, dns_type = "MX"})(function (fd)
         if iserror(fd) then
             resolve(fd)
             return
