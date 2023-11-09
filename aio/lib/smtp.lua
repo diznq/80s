@@ -2,7 +2,7 @@ require("aio.aio")
 
 ---@alias maildetail {name: string?, email: string}
 ---@alias mailparam {from: maildetail, to: maildetail[], sender: table, id: string, body: string}
----@alias mailreceived fun(mail: mailparam)
+---@alias mailreceived fun(mail: mailparam): aiopromise?
 
 local smtp = {
     counter = 0,
@@ -134,11 +134,18 @@ function smtp:handle_as_smtp(fd)
                                 sender = {aio:get_ip(fd)},
                                 id = messageId
                             })
+                            if cb_ok and type(result) == "function" then
+                                result = aio:await(result)
+                                if type(result) == "table" and result.error then
+                                    result = result.error
+                                    cb_ok = false
+                                end
+                            end
                             if not cb_ok then
                                 handle_ok = false
                                 print("[smtp] mail handler " .. key .. " failed with " .. result)
                             end
-                        end
+                         end
                         from = nil
                         message = nil
                         to = {}
