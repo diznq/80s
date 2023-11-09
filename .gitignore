@@ -7,3 +7,4 @@ gsemu/
 *.env.sh
 /i.*
 ./mail/
+./mail
