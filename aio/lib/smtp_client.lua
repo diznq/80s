@@ -51,7 +51,7 @@ function smtp_client:send_mail(params)
         end
         self.tls = ssl_result
     end
-    aio:connect2({host = host, port = 25, dns_type = "MX"})(function (fd)
+    aio:connect2({host = host, port = 25, dns_type = "MX", cname_ssl = true})(function (fd)
         if iserror(fd) then
             resolve(fd)
             return
@@ -78,14 +78,14 @@ function smtp_client:send_mail(params)
                     fd:close()
                     return resolve(make_error("STARTTLS status was " .. status .. " instead of expected 220"))
                 end
-                aio:wrap_tls(fd, self.tls, host)(function (result)
+                aio:wrap_tls(fd, self.tls, fd.host)(function (result)
                     if not result then
                         fd:close()
                         resolve(make_error("STARTTLS failed to wrap TLS"))
                         return
                     elseif iserror(result) then
                         fd:close()
-                        resolve("STARTTLS failed on " .. result.error)
+                        resolve(make_error("STARTTLS failed on " .. result.error))
                         return
                     end
                     aio:buffered_cor(fd, function (_)

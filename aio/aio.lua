@@ -63,7 +63,7 @@ crypto = crypto or {}
 --- @field html_encode fun(text: string): string HTML encode text
 codec = codec or {}
 
---- @alias dnsresponse {ip: string, error: string|nil}
+--- @alias dnsresponse {ip: string, cname: string|nil, error: string|nil}
 --- @class dnsprovider
 --- @field get_ip fun(self, host_name: string, record_type: string|nil): aiopromise<dnsresponse>
 local simple_dns = {}
@@ -181,7 +181,11 @@ if not aiosocket then
         --- @type boolean|nil true if KTLS is to be used
         ktls = nil,
         --- @type (fun(fd: aiosocket, elfd: lightuserdata, childfd: lightuserdata, data: string, length: integer): string?)[]
-        pre_data = {}
+        pre_data = {},
+        --- @type string|nil contains CNAME if DNS record was indirect
+        cname = nil,
+        --- @type string|nil resolved host name
+        host = nil,
     }
 end
 
@@ -1138,26 +1142,36 @@ end
 
 --- Create a new TCP socket to host:port, returning a promise when
 --- connection is ready
---- @param params {host: string, dns_type: string|nil, port: integer, ssl: lightuserdata|nil, elfd: lightuserdata|nil, udp: boolean|nil} params
+--- @param params {host: string, dns_type: string|nil, port: integer, ssl: lightuserdata|nil, tls: lightuserdata|nil, cname_ssl: boolean|nil, cname_tls: boolean|nil, elfd: lightuserdata|nil, udp: boolean|nil} params
 --- @return aiopromise<aiosocket|{error: string}>
 function aio:connect2(params)
-    local elfd, host, port, ssl, dns_type = params.elfd or ELFD, params.host, params.port, params.ssl, params.dns_type or "A"
+    local elfd, host, port, ssl, dns_type = params.elfd or ELFD, params.host, params.port, params.ssl or params.tls, params.dns_type or "A"
     local is_udp = params.udp or false
     local resolve, resolver = self:prepare_promise()
     self.dns:get_ip(host, dns_type)(function (result)
         if iserror(result) then
             return resolve(result)
         end
+
+        local verify_host = host
+        if (params.cname_tls or params.cname_ssl) and result.cname then
+            verify_host = result.cname
+        end
+    
         local fd, err = self:connect(elfd, result.ip, port, is_udp)
         if not fd then
             resolve(make_error("failed to connect: " .. err))
         elseif is_udp then
             fd.wr = true
+            fd.host = verify_host
+            fd.cname = result.cname
             resolve(fd)
         else
+            fd.host = verify_host
+            fd.cname = result.cname
             fd.on_connect = function ()
                 if ssl then
-                    aio:wrap_tls(fd, ssl, host)(function (result)
+                    aio:wrap_tls(fd, ssl, verify_host)(function (result)
                         if iserror(result) then
                             resolve(make_error("failed to establish ssl session: " .. result.error))
                         else
