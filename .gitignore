@@ -6,3 +6,4 @@ crymp/
 gsemu/
 *.env.sh
 /i.*
+./mail/
