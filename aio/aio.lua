@@ -604,7 +604,9 @@ function aio:handle_as_http(fd)
                 end
                 local close = (headers["connection"] or "close"):lower() == "close"
                 fd.cw = close
-                aio:on_http(fd, method, script, query, headers, body)
+                self:async(function ()
+                    self:on_http(fd, method, script, query, headers, body)
+                end)
                 if close then
                     break
                 end
@@ -1610,8 +1612,9 @@ function aio:async(callback, on_error)
 end
 
 --- Await promise
----@param promise aiothen|thread promise object
----@return any ... response
+---@generic T
+---@param promise fun(on_resolved: fun(result: T))|thread promise object
+---@return T response
 function aio:await(promise)
     local self_cor = coroutine.running()
     local premature, yielded = nil, false
@@ -1817,13 +1820,14 @@ end
 
 --- Array map
 ---@param array table array to transform
----@param fn function map function
+---@generic T, V
+---@param fn fun(result: T, index: integer, ...): V map function
 ---@param ... any additional parameters to be passed to fn
----@return table transformed array
+---@return V[] transformed array
 function aio:map(array, fn, ...)
     local new_array = {}
     for i=1,#array do
-        new_array[i] = fn(array[i], ...)
+        new_array[i] = fn(array[i], i, ...)
     end
     return new_array
 end

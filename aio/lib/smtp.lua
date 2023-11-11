@@ -2,11 +2,14 @@ require("aio.aio")
 
 ---@alias maildetail {name: string?, email: string}
 ---@alias mailparam {from: maildetail, to: maildetail[], sender: table, id: string, body: string}
----@alias mailreceived fun(mail: mailparam): aiopromise?
+---@alias okhandle fun(): any
+---@alias errhandle fun(reason: string|nil): any
+---@alias mailreceived fun(mail: mailparam, handle: {ok: okhandle, error: errhandle}): aiopromise?
 
 local smtp = {
     counter = 0,
     host = "localhost",
+    logging = false,
     --- @type lightuserdata|nil
     tls = nil,
     --- @type {[string]: mailreceived}
@@ -20,7 +23,7 @@ function smtp:init(params)
     if params.tls and params.privkey and params.pubkey then
         local SSL, err = aio:get_ssl_context({server = true, pubkey = params.pubkey, privkey = params.privkey})
         if not SSL then
-            print("[smtp] Failed to initialize TLS: " .. tostring(err))
+            self:log("[smtp] Failed to initialize TLS: " .. tostring(err))
         else
             self.tls = SSL
         end
@@ -36,6 +39,17 @@ function smtp:init(params)
             self:handle_as_smtp(fd)
         end
     })
+end
+
+function smtp:log(...)
+    if not self.logging then return end
+    print(...)
+end
+
+--- Set loggng state
+---@param state boolean
+function smtp:set_logging(state)
+    self.logging = state
 end
 
 function smtp:handle_as_smtp(fd)
@@ -126,6 +140,7 @@ function smtp:handle_as_smtp(fd)
                         self.counter = self.counter + 1
                         local messageId = NODE_ID .. "-" .. self.counter
                         local handle_ok = true
+                        local write_response = true
                         for key, callback in pairs(self.on_mail_received_callbacks) do
                             local cb_ok, result = pcall(callback, {
                                 from = from,
@@ -133,26 +148,34 @@ function smtp:handle_as_smtp(fd)
                                 body = message,
                                 sender = {aio:get_ip(fd)},
                                 id = messageId
-                            })
-                            if cb_ok and type(result) == "function" then
-                                result = aio:await(result)
-                                if type(result) == "table" and result.error then
-                                    result = result.error
-                                    cb_ok = false
+                            }, {
+                                ok = function ()
+                                    fd:write("250 OK: queued as " .. messageId .. "\r\n")
+                                end,
+                                error = function (message)
+                                    if message ~= nil then
+                                        fd:write("451 Server failed to handle the message: " .. message .. ", try again later\r\n")
+                                    else
+                                        fd:write("451 Server failed to handle the message, try again later\r\n")
+                                    end
                                 end
-                            end
+                            })
                             if not cb_ok then
                                 handle_ok = false
-                                print("[smtp] mail handler " .. key .. " failed with " .. result)
+                                self:log("[smtp] mail handler " .. key .. " failed with " .. result)
+                            else
+                                write_response = false
                             end
-                         end
+                        end
                         from = nil
                         message = nil
                         to = {}
-                        if handle_ok then
-                            fd:write("250 OK: queued as " .. messageId .. "\r\n")
-                        else
-                            fd:write("451 Server failed to handle the message, try again later\r\n")
+                        if write_response then
+                            if handle_ok then
+                                fd:write("250 OK: queued as " .. messageId .. "\r\n")
+                            else
+                                fd:write("451 Server failed to handle the message, try again later\r\n")
+                            end
                         end
                         handled = true
                     else
@@ -204,6 +227,7 @@ function smtp:default_initialize()
 
     self:init({
         host = os.getenv("SMTP_HOST") or "smtp.localhost",
+        loggng = (os.getenv("SMTP_LOGGING") or "true") == "true",
         tls = use_tls,
         privkey = tls_privkey,
         pubkey = tls_pubkey,
@@ -211,7 +235,7 @@ function smtp:default_initialize()
     })
 
     self:register_handler("main", function (mail)
-        print("Received mail: ", codec.json_encode(mail))
+        self:log("Received mail: ", codec.json_encode(mail))
     end)
 end
 

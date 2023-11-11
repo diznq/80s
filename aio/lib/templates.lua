@@ -110,49 +110,44 @@ function templates:prepare(content, base, file_name)
         local code = compiled()
         table.insert(context.parts, 
         function(input, output, done)
-            aio:async(function()
-                local data = {}
-                code(
-                    input.fd,
-                    input.session,
-                    input.locals,
-                    input.headers,
-                    input.body,
-                    input.method,
-                    input.endpoint, 
-                    input.query,
-                    function(text, ...)
-                        local params = {...}
-                        if #params > 0 then
-                            for i, v in ipairs(params) do
-                                params[i] = escape(v)
-                            end
-                            table.insert(data, string.format(text, unpack(params)))
-                        else
-                            -- in case we receive table, assume we want to output JSON instead
-                            if type(text) == "table" then
-                                text = codec.json_encode(text)
-                            end
-                            table.insert(data, text)
+            local data = {}
+            code(
+                input.fd,
+                input.session,
+                input.locals,
+                input.headers,
+                input.body,
+                input.method,
+                input.endpoint, 
+                input.query,
+                function(text, ...)
+                    local params = {...}
+                    if #params > 0 then
+                        for i, v in ipairs(params) do
+                            params[i] = escape(v)
                         end
-                    end, 
-                    escape,
-                    function(handler)
-                        table.insert(output.post_render, handler)
-                    end,
-                    await,
-                    function(name, value) output.headers[name:lower()] = value end,
-                    function(value) output.status = value end,
-                    function() done(table.concat(data)) end,
-                    function(endpoint, params) return aio:to_url(endpoint, params) end
-                )
-                if #async == 0 then
-                    done(table.concat(data))
-                end
-            end, function (err)
-                output.status = "500 Internal server error"
-                done("Server error")
-            end)
+                        table.insert(data, string.format(text, unpack(params)))
+                    else
+                        -- in case we receive table, assume we want to output JSON instead
+                        if type(text) == "table" then
+                            text = codec.json_encode(text)
+                        end
+                        table.insert(data, text)
+                    end
+                end, 
+                escape,
+                function(handler)
+                    table.insert(output.post_render, handler)
+                end,
+                await,
+                function(name, value) output.headers[name:lower()] = value end,
+                function(value) output.status = value end,
+                function() done(table.concat(data)) end,
+                function(endpoint, params) return aio:to_url(endpoint, params) end
+            )
+            if #async == 0 then
+                done(table.concat(data))
+            end
         end)
         return "<?l" .. tostring(#context.parts) .. "?>"
     end)
