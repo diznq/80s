@@ -8,8 +8,8 @@ local http_client = {
 }
 
 --- Perform HTTP request
----@param params {method: string, url: string, query: table|nil, headers: table|nil, body: string|nil, response_file: file*|nil}
----@return aiopromise<httpresponse> response
+---@param params {method: string, url: string, query: table|nil, headers: table|nil, body: string|nil, response_file: file*|nil} request params
+---@return aiopromise<httpresponse> response HTTP response or error
 function http_client:request(params)
     local resolve, resolver = aio:prepare_promise()
     local method = params.method:upper()
@@ -139,12 +139,12 @@ function http_client:request(params)
     return resolver
 end
 
----comment
----@param url any
----@return string|nil
----@return string|nil
----@return number|nil
----@return string|nil
+--- Parse URL into protocol, host, port, script
+---@param url string full URL
+---@return string|nil protocol http or https
+---@return string|nil host host name
+---@return number|nil port port number
+---@return string|nil script path after /, incl. /
 function http_client:parse_url(url)
     local protocol, host_name, script = url:match("^(https?)://(.-)(/.*)$")
     if not protocol or not host_name or not script then

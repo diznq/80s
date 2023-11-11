@@ -25,9 +25,9 @@ for i, v in pairs(query_types) do
 end
 
 --- Add a record
----@param host_name string
----@param record_type string
----@param value string|cname
+---@param host_name string host name
+---@param record_type string record type
+---@param value string|cname ip address or cname
 function dns:add_record(host_name, record_type, value)
     self.cache[host_name] = self.cache[host_name] or {}
     self.cache[host_name][record_type] = value

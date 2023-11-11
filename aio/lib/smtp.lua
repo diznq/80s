@@ -1,7 +1,7 @@
 require("aio.aio")
 
 ---@alias maildetail {name: string?, email: string}
----@alias mailparam {from: maildetail, to: maildetail[], sender: table, id: string, body: string}
+---@alias mailparam {from: maildetail, to: maildetail[], sender: table, error: string|nil, id: string, subject: string|nil, time: string|nil, body: string}
 ---@alias okhandle fun(): any
 ---@alias errhandle fun(reason: string|nil): any
 ---@alias mailreceived fun(mail: mailparam, handle: {ok: okhandle, error: errhandle}): aiopromise?
@@ -137,8 +137,7 @@ function smtp:handle_as_smtp(fd)
                     fd:write("354 Send message content; end with <CR><LF>.<CR><LF>\r\n")
                     message = coroutine.yield("\r\n.\r\n")
                     if message ~= nil then
-                        self.counter = self.counter + 1
-                        local messageId = NODE_ID .. "-" .. self.counter
+                        local messageId = self:generate_message_id()
                         local handle_ok = true
                         local write_response = true
                         for key, callback in pairs(self.on_mail_received_callbacks) do
@@ -218,6 +217,11 @@ end
 ---@param handler mailreceived handler
 function smtp:register_handler(name, handler)
     self.on_mail_received_callbacks[name] = handler
+end
+
+function smtp:generate_message_id()
+    self.counter = self.counter + 1
+    return string.format("%s.%d.%f@%s", NODE_ID:gsub("%/", "-"), self.counter, net.clock(), self.host)
 end
 
 function smtp:default_initialize()

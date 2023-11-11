@@ -57,6 +57,7 @@ function smtp_client:send_mail(params)
             return
         end
         aio:buffered_cor(fd, function (_)
+            -- first line can be ignored
             local first_line = coroutine.yield("\r\n")
             -- Hello
             local status, response = self:send_command(fd, "EHLO " .. self.host)
@@ -108,13 +109,13 @@ function smtp_client:send_mail(params)
 end
 
 --- Perform mail SMTP send mail flow
----@param fd aiosocket
----@param from string
----@param recipients string[]
----@param headers table
----@param subject string
----@param body string
----@param resolve fun(result: any)|thread
+---@param fd aiosocket client socket
+---@param from string sender address
+---@param recipients string[] recipient addresses
+---@param headers table headers table
+---@param subject string subject
+---@param body string e-mail body including headers
+---@param resolve fun(result: any)|thread continuation
 ---@return any
 function smtp_client:mail_flow(fd, from , recipients, headers, subject, body, resolve)
     local status, response = self:send_command(fd, "MAIL FROM:<" .. from .. ">")
