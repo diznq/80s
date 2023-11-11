@@ -26,7 +26,7 @@ function http_client:request(params)
             end
             self.ssl = ssl
         end
-        aio:connect2({host = host, port = protocol, ssl = (protocol == "https" and self.ssl or nil)})(function (fd)
+        aio:connect2({host = host, port = port, ssl = (protocol == "https" and self.ssl or nil)})(function (fd)
             if iserror(fd) then
                 if params.response_file then params.response_file:close() end
                 resolve(fd)
