@@ -1819,8 +1819,8 @@ end
 
 
 --- Array map
----@param array table array to transform
 ---@generic T, V
+---@param array T[] array to transform
 ---@param fn fun(result: T, index: integer, ...): V map function
 ---@param ... any additional parameters to be passed to fn
 ---@return V[] transformed array
