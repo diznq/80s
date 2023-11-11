@@ -44,7 +44,7 @@ function dns:read_addr(addr, raw_data)
         local size = string.byte(rem, 1)
         if size >= 192 then
             local off = string.byte(rem, 2)
-            parts[#parts+1] = self:read_addr(raw_data:sub(off - 12 + 1), raw_data)
+            parts[#parts+1] = self:read_addr(raw_data:sub(off + 1), raw_data)
             break
         end
         if size == 0 then rem = rem:sub(2) break end
@@ -59,8 +59,7 @@ end
 ---@param offset integer offset
 ---@return {name: string, addr_type: string, addr_type_num: integer, addr_class: integer} data parsed data
 function dns:read_offset(raw_data, offset)
-    offset = (offset - 12) % 0x1000 + 1
-    local rem = raw_data:sub(offset)
+    local rem = raw_data:sub(offset + 1)
     local parts = {}
     while true and #rem > 4 do
         local size = string.byte(rem, 1)
@@ -73,14 +72,33 @@ function dns:read_offset(raw_data, offset)
         parts[#parts+1] = rem:sub(2, size + 1)
         rem = rem:sub(2 + size)
     end
-    local addr_type, addr_class = string.unpack(">I2I2", rem)
+    local addr_type, addr_class = nil, nil
+    if #rem >= 4 then
+        addr_type, addr_class = string.unpack(">I2I2", rem)
+    end
     return {
         name = table.concat(parts, "."),
-        addr_type = query_types_rev[addr_type],
+        addr_type = query_types_rev[addr_type or -1],
         addr_type_num = addr_type,
         addr_class = addr_class
     }
 end
+
+
+function dns:resolve_addr(raw_data, addr)
+    local ptr = string.unpack(">I2", addr)
+    if ptr < 0xC000 then
+        addr = {
+            addr_type = "CNAME",
+            addr_type_num = query_types.CNAME,
+            name = self:read_addr(addr, raw_data)
+        }
+    else
+        addr = self:read_offset(raw_data, ptr)
+    end
+    return addr
+end
+
 
 --- Perform a single DNS request
 ---@param host_name string host name
@@ -114,7 +132,7 @@ function dns:get_record(host_name, record_type)
         parts[#parts+1] = match
     end
     if #parts == 0 then
-        resolve(make_error("failed to parse domain name into sub levels"))
+        resolve(make_error("failed to parse domain name into sub levels: " .. host_name))
         return resolver
     end
     self.id = (self.id + 1) % 5000
@@ -137,6 +155,7 @@ function dns:get_record(host_name, record_type)
                     fd:close()
                     return resolve(make_error("failed to receive response back"))
                 end
+                local raw_data = tx
                 local tx_id, flags, qd, an, ns, ar = string.unpack(">I2I2I2I2I2I2", tx)
                 if tx_id ~= used_id then
                     fd:close()
@@ -153,7 +172,6 @@ function dns:get_record(host_name, record_type)
                 end
                 local offset = 12
                 local chunk = 0
-                local raw_data = ""
 
                 -- parse the queries
                 for i=1, qd do
@@ -215,18 +233,10 @@ function dns:get_record(host_name, record_type)
                             local q1, q2, q3, q4 = string.byte(addr, 1, 4)
                             addr = string.format("%d.%d.%d.%d", q1, q2, q3, q4)
                         elseif answ_type == query_types.MX then
-                            local prio, ptr = string.unpack(">I2I2", addr)
-                            if ptr < 0x1000 then
-                                addr = {
-                                    addr_type = "CNAME",
-                                    addr_type_num = query_types.CNAME,
-                                    name = self:read_addr(addr:sub(3), raw_data)
-                                }
-                            else
-                                addr = self:read_offset(raw_data, ptr)
-                            end
+                            addr = addr:sub(3)
+                            addr = self:resolve_addr(raw_data, addr)
                         elseif answ_type == query_types.CNAME then
-                            addr = self:read_offset(raw_data, string.unpack(">I2", addr))
+                            addr = self:resolve_addr(raw_data, addr)
                         end
                         if type(addr) == "table" then
                             answ_type = addr.addr_type_num
