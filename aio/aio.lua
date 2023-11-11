@@ -676,7 +676,7 @@ function aio:wrap_tls(fd, ssl, client)
                 end
                 -- make sure accept is either true or false, not nil
                 if ok == nil then
-                    resolve(make_error(client and "ssl handshake failed" .. tostring(connect_err) or "ssl accept failed " .. tostring(accept_err)))
+                    resolve(make_error(client and "ssl handshake failed: " .. tostring(connect_err) or "ssl accept failed: " .. tostring(accept_err)))
                     return
                 end
                 if ok == true then
