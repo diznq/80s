@@ -269,11 +269,11 @@ function dns:get_ip(host_name, record_type)
                 resolve(make_error("failed to find DNS entry"))
             elseif result[record_type].CNAME then
                 self:get_ip(result[record_type].CNAME, "A")(function (subresult)
-                    subresult["cname"] = result[record_type].CNAME
+                    subresult["cname"] = subresult["cname"] or result[record_type].CNAME
                     resolve(subresult)
                 end)
             else
-                resolve({ip = result[record_type]})
+                resolve({ip = result[record_type], cx = result.CNAME})
             end
         end
     end)
