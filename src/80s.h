@@ -14,6 +14,7 @@ extern "C" {
 #define S80_FD_KTLS_SOCKET 2
 #define S80_FD_PIPE 3
 #define S80_FD_OTHER 4
+#define S80_FD_SERVER_SOCKET 5
 
 #ifndef S80_DYNAMIC_SO
     #define S80_DYNAMIC_SO "bin/80s.so"

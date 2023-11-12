@@ -79,7 +79,7 @@ void *serve(void *vparams) {
 
         // only one thread can poll on server socket and accept others!
         if (id == 0) {
-            EV_SET(&ev, parentfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
+            EV_SET(&ev, parentfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SERVER_SOCKET);
             if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
                 error("serve: failed to add server socket to kqueue");
             }
@@ -120,8 +120,9 @@ void *serve(void *vparams) {
             flags = (int)events[n].flags;
             fdtype = (int)events[n].udata;
 
-            if (childfd == parentfd) {
+            if (fdtype == S80_FD_SERVER_SOCKET) {
                 // only parent socket (server) can receive accept
+                parentfd = childfd;
                 childfd = accept(parentfd, (struct sockaddr *)&clientaddr, &clientlen);
                 if (childfd < 0) {
                     dbg("serve: error on server accept");

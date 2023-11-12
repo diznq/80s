@@ -90,7 +90,7 @@ void *serve(void *vparams) {
         // only one thread can poll on server socket and accept others!
         if (id == 0) {
             ev.events = EPOLLIN;
-            SET_FD_HOLDER(&ev.data, S80_FD_SOCKET, parentfd);
+            SET_FD_HOLDER(&ev.data, S80_FD_SERVER_SOCKET, parentfd);
             if (epoll_ctl(elfd, EPOLL_CTL_ADD, parentfd, &ev) < 0) {
                 error("serve: failed to add server socket to epoll");
             }
@@ -158,8 +158,9 @@ void *serve(void *vparams) {
             if (id == 0 && childfd == sigfd && (flags & EPOLLIN)) {
                 readlen = read(childfd, (void*)&siginfo, sizeof(siginfo));
                 while(siginfo.ssi_signo == SIGCHLD && waitpid(-1, NULL, WNOHANG) > 0);
-            } else if (childfd == parentfd) {
+            } else if (fdtype == S80_FD_SERVER_SOCKET) {
                 // only parent socket (server) can receive accept
+                parentfd = childfd;
                 childfd = accept(parentfd, (struct sockaddr *)&clientaddr, &clientlen);
                 if (childfd < 0) {
                     dbg("serve: error on server accept");
