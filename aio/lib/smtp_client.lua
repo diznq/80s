@@ -14,7 +14,7 @@ local smtp_client = _smtp_client
 --- @alias mailresponse {status: string, response: string, error: string|nil}
 
 --- Send an e-mail
----@param params {from: string, to: string|string[], ssl: boolean|nil, headers: table|nil, body: string, subject: string|nil, mail_server: string|nil}
+---@param params {from: string, to: string|string[], ssl: boolean|nil, test_ssl: boolean|nil, headers: table|nil, body: string, subject: string|nil, mail_server: string|nil}
 ---@return aiopromise<mailresponse> response
 function smtp_client:send_mail(params)
     local from, to, headers, body, ssl, subject = params.from, params.to, params.headers, params.body, params.ssl, params.subject
@@ -87,6 +87,11 @@ function smtp_client:send_mail(params)
                     elseif iserror(result) then
                         fd:close()
                         resolve(make_error("STARTTLS failed on " .. result.error))
+                        return
+                    end
+                    if params.test_ssl then
+                        fd:close()
+                        resolve({ok = true})
                         return
                     end
                     aio:buffered_cor(fd, function (_)
