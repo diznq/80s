@@ -70,7 +70,6 @@ void *serve(void *vparams) {
 
     if(params->initialized == 0) {
         s80_enable_async(selfpipe);
-        s80_enable_async(parentfd);
         signal(SIGPIPE, SIG_IGN);
 
         // create local epoll and assign it to context's array of els, so others can reach it
@@ -88,8 +87,9 @@ void *serve(void *vparams) {
         params_read.elfd = params_write.elfd = params_close.elfd = params_init.elfd = params_accept.elfd = elfd;
 
         // only one thread can poll on server socket and accept others!
-        if (id == 0) {
+        if (id == 0 && parentfd >= 0) {
             ev.events = EPOLLIN;
+            s80_enable_async(parentfd);
             SET_FD_HOLDER(&ev.data, S80_FD_SERVER_SOCKET, parentfd);
             if (epoll_ctl(elfd, EPOLL_CTL_ADD, parentfd, &ev) < 0) {
                 error("serve: failed to add server socket to epoll");

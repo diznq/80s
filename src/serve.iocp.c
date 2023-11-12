@@ -73,7 +73,6 @@ void *serve(void *vparams) {
 
     if(params->initialized == 0) {
         //s80_enable_async(selfpipe);
-        s80_enable_async(parentfd);
 
         // create local IOCP and assign it to context's array of els, so others can reach it
         elfd = els[id] = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, (ULONG_PTR)1, 1);
@@ -93,8 +92,10 @@ void *serve(void *vparams) {
             error("serve: failed to add self pipe to epoll");
         }
 
+        s80_enable_async(parentfd);
+
         // only one thread can poll on server socket and accept others!
-        if (id == 0) {
+        if (id == 0 && parentfd != (fd_t)INVALID_SOCKET) {
             if(CreateIoCompletionPort(parentfd, elfd, (ULONG_PTR)S80_FD_SOCKET, 0) == NULL) {
                 error("serve: failed to add parentfd socket to iocp");
             }

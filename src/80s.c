@@ -46,7 +46,9 @@ static int get_arg(const char *arg, int default_value, int flag, int argc, const
             if (flag) {
                 return 1;
             }
-            return atoi(argv[i + 1]);
+            int count = atoi(argv[i + 1]);
+            if(count == 0 && strcmp(argv[i + 1], "0")) return default_value;
+            return count;
         }
     }
     return flag ? 0 : default_value;
@@ -56,7 +58,8 @@ static const char *get_sz_arg_no_flag(const char *default_value, int argc, const
     int i;
     for(i = 1; i < argc; i++) {
         if(argv[i][0] == '-') {
-            i++;
+            if(argv[i][1] != '-')
+                i++;
             continue;
         }
         return argv[i];
@@ -188,11 +191,13 @@ static void* allocator(void* ud, void* ptr, size_t old_size, size_t new_size) {
 }
 
 int main(int argc, const char **argv) {
-    const int workers = get_arg("-c", get_cpus(), 0, argc, argv);
+    const int cli = get_arg("--cli", 0, 1, argc, argv);
+    const int workers = get_arg("-c", cli ? 1 : get_cpus(), 0, argc, argv);
+    const int show_cfg = get_arg("--cfg", 0, 1, argc, argv);
     char resolved[100], *p, *q;
     int optval, i,
         portno = get_arg("-p", 8080, 0, argc, argv),
-        v6 = get_arg("-6", 0, 1, argc, argv);
+        v6 = get_arg("--6", 0, 1, argc, argv);
     fd_t parentfd;
     union addr_common serveraddr;
     module_extension *module = NULL, 
@@ -216,6 +221,16 @@ int main(int argc, const char **argv) {
     fd_t els[workers];
     pvoid ctxes[workers];
     mailbox mailboxes[workers];
+
+    if(show_cfg) {
+        printf("Name: %s\n", node_name);
+        printf("Concurrency: %d\n", workers);
+        printf("Address: %s\n", addr);
+        printf("Port: %d\n", portno);
+        printf("IPv6: %s\n", v6 ? "yes" : "no");
+        printf("CLI: %s\n", cli ? "yes" : "no");
+        printf("Modules: %s\n", module_list ? module_list : "no modules");
+    }
 
     if(module_list) {
         // go over all comma separated values, replacing comma with \0
@@ -303,6 +318,11 @@ int main(int argc, const char **argv) {
 
     entrypoint = get_sz_arg_no_flag("server/simple_http.lua", argc, argv);
 
+    if(show_cfg) {
+        printf("Entrypoint: %s\n", entrypoint);
+        fflush(stdout);
+    }
+
     #ifdef _WIN32
     WSADATA wsa;
     if(WSAStartup(0x202, &wsa) != 0) {
@@ -311,34 +331,42 @@ int main(int argc, const char **argv) {
     }
     #endif
 
-    parentfd = (fd_t)socket(v6 ? AF_INET6 : AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if(!cli) {
+        parentfd = (fd_t)socket(v6 ? AF_INET6 : AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
-    if (parentfd < 0)
-        error("main: failed to create server socket");
+        if (parentfd < 0)
+            error("main: failed to create server socket");
 
-    optval = 1;
-    setsockopt((sock_t)parentfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
-    memset((void *)&serveraddr, 0, sizeof(serveraddr));
+        optval = 1;
+        setsockopt((sock_t)parentfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
+        memset((void *)&serveraddr, 0, sizeof(serveraddr));
 
-    if (v6) {
-        serveraddr.v6.sin6_family = AF_INET6;
-        serveraddr.v6.sin6_port = htons((unsigned short)portno);
-        if(inet_pton(AF_INET6, addr, &serveraddr.v6.sin6_addr) <= 0) {
-            error("failed to resolve bind IP address");
+        if (v6) {
+            serveraddr.v6.sin6_family = AF_INET6;
+            serveraddr.v6.sin6_port = htons((unsigned short)portno);
+            if(inet_pton(AF_INET6, addr, &serveraddr.v6.sin6_addr) <= 0) {
+                error("failed to resolve bind IP address");
+            }
+            inet_ntop(AF_INET6, &serveraddr.v6.sin6_addr, resolved, sizeof(serveraddr.v6));
+        } else {
+            serveraddr.v4.sin_family = AF_INET;
+            serveraddr.v4.sin_addr.s_addr = inet_addr(addr);
+            serveraddr.v4.sin_port = htons((unsigned short)portno);
+            inet_ntop(AF_INET, &serveraddr.v4.sin_addr, resolved, sizeof(serveraddr.v4));
         }
-        inet_ntop(AF_INET6, &serveraddr.v6.sin6_addr, resolved, sizeof(serveraddr.v6));
+
+        if (bind((sock_t)parentfd, (struct sockaddr *)(v6 ? (void *)&serveraddr.v6 : (void *)&serveraddr.v4), v6 ? sizeof(serveraddr.v6) : sizeof(serveraddr.v4)) < 0)
+            error("main: failed to bind server socket");
+
+        if (listen((sock_t)parentfd, 20000) < 0)
+            error("main: failed to listen on server socket");
     } else {
-        serveraddr.v4.sin_family = AF_INET;
-        serveraddr.v4.sin_addr.s_addr = inet_addr(addr);
-        serveraddr.v4.sin_port = htons((unsigned short)portno);
-        inet_ntop(AF_INET, &serveraddr.v4.sin_addr, resolved, sizeof(serveraddr.v4));
+    #ifdef _WIN32
+        parentfd = (fd_t)INVALID_SOCKET;
+    #else
+        parentfd = -1;
+    #endif
     }
-
-    if (bind((sock_t)parentfd, (struct sockaddr *)(v6 ? (void *)&serveraddr.v6 : (void *)&serveraddr.v4), v6 ? sizeof(serveraddr.v6) : sizeof(serveraddr.v4)) < 0)
-        error("main: failed to bind server socket");
-
-    if (listen((sock_t)parentfd, 20000) < 0)
-        error("main: failed to listen on server socket");
 
     for (i = 0; i < workers; i++) {
     #ifdef UNIX_BASED

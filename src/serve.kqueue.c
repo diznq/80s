@@ -61,7 +61,6 @@ void *serve(void *vparams) {
 
     if(params->initialized == 0) {
         s80_enable_async(selfpipe);
-        s80_enable_async(parentfd);
         signal(SIGPIPE, SIG_IGN);
 
         // create local kqueue and assign it to context's array of els, so others can reach it
@@ -78,7 +77,8 @@ void *serve(void *vparams) {
         }
 
         // only one thread can poll on server socket and accept others!
-        if (id == 0) {
+        if (id == 0 && parentfd >= 0) {
+            s80_enable_async(parentfd);
             EV_SET(&ev, parentfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(S80_FD_SERVER_SOCKET));
             if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
                 error("serve: failed to add server socket to kqueue");
