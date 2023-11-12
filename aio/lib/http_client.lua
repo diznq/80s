@@ -64,6 +64,7 @@ function http_client:request(params)
                     fd:close()
                     if params.response_file then params.response_file:close() end
                     resolve(make_error("failed to read header"))
+                    return
                 end
                 local http_protocol, status_line, response_headers = aio:parse_http(header, true)
                 local response_body = ""
