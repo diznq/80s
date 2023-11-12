@@ -176,7 +176,7 @@ function smtp_client:mail_flow(fd, from , recipients, headers, subject, body, re
 
     status, response = self:send_command(fd, "QUIT")
     fd:close()
-    resolve({response = response, stauts=status})
+    resolve({response = response, status=status})
 end
 
 --- Send command to SMTP server
