@@ -41,7 +41,7 @@ extern "C" {
     typedef int sock_t;
     typedef int fd_t;
     #define event_t kevent
-    #ifdef __FreeBSD__
+    #if defined(__FreeBSD__) && defined(KTLS)
         #define USE_KTLS
     #endif
 #elif defined(__linux__) || defined(SOLARIS_EPOLL)
