@@ -107,8 +107,8 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
         status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
     #elif defined(USE_KQUEUE)
         // subscribe for both read and write separately
-        EV_SET(ev, childfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
-        EV_SET(ev + 1, childfd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, 0, 0, (void*)S80_FD_SOCKET);
+        EV_SET(ev, childfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(S80_FD_SOCKET));
+        EV_SET(ev + 1, childfd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, 0, 0, int_to_void(S80_FD_SOCKET));
         status = kevent(elfd, ev, 2, NULL, 0, NULL);
     #endif
 
@@ -138,7 +138,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
             SET_FD_HOLDER(&ev.data, fdtype, childfd);
             status = epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev);
     #elif defined(USE_KQUEUE)
-            EV_SET(&ev, childfd, EVFILT_WRITE, fdtype == S80_FD_PIPE ? (EV_ADD | EV_CLEAR) : (EV_ADD | EV_ONESHOT), 0, 0, (void*)fdtype);
+            EV_SET(&ev, childfd, EVFILT_WRITE, fdtype == S80_FD_PIPE ? (EV_ADD | EV_CLEAR) : (EV_ADD | EV_ONESHOT), 0, 0, int_to_void(fdtype));
             status = kevent(elfd, &ev, 1, NULL, 0, NULL);
     #endif
             if (status < 0) {
@@ -229,7 +229,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
         status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
     #elif defined(USE_KQUEUE)
         // subscribe for both read and write separately
-        EV_SET(ev, childfd, i == 0 ? EVFILT_READ : EVFILT_WRITE, i == 0 ? EV_ADD : (EV_ADD | EV_CLEAR), 0, 0, (void*)S80_FD_PIPE);
+        EV_SET(ev, childfd, i == 0 ? EVFILT_READ : EVFILT_WRITE, i == 0 ? EV_ADD : (EV_ADD | EV_CLEAR), 0, 0, int_to_void(S80_FD_PIPE));
         status = kevent(elfd, ev, 1, NULL, 0, NULL);
     #endif
         if(status < 0) {
@@ -259,7 +259,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
         _exit(execvp(command, args));
     } else {
 #ifdef USE_KQUEUE
-        EV_SET(ev, pid, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, (void*)S80_FD_OTHER);
+        EV_SET(ev, pid, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, int_to_void(S80_FD_OTHER));
         if(kevent(elfd, ev, 1, NULL, 0, NULL) < 0) {
             dbg("s80_popen: failed to monitor pid");
         }

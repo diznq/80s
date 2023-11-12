@@ -93,6 +93,11 @@ extern "C" {
 #error unsupported platform
 #endif
 
+#define fd_to_void(fd) ((void*)(intptr_t)(fd))
+#define int_to_void(fd) ((void*)(intptr_t)(fd))
+#define void_to_fd(ptr) ((fd_t)(intptr_t)(ptr))
+#define void_to_int(ptr) ((int)(intptr_t)(ptr))
+
 struct serve_params_;
 struct module_extension_;
 struct reload_context_;

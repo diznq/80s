@@ -72,14 +72,14 @@ void *serve(void *vparams) {
         params->reload->mailboxes[id].elfd = elfd;
         params_read.elfd = params_write.elfd = params_close.elfd = params_init.elfd = params_accept.elfd = elfd;
 
-        EV_SET(&ev, selfpipe, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_PIPE);
+        EV_SET(&ev, selfpipe, EVFILT_READ, EV_ADD, 0, 0, int_to_void(S80_FD_PIPE));
         if(kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
             error("serve: failed to add self-pipe to kqueue");
         }
 
         // only one thread can poll on server socket and accept others!
         if (id == 0) {
-            EV_SET(&ev, parentfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SERVER_SOCKET);
+            EV_SET(&ev, parentfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(S80_FD_SERVER_SOCKET));
             if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
                 error("serve: failed to add server socket to kqueue");
             }
@@ -118,7 +118,7 @@ void *serve(void *vparams) {
         for (n = 0; n < nfds; ++n) {
             childfd = (int)events[n].ident;
             flags = (int)events[n].flags;
-            fdtype = (int)events[n].udata;
+            fdtype = void_to_int(events[n].udata);
 
             if (fdtype == S80_FD_SERVER_SOCKET) {
                 // only parent socket (server) can receive accept
@@ -130,7 +130,7 @@ void *serve(void *vparams) {
                 }
                 // set non blocking flag to the newly created child socket
                 s80_enable_async(childfd);
-                EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_SOCKET);
+                EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(S80_FD_SOCKET));
                 // add the child socket to the event loop it belongs to based on modulo
                 // with number of workers, to balance the load to other threads
                 if (kevent(els[accepts], &ev, 1, NULL, 0, NULL) < 0) {

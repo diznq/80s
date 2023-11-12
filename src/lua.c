@@ -1,5 +1,4 @@
 #include "80s.h"
-#include "lua_shared.h"
 #include "lua_net.h"
 #include "lua_codec.h"
 #include "lua_crypto.h"

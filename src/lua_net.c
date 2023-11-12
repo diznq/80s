@@ -1,5 +1,4 @@
 #include "80s.h"
-#include "lua_shared.h"
 #include "lua_net.h"
 #include "algo.h"
 #include "dynstr.h"

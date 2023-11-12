@@ -807,7 +807,7 @@ static void ssl_secret_callback(const SSL* ssl, const char* line) {
             return;
         }
 
-        EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, (void*)S80_FD_KTLS_SOCKET);
+        EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(S80_FD_KTLS_SOCKET));
         if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
             dbg("ssl_callback: upgrade to ktls failed");
         }
