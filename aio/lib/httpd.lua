@@ -14,6 +14,7 @@ function httpd:create_endpoint(base, method, endpoint, mime, content, dynamic)
     local ctx = nil
     --- @type table|nil
     local resp_headers = nil
+    endpoint = self.base_prefix .. endpoint
     if dynamic then
         ctx = templates:prepare(content, base, method .. " " .. endpoint)
     else
@@ -153,11 +154,12 @@ function httpd:init_dir(root, base, prefix)
 end
 
 ---Initialize the HTTP dynamic component
----@param params {master_key: string|nil, no_static: boolean|nil, root: string, tls: boolean|nil, pubkey: string|nil, privkey: string|nil, header_size: integer|nil, body_size: integer|nil}
+---@param params {master_key: string|nil, no_static: boolean|nil, root: string, tls: boolean|nil, pubkey: string|nil, privkey: string|nil, header_size: integer|nil, body_size: integer|nil, base_prefix: string|nil}
 function httpd:initialize(params)
     self.master_key = params.master_key
     self.no_static = params.no_static
     self.root = params.root
+    self.base_prefix = params.base_prefix or ""
     aio:set_master_key(params.master_key)
     aio:set_max_http_body(params.body_size)
     aio:set_max_http_header(params.header_size)
