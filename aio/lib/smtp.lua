@@ -137,8 +137,7 @@ function smtp:handle_as_smtp(fd)
                     fd:write("354 Send message content; end with <CR><LF>.<CR><LF>\r\n")
                     message = coroutine.yield("\r\n.\r\n")
                     if message ~= nil then
-                        local parsed_headers = message:match("^(.-)\r\n") or ""
-                        local _, _, parsed_headers = aio:parse_http("GET /smtp HTTP/1.1\r\n" .. parsed_headers)
+                        local email_subject = message:match("Subject: (.-)\r\n") or "No subject"
                         local messageId = self:generate_message_id()
                         local handle_ok = true
                         local write_response = true
@@ -147,7 +146,7 @@ function smtp:handle_as_smtp(fd)
                                 from = from,
                                 to = to,
                                 body = message,
-                                subject = parsed_headers["subject"] or "No subject",
+                                subject = email_subject,
                                 sender = {aio:get_ip(fd)},
                                 id = messageId
                             }, {
