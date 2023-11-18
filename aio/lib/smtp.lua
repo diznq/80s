@@ -212,7 +212,7 @@ end
 ---@param raw string
 ---@return {name: string?, email: string}? details 
 function smtp:extract_email(raw)
-    local simple = raw:match("^<([a-zA-Z0-9.]+@[a-z0-9.]+)>.*$")
+    local simple = raw:match("^<([a-zA-Z0-9.%-_]+@[a-z0-9.%-_]+)>.*$")
     if simple then
         return {email = simple}
     end
