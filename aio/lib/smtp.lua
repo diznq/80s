@@ -2,7 +2,7 @@ require("aio.aio")
 
 
 ---@alias maildetail {name: string?, email: string}
----@alias mailparam {from: maildetail, to: maildetail[], sender: table, error: string|nil, id: string, subject: string|nil, time: string|nil, received: osdate, body: string}
+---@alias mailparam {from: maildetail, to: maildetail[], sender: string, error: string|nil, id: string, subject: string|nil, time: string|nil, subfolder: string|nil, received: osdate, body: string}
 ---@alias okhandle fun(): any
 ---@alias errhandle fun(reason: string|nil): any
 ---@alias mailreceived fun(mail: mailparam, handle: {ok: okhandle, error: errhandle}): aiopromise?
@@ -143,12 +143,13 @@ function smtp:handle_as_smtp(fd)
                         local handle_ok = true
                         local write_response = true
                         for key, callback in pairs(self.on_mail_received_callbacks) do
+                            local sender_ip, sender_port = aio:get_ip(fd)
                             local cb_ok, result = pcall(callback, {
                                 from = from,
                                 to = to,
                                 body = message,
                                 subject = email_subject,
-                                sender = {aio:get_ip(fd)},
+                                sender = string.format("%s,%d", sender_ip, sender_port),
                                 id = messageId,
                                 ---@diagnostic disable-next-line: assign-type-mismatch
                                 received = os.date("*t")
