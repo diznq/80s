@@ -1,7 +1,8 @@
 require("aio.aio")
 
+
 ---@alias maildetail {name: string?, email: string}
----@alias mailparam {from: maildetail, to: maildetail[], sender: table, error: string|nil, id: string, subject: string|nil, time: string|nil, body: string}
+---@alias mailparam {from: maildetail, to: maildetail[], sender: table, error: string|nil, id: string, subject: string|nil, time: string|nil, received: osdate, body: string}
 ---@alias okhandle fun(): any
 ---@alias errhandle fun(reason: string|nil): any
 ---@alias mailreceived fun(mail: mailparam, handle: {ok: okhandle, error: errhandle}): aiopromise?
@@ -148,7 +149,9 @@ function smtp:handle_as_smtp(fd)
                                 body = message,
                                 subject = email_subject,
                                 sender = {aio:get_ip(fd)},
-                                id = messageId
+                                id = messageId,
+                                ---@diagnostic disable-next-line: assign-type-mismatch
+                                received = os.date("*t")
                             }, {
                                 ok = function ()
                                     fd:write("250 OK: queued as " .. messageId .. "\r\n")
