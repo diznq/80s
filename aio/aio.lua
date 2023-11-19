@@ -998,7 +998,10 @@ function aio:to_url(endpoint, params, hash)
         params["e"] = nil
         params["ordered"] = nil
         ---@diagnostic disable-next-line: param-type-mismatch
-        path = path .. "?" .. aio:create_query(params, private_key, ordered, iv)
+        local q = aio:create_query(params, private_key, ordered, iv)
+        if #q > 0 then
+            path = path .. "?" .. q
+        end
     end
     if hash ~= nil then
         path = path .. "#" .. codec.url_encode(hash)
