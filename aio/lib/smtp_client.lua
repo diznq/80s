@@ -244,7 +244,8 @@ end
 
 function smtp_client:generate_message_id()
     self.counter = self.counter + 1
-    return string.format("<%s.%d.%f@%s>", NODE_ID:gsub("%/", "-"), self.counter, net.clock(), self.host)
+    local date = os.date("%Y%m%d%H%I%S")
+    return string.format("<%s.%s.%d@%s>", NODE_ID:gsub("%/", "-"), date, self.counter, self.host)
 end
 
 --- Initialize SMTP client
