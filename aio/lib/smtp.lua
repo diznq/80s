@@ -2,7 +2,7 @@ require("aio.aio")
 
 
 ---@alias maildetail {name: string?, email: string}
----@alias mailparam {from: maildetail, to: maildetail[], sender: string, error: string|nil, id: string, subject: string|nil, time: string|nil, subfolder: string|nil, received: osdate, body: string, unread: boolean|nil}
+---@alias mailparam {from: maildetail, to: maildetail[], inbound: boolean|nil, sender: string, error: string|nil, id: string, subject: string|nil, time: string|nil, subfolder: string|nil, received: osdate, body: string, unread: boolean|nil}
 ---@alias okhandle fun(): any
 ---@alias errhandle fun(reason: string|nil): any
 ---@alias mailreceived fun(mail: mailparam, handle: {ok: okhandle, error: errhandle}): aiopromise?
@@ -153,6 +153,7 @@ function smtp:handle_as_smtp(fd)
                                 id = messageId,
                                 ---@diagnostic disable-next-line: assign-type-mismatch
                                 received = os.date("*t"),
+                                inbound = true,
                                 unread = true
                             }, {
                                 ok = function ()

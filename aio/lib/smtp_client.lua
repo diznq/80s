@@ -113,6 +113,28 @@ function smtp_client:send_mail(params)
     return resolver
 end
 
+--- Encode e-mail message
+---@param from string sender
+---@param recipients string[] list of recipients
+---@param headers table headers table
+---@param subject string|nil email subject
+---@param body string email body
+---@return string
+function smtp_client:encode_message(from, recipients, headers, subject, body)
+    if headers["Message-ID"] == nil then
+        headers["Message-ID"] = self:generate_message_id()
+    end
+    headers["From"] = from
+    headers["To"] = table.concat(recipients, ", ")
+    headers["Subject"] = subject or "No subject"
+
+    local headers_list = {}
+    for key, value in pairs(headers) do
+        headers_list[#headers_list+1] = key .. ": " .. tostring(value)
+    end
+    return string.format("%s\r\n\r\n%s\r\n.\r\n", table.concat(headers_list, "\r\n"), body)
+end
+
 --- Perform mail SMTP send mail flow
 ---@param fd aiosocket client socket
 ---@param from string sender address
@@ -149,17 +171,8 @@ function smtp_client:mail_flow(fd, from , recipients, headers, subject, body, re
         return resolve(make_error("DATA status was " .. status .. " instead of expected 354"))
     end
 
-    headers["Message-ID"] = self:generate_message_id()
-    headers["From"] = from
-    headers["To"] = table.concat(recipients, ", ")
-    headers["Subject"] = subject or "No subject"
+    local email_message = self:encode_message(from, recipients, headers, subject, body)
 
-    local email_message = ""
-    local headers_list = {}
-    for key, value in pairs(headers) do
-        headers_list[#headers_list+1] = key .. ": " .. tostring(value)
-    end
-    email_message = string.format("%s\r\n\r\n%s\r\n.\r\n", table.concat(headers_list, "\r\n"), body)
     if self.logging then
         print("----------------------->")
         print(email_message)
