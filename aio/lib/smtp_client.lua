@@ -132,7 +132,7 @@ function smtp_client:encode_message(from, recipients, headers, subject, body)
     for key, value in pairs(headers) do
         headers_list[#headers_list+1] = key .. ": " .. tostring(value)
     end
-    return string.format("%s\r\n\r\n%s\r\n.\r\n", table.concat(headers_list, "\r\n"), body)
+    return string.format("%s\r\n\r\n%s", table.concat(headers_list, "\r\n"), body)
 end
 
 --- Perform mail SMTP send mail flow
@@ -178,7 +178,7 @@ function smtp_client:mail_flow(fd, from , recipients, headers, subject, body, re
         print(email_message)
         print("-----------------------/")
     end
-    fd:write(email_message)
+    fd:write(email_message .. "\r\n.\r\n")
     status, response = self:read_response()
     if not status then
         return resolve(make_error("DATA submission failed to read response from server"))
