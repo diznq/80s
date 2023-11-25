@@ -83,11 +83,11 @@ class afd {
     std::shared_ptr<aiopromise<std::string_view>> current_read_promise;
 public:
     afd(context *ctx, fd_t elfd, fd_t fd, int fdtype) : ctx(ctx), elfd(elfd), fd(fd), fd_type(fdtype) {
-        printf("afd::afd(%p, %zu)\n", ctx, fd);
+        dbgf("afd::afd(%p, %zu)\n", ctx, fd);
     }
 
     ~afd() {
-        printf("~afd::afd(%p, %zu)\n", ctx, fd);
+        dbgf("~afd::afd(%p, %zu)\n", ctx, fd);
     }
 
     void on_accept() {
@@ -241,10 +241,8 @@ public:
             fd = it->second;
             fds.erase(it);
             fd->on_close();
-            return fd;
-        } else {
-            throw invalid_afd();
         }
+        return fd;
     }
 
     std::shared_ptr<afd> on_write(write_params params) {
@@ -253,10 +251,8 @@ public:
         if(it != fds.end()) {
             fd = it->second;
             fd->on_write((size_t)params.written);
-            return fd;
-        } else {
-            throw invalid_afd();
         }
+        return fd;
     }
 
     std::shared_ptr<afd> on_accept(accept_params params) {
@@ -269,7 +265,6 @@ public:
             fds.insert(std::make_pair(params.childfd, fd)).first;
         }
         fd->on_accept();    
-        printf("Active connetions: %zu\n", fds.size());
         return fd;
     }
 
