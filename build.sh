@@ -80,6 +80,10 @@ if [ "$JIT" = "true" ]; then
   DEFINES="$DEFINES -DS80_JIT=1"
 fi
 
+if [ "$KTLS" = "true" ]; then
+  DEFINES="$DEFINES -DKTLS=1"
+fi
+
 LUA_INC=$(echo "$LUA_INC" | sed 's/lua.h//g')
 
 FLAGS="$FLAGS -march=native"
