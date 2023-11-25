@@ -68,7 +68,13 @@ class afd {
 
     std::shared_ptr<aiopromise<std::string_view>> current_read_promise;
 public:
-    afd(context *ctx, fd_t elfd, fd_t fd, int fdtype) : ctx(ctx), elfd(elfd), fd(fd), fd_type(fdtype) {}
+    afd(context *ctx, fd_t elfd, fd_t fd, int fdtype) : ctx(ctx), elfd(elfd), fd(fd), fd_type(fdtype) {
+        printf("afd::afd(%p, %zu)", ctx, fd);
+    }
+
+    ~afd() {
+        printf("~afd::afd(%p, %zu)", ctx, fd);
+    }
 
     void on_accept() {
 
@@ -301,13 +307,12 @@ void on_accept(accept_params params) {
         }
         response = response.substr(0, 40000000);
         fd->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: 40000005\r\n\r\n")->then([](bool ok) {
-            printf("Header: %d\n", ok);
+            //printf("Header: %d\n", ok);
         });
         fd->write(response)->then([](bool ok) {
-            printf("Partial body: %d\n", ok);
+            //printf("Partial body: %d\n", ok);
         });
         fd->write("BCDEF")->then([fd](bool ok) {
-            printf("Full body: %d\n", ok);
             fd->close();
         });
     });
