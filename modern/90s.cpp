@@ -281,6 +281,7 @@ void on_accept(accept_params params) {
             }
             ctr++;
         }
+        response = response.substr(0, 40000000);
         fd->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: 40000005\r\n\r\n")->then([](bool ok) {
             printf("write result 1: %d\n", ok);
         });
