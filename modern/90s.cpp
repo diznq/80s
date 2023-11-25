@@ -67,20 +67,48 @@ class afd {
     fd_t fd;
     int fd_type;
     bool closed = false;
+    bool buffering = true;
+
+    enum class read_command_type { any, n, until };
 
     struct back_buffer {
         std::shared_ptr<aiopromise<bool>> promise;
         size_t length = 0;
         size_t sent = 0;
 
-        back_buffer(std::shared_ptr<aiopromise<bool>> promise, size_t length, size_t sent) : promise(promise), length(length), sent(sent) {}
+        back_buffer(std::shared_ptr<aiopromise<bool>> promise, size_t length, size_t sent) 
+        : promise(promise), length(length), sent(sent) {}
+    };
+
+    struct read_command {
+        std::shared_ptr<aiopromise<std::string_view>> promise;
+        read_command_type type;
+        size_t n;
+        std::string delimiter;
+
+        read_command(
+            std::shared_ptr<aiopromise<std::string_view>> promise,
+            read_command_type type,
+            size_t n,
+            std::string&& delimiter
+        ) : promise(promise), type(type), n(n), delimiter(std::move(delimiter)) {}
+    };
+
+    struct kmp_state {
+        int offset = 0,
+            match = 0,
+            pivot = 0,
+            body = -1;
     };
 
     size_t write_back_offset = 0;
     std::vector<char> write_back_buffer;
     std::list<back_buffer> write_back_buffer_info;
 
-    std::shared_ptr<aiopromise<std::string_view>> current_read_promise;
+    size_t read_offset = 0;
+    kmp_state delim_state;
+    std::vector<char> read_buffer;
+    std::list<read_command> read_commands;
 public:
     afd(context *ctx, fd_t elfd, fd_t fd, int fdtype) : ctx(ctx), elfd(elfd), fd(fd), fd_type(fdtype) {
         dbgf("afd::afd(%p, %zu)\n", ctx, fd);
@@ -95,10 +123,56 @@ public:
     }
 
     void on_data(std::string_view data) {
-        auto before = current_read_promise;
-        if(before) {
-            before->resolve(data);
-            if(current_read_promise == before) current_read_promise = nullptr;
+        if(!buffering && read_commands.empty()) return;
+        kmp_result part;
+        size_t offset = read_buffer.size();
+        bool iterate = true;
+        read_buffer.insert(read_buffer.end(), data.begin(), data.end());
+        std::string_view window(read_buffer.data() + read_offset, read_buffer.size() - read_offset);
+        for(auto it = read_commands.begin(); iterate && !window.empty() && it != read_commands.end();) {
+            auto& command = *it;
+            switch(command.type) {
+                case read_command_type::any:
+                    command.promise->resolve(window);
+                    it = read_commands.erase(it);
+                    window = window.substr(window.size());
+                    iterate = false;
+                    break;
+                case read_command_type::n:
+                    if(window.length() < command.n) {
+                        iterate = false;
+                    } else {
+                        command.promise->resolve(window.substr(0, command.n));
+                        window = window.substr(command.n);
+                        it = read_commands.erase(it);
+                        read_offset += command.n;
+                    }
+                    break;
+                case read_command_type::until:
+                    part = kmp(window.data(), window.length(), command.delimiter.c_str() + delim_state.match, command.delimiter.size() - delim_state.match, delim_state.offset);
+                    if(part.length + delim_state.match == command.delimiter.size()) {
+                        delim_state.match = 0;
+                        delim_state.offset = part.offset + part.length;
+                        command.promise->resolve(window.substr(0, delim_state.offset - command.delimiter.size()));
+                        window = window.substr(delim_state.offset);
+                        read_offset += delim_state.offset;
+                        delim_state.body = 0;
+                        it = read_commands.erase(it);
+                    } else if(part.length > 0) {
+                        delim_state.match += part.length;
+                        delim_state.offset = part.offset + part.length;
+                        iterate = false;
+                    } else {
+                        delim_state.match = 0;
+                        delim_state.offset = part.offset;
+                        iterate = false;
+                    }
+                    break;
+            }
+        }
+        if(window.empty() || (!buffering && read_commands.empty())) {
+            read_buffer.clear();
+            read_buffer.shrink_to_fit();
         }
     }
 
@@ -173,18 +247,30 @@ public:
         }
     }
 
-    std::shared_ptr<aiopromise<std::string_view>> read() {
-        return current_read_promise = std::make_shared<aiopromise<std::string_view>>();
+    std::shared_ptr<aiopromise<std::string_view>> read_any() {
+        auto promise = std::make_shared<aiopromise<std::string_view>>();
+        read_commands.emplace_back(read_command(promise, read_command_type::any, 0, ""));
+        return promise;
+    }
+
+    std::shared_ptr<aiopromise<std::string_view>> read_n(size_t n_bytes) {
+        auto promise = std::make_shared<aiopromise<std::string_view>>();
+        read_commands.emplace_back(read_command(promise, read_command_type::n, n_bytes, ""));
+        return promise;
+    }
+
+    std::shared_ptr<aiopromise<std::string_view>> read_until(std::string&& delim) {
+        auto promise = std::make_shared<aiopromise<std::string_view>>();
+        read_commands.emplace_back(read_command(promise, read_command_type::until, 0, std::move(delim)));
+        return promise;
     }
 
     std::shared_ptr<aiopromise<bool>> write(const std::string_view& data) {
         std::shared_ptr<aiopromise<bool>> promise = std::make_shared<aiopromise<bool>>();
-        size_t offset = write_back_buffer.size();
-
-        write_back_buffer.resize(write_back_buffer.size() + data.length());
+        
+        write_back_buffer.insert(write_back_buffer.end(), data.begin(), data.end());
         write_back_buffer_info.emplace_back(back_buffer(promise, data.size(), 0));
-        memcpy(write_back_buffer.data() + offset, data.data(), data.length());
-
+        
         auto& back = write_back_buffer_info.back();
         dbgf("   write/write back queue size: %zu\n", write_back_buffer_info.size());
         if(write_back_buffer_info.size() == 1) {
@@ -306,16 +392,20 @@ void on_accept(accept_params params) {
     context *ctx = (context*)params.ctx;
     auto fd = ctx->on_accept(params);
 
-    fd->read()->then([fd](std::string_view data) {
-        fd->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: 40000005\r\n\r\n")->then([](bool ok) {
-            //printf("Header: %d\n", ok);
-        });
-        fd->write(response)->then([](bool ok) {
-            //printf("Partial body: %d\n", ok);
-        });
-        fd->write("BCDEF")->then([fd](bool ok) {
-            fd->close();
-        });
+    fd->read_n(4)->then([fd](auto res) {
+        std::cout << "First 4 bytes: " << res << std::endl;
+    });
+    fd->read_n(8)->then([](auto res) {
+        std::cout << "Next 8 bytes: " << res << std::endl;
+    });
+    fd->read_until("abcd")->then([](auto res) {
+        std::cout << "Read until ABCD: " << res << std::endl;
+    });
+    fd->read_until("z")->then([](auto res) {
+        std::cout << "Read until Z: " << res << std::endl;
+    });
+    fd->read_n(4)->then([](auto res) {
+        std::cout << "Last 4 bytes: " << res << std::endl;
     });
 }
 
