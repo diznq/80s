@@ -11,6 +11,7 @@
 #include <memory>
 #include <exception>
 #include <iostream>
+#include <list>
 
 class context;
 class afd;
@@ -48,11 +49,25 @@ class invalid_afd : std::exception {
 
 class afd {
     context *ctx;
+    fd_t elfd;
     fd_t fd;
     int fd_type;
+
+    struct back_buffer {
+        std::shared_ptr<aiopromise<bool>> promise;
+        size_t length = 0;
+        size_t sent = 0;
+
+        back_buffer(std::shared_ptr<aiopromise<bool>> promise, size_t length, size_t sent) : promise(promise), length(length), sent(sent) {}
+    };
+
+    size_t write_back_offset = 0;
+    std::vector<char> write_back_buffer;
+    std::list<back_buffer> write_back_buffer_info;
+
     std::shared_ptr<aiopromise<std::string_view>> current_read_promise;
 public:
-    afd(context *ctx, fd_t fd, int fdtype) : ctx(ctx), fd(fd), fd_type(fdtype) {}
+    afd(context *ctx, fd_t elfd, fd_t fd, int fdtype) : ctx(ctx), elfd(elfd), fd(fd), fd_type(fdtype) {}
 
     void on_accept() {
 
@@ -67,7 +82,37 @@ public:
     }
 
     void on_write(size_t written_bytes) {
+        write_back_offset += written_bytes;
+        for(auto it = write_back_buffer_info.begin(); it != write_back_buffer_info.end(); it++) {
+            auto& promise = *it;
+            if(promise.sent + written_bytes >= promise.length) {
+                written_bytes -= promise.length - promise.sent;
+                promise.sent = promise.length;
+                promise.promise->resolve(true);
+                it = write_back_buffer_info.erase(it);
+            } else {
+                promise.sent += written_bytes;
+            }
+        }
+        
+        if(write_back_offset < write_back_buffer.size()) {
+            size_t to_write = write_back_buffer.size() - write_back_offset;
+            int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), write_back_offset, to_write);
+            printf("OK: %d\n", ok);
+            if(ok < 0) {
+                for(auto& promise : write_back_buffer_info) promise.promise->resolve(false);
+                write_back_offset = 0;
+                write_back_buffer.clear();
+                write_back_buffer_info.clear();
+            } else if(ok > 0) {
+                on_write((size_t)ok);
+            }
+        }
 
+        if(write_back_buffer_info.size() == 0) {
+            write_back_buffer.clear();
+            write_back_offset = 0;
+        }
     }
 
     void on_close() {
@@ -78,9 +123,31 @@ public:
         return current_read_promise = std::make_shared<aiopromise<std::string_view>>();
     }
 
-    /*aiopromise<bool> write(std::string_view data) {
+    std::shared_ptr<aiopromise<bool>> write(std::string_view data) {
+        std::shared_ptr<aiopromise<bool>> promise = std::make_shared<aiopromise<bool>>();
+        size_t offset = write_back_buffer.size();
 
-    }*/
+        write_back_buffer.resize(write_back_buffer.size() + data.length());
+        write_back_buffer_info.emplace_back(back_buffer(promise, data.size(), 0));
+        memcpy(write_back_buffer.data() + offset, data.data(), data.length());
+
+        auto& back = write_back_buffer.back();
+        if(write_back_buffer_info.size() == 1) {
+            int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), 0, write_back_buffer.size());
+            printf("OK/2: %d\n", ok);
+            if(ok < 0) {
+                for(auto& promise : write_back_buffer_info) promise.promise->resolve(false);
+                write_back_offset = 0;
+                write_back_buffer.clear();
+                write_back_buffer_info.clear();
+            } else if(ok > 0) {
+                on_write((size_t)ok);
+            }
+            return promise;
+        } else {
+            return promise;
+        }
+    }
 };
 
 class context {
@@ -91,10 +158,12 @@ class context {
 public:
     context(node_id *id) : id(id) {}
 
+    fd_t event_loop() const { return elfd; }
+
     std::shared_ptr<afd> on_receive(read_params params) {
         auto it = fds.find(params.childfd);
         if(it == fds.end()) {
-            auto fd = std::make_shared<afd>(this, params.childfd, params.fdtype);
+            auto fd = std::make_shared<afd>(this, params.elfd, params.childfd, params.fdtype);
             it = fds.insert(std::make_pair(params.childfd, fd)).first;
             it->second->on_accept();
         }
@@ -127,7 +196,7 @@ public:
     std::shared_ptr<afd> on_accept(accept_params params) {
         auto it = fds.find(params.childfd);
         if(it == fds.end()) {
-            auto fd = std::make_shared<afd>(this, params.childfd, params.fdtype);
+            auto fd = std::make_shared<afd>(this, params.elfd, params.childfd, params.fdtype);
             it = fds.insert(std::make_pair(params.childfd, fd)).first;
         }
         it->second->on_accept();
@@ -171,8 +240,14 @@ void on_write(write_params params) {
 void on_accept(accept_params params) {
     context *ctx = (context*)params.ctx;
     auto fd = ctx->on_accept(params);
-    fd->read()->then([](std::string_view data) {
-        std::cout << "READ: " << data << std::endl;
+    fd->read()->then([fd](std::string_view data) {
+        std::string response(40000000, 'A');
+        fd->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: 40000000\r\n\r\n")->then([](bool ok) {
+            printf("write result 1: %d\n", ok);
+        });
+        fd->write(response)->then([](bool ok) {
+            printf("write result 2: %d\n", ok);
+        });
     });
 }
 
