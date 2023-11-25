@@ -198,20 +198,24 @@ public:
     fd_t event_loop() const { return elfd; }
 
     std::shared_ptr<afd> on_receive(read_params params) {
+        std::shared_ptr<afd> fd;
         auto it = fds.find(params.childfd);
-        if(it == fds.end()) {
-            auto fd = std::make_shared<afd>(this, params.elfd, params.childfd, params.fdtype);
-            it = fds.insert(std::make_pair(params.childfd, fd)).first;
-            it->second->on_accept();
+        if(it != fds.end()) {
+            fd = it->second;
+        } else {
+            fd = std::make_shared<afd>(this, params.elfd, params.childfd, params.fdtype);
+            fds.insert(std::make_pair(params.childfd, fd)).first;
+            fd->on_accept();
         }
-        it->second->on_data(std::string_view(params.buf, params.readlen));
-        return it->second;
+        fd->on_data(std::string_view(params.buf, params.readlen));
+        return fd;
     }
 
     std::shared_ptr<afd> on_close(close_params params) {
+        std::shared_ptr<afd> fd;
         auto it = fds.find(params.childfd);
         if(it != fds.end()) {
-            auto fd = it->second;
+            fd = it->second;
             fds.erase(it);
             fd->on_close();
             return fd;
@@ -221,23 +225,28 @@ public:
     }
 
     std::shared_ptr<afd> on_write(write_params params) {
+        std::shared_ptr<afd> fd;
         auto it = fds.find(params.childfd);
         if(it != fds.end()) {
-            it->second->on_write((size_t)params.written);
-            return it->second;
+            fd = it->second;
+            fd->on_write((size_t)params.written);
+            return fd;
         } else {
             throw invalid_afd();
         }
     }
 
     std::shared_ptr<afd> on_accept(accept_params params) {
+        std::shared_ptr<afd> fd;
         auto it = fds.find(params.childfd);
-        if(it == fds.end()) {
-            auto fd = std::make_shared<afd>(this, params.elfd, params.childfd, params.fdtype);
-            it = fds.insert(std::make_pair(params.childfd, fd)).first;
+        if(it != fds.end()) {
+            fd = it->second;
+        } else {
+            fd = std::make_shared<afd>(this, params.elfd, params.childfd, params.fdtype);
+            fds.insert(std::make_pair(params.childfd, fd)).first;
         }
-        it->second->on_accept();
-        return it->second;
+        fd->on_accept();
+        return fd;
     }
 
     void on_init(init_params params) {
