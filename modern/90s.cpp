@@ -109,6 +109,7 @@ class afd {
     kmp_state delim_state;
     std::vector<char> read_buffer;
     std::list<read_command> read_commands;
+    std::function<void()> on_command_queue_empty;
 public:
     afd(context *ctx, fd_t elfd, fd_t fd, int fdtype) : ctx(ctx), elfd(elfd), fd(fd), fd_type(fdtype) {
         dbgf("afd::afd(%p, %zu)\n", ctx, fd);
@@ -123,6 +124,9 @@ public:
     }
 
     void on_data(std::string_view data) {
+        if(read_commands.empty() && on_command_queue_empty) {
+            on_command_queue_empty();
+        }
         if(!buffering && read_commands.empty()) return;
         kmp_result part;
         size_t offset = read_buffer.size();
@@ -169,6 +173,9 @@ public:
                     }
                     break;
             }
+        }
+        if(read_commands.empty() && on_command_queue_empty) {
+            on_command_queue_empty();
         }
         if(window.empty() || (!buffering && read_commands.empty())) {
             read_buffer.clear();
@@ -245,6 +252,10 @@ public:
             on_close();
             closed = true;
         }
+    }
+
+    void set_on_empty_queue(std::function<void()> on_empty) {
+        on_command_queue_empty = on_empty;
     }
 
     std::shared_ptr<aiopromise<std::string_view>> read_any() {
@@ -392,20 +403,17 @@ void on_accept(accept_params params) {
     context *ctx = (context*)params.ctx;
     auto fd = ctx->on_accept(params);
 
-    fd->read_n(4)->then([fd](auto res) {
-        std::cout << "First 4 bytes: " << res << std::endl;
-    });
-    fd->read_n(8)->then([](auto res) {
-        std::cout << "Next 8 bytes: " << res << std::endl;
-    });
-    fd->read_until("abcd")->then([](auto res) {
-        std::cout << "Read until ABCD: " << res << std::endl;
-    });
-    fd->read_until("z")->then([](auto res) {
-        std::cout << "Read until Z: " << res << std::endl;
-    });
-    fd->read_n(4)->then([](auto res) {
-        std::cout << "Last 4 bytes: " << res << std::endl;
+    fd->set_on_empty_queue([fd]() {
+        fd->read_until("\r\n\r\n")->then([fd](std::string_view request) {
+            std::string response = 
+                std::string(
+                "HTTP/1.1 200 OK\r\n"
+                "Content-type: text/plain\r\n"
+                "Connection: keep-alive\r\n"
+                "Content-length: ") + std::to_string(request.length()) + "\r\n\r\n";
+            response += request;
+            fd->write(response);
+        });
     });
 }
 
