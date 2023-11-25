@@ -106,8 +106,9 @@ public:
             
             if(write_back_offset < write_back_buffer.size() && do_write) {
                 printf("on_write/write back offset: %zu, size: %zu\n", write_back_offset, write_back_buffer.size());
-                size_t to_write = write_back_buffer.size() - write_back_offset;
-                int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), write_back_offset, to_write);
+                size_t buffer_size = write_back_buffer.size();
+                size_t to_write = buffer_size - write_back_offset;
+                int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), write_back_offset, buffer_size);
                 printf("on_write/written: %d\n", ok);
                 if(ok < 0) {
                     for(auto& promise : write_back_buffer_info) promise.promise->resolve(false);
@@ -154,17 +155,18 @@ public:
         auto& back = write_back_buffer.back();
         if(write_back_buffer_info.size() == 1) {
             printf("   write/write back offset: %zu, size: %zu\n", write_back_offset, write_back_buffer.size());
-            size_t requested = write_back_buffer.size();
-            int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), 0, requested);
+            size_t buffer_size = write_back_buffer.size();
+            size_t to_write = buffer_size - write_back_offset;
+            int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), write_back_offset, buffer_size);
             printf("   write/written: %d\n", ok);
             if(ok < 0) {
                 for(auto& promise : write_back_buffer_info) promise.promise->resolve(false);
                 write_back_offset = 0;
                 write_back_buffer.clear();
                 write_back_buffer_info.clear();
-            } else if((size_t) ok == requested) {
+            } else if((size_t) ok == to_write) {
                 printf("   write/-------\n");
-                on_write(requested);
+                on_write(to_write);
             } else {
                 write_back_offset += (size_t)ok;
             }
