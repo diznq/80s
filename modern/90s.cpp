@@ -82,41 +82,47 @@ public:
     }
 
     void on_write(size_t written_bytes) {
-        printf("on_write/write back offset: %zu -> %zu (written: %zu)\n", write_back_offset, write_back_offset + written_bytes, written_bytes);
-        write_back_offset += written_bytes;
-        size_t i = 0;
-        for(auto it = write_back_buffer_info.begin(); it != write_back_buffer_info.end(); it++, i++) {
-            auto& promise = *it;
-            if(promise.sent + written_bytes >= promise.length) {
-                printf("on_write/write exceeded promise #%zu, filled length: %zu, gap was %zu\n", i, promise.length, promise.length - promise.sent);
-                written_bytes -= promise.length - promise.sent;
-                promise.sent = promise.length;
-                promise.promise->resolve(true);
-                it = write_back_buffer_info.erase(it);
-            } else if(written_bytes > 0) {
-                promise.sent += written_bytes;
-                written_bytes = 0;
-                printf("on_write/write filled promise #%zu partially, filled length: %zu / %zu\n", i, promise.sent, promise.length);
-            } else {
-                printf("on_write/write is out of reach of promise #%zu\n", i);
+        for(;;) {
+            printf("on_write/write back offset: %zu -> %zu (written: %zu)\n", write_back_offset, write_back_offset + written_bytes, written_bytes);
+            write_back_offset += written_bytes;
+            size_t i = 0;
+            for(auto it = write_back_buffer_info.begin(); it != write_back_buffer_info.end(); it++, i++) {
+                auto& promise = *it;
+                if(promise.sent + written_bytes >= promise.length) {
+                    printf("on_write/write exceeded promise #%zu, filled length: %zu, gap was %zu\n", i, promise.length, promise.length - promise.sent);
+                    written_bytes -= promise.length - promise.sent;
+                    promise.sent = promise.length;
+                    promise.promise->resolve(true);
+                    it = write_back_buffer_info.erase(it);
+                } else if(written_bytes > 0) {
+                    promise.sent += written_bytes;
+                    written_bytes = 0;
+                    printf("on_write/write filled promise #%zu partially, filled length: %zu / %zu\n", i, promise.sent, promise.length);
+                } else {
+                    printf("on_write/write is out of reach of promise #%zu\n", i);
+                }
             }
-        }
-        
-        if(write_back_offset < write_back_buffer.size()) {
-            printf("on_write/write back offset: %zu, size: %zu\n", write_back_offset, write_back_buffer.size());
-            size_t to_write = write_back_buffer.size() - write_back_offset;
-            int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), write_back_offset, to_write);
-            printf("on_write/written: %d\n", ok);
-            if(ok < 0) {
-                for(auto& promise : write_back_buffer_info) promise.promise->resolve(false);
-                write_back_offset = 0;
-                write_back_buffer.clear();
-                write_back_buffer_info.clear();
-            } else if(ok == to_write) {
-                printf("on_write/-------\n");
-                on_write((size_t)ok);
+            
+            if(write_back_offset < write_back_buffer.size()) {
+                printf("on_write/write back offset: %zu, size: %zu\n", write_back_offset, write_back_buffer.size());
+                size_t to_write = write_back_buffer.size() - write_back_offset;
+                int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), write_back_offset, to_write);
+                printf("on_write/written: %d\n", ok);
+                if(ok < 0) {
+                    for(auto& promise : write_back_buffer_info) promise.promise->resolve(false);
+                    write_back_offset = 0;
+                    write_back_buffer.clear();
+                    write_back_buffer_info.clear();
+                    break;
+                } else if(ok == to_write) {
+                    printf("on_write/-------\n");
+                    written_bytes = (size_t)ok;
+                } else {
+                    written_bytes = (size_t)ok;
+                    break;
+                }
             } else {
-                write_back_offset += (size_t)ok;
+                break;
             }
         }
 
