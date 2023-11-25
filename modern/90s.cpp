@@ -87,7 +87,7 @@ public:
             dbgf("on_write/write back offset: %zu -> %zu (written: %zu)\n", write_back_offset, write_back_offset + written_bytes, written_bytes);
             write_back_offset += written_bytes;
             size_t i = 0;
-            for(auto it = write_back_buffer_info.begin(); it != write_back_buffer_info.end(); it++, i++) {
+            for(auto it = write_back_buffer_info.begin(); it != write_back_buffer_info.end(); i++) {
                 auto& promise = *it;
                 if(promise.sent + written_bytes >= promise.length) {
                     dbgf("on_write/write exceeded promise #%zu, filled length: %zu, gap was %zu\n", i, promise.length, promise.length - promise.sent);
@@ -99,8 +99,10 @@ public:
                     promise.sent += written_bytes;
                     written_bytes = 0;
                     dbgf("on_write/write filled promise #%zu partially, filled length: %zu / %zu\n", i, promise.sent, promise.length);
+                    it++;
                 } else {
                     dbgf("on_write/write is out of reach of promise #%zu\n", i);
+                    it++;
                 }
             }
             
