@@ -16,6 +16,20 @@
 class context;
 class afd;
 
+std::string create_response() {
+    std::string response;
+    int ctr = 0;
+    response.reserve(40000000);
+    while(response.length() < 40000000) {
+        std::string num = std::to_string(ctr);
+        response += num + '\n';
+        ctr++;
+    }
+    return response.substr(0, 40000000);
+}
+
+static std::string response = create_response();
+
 template<class T>
 class aiopromise {
     std::optional<std::function<void(T)>> callback;
@@ -69,11 +83,11 @@ class afd {
     std::shared_ptr<aiopromise<std::string_view>> current_read_promise;
 public:
     afd(context *ctx, fd_t elfd, fd_t fd, int fdtype) : ctx(ctx), elfd(elfd), fd(fd), fd_type(fdtype) {
-        printf("afd::afd(%p, %zu)", ctx, fd);
+        printf("afd::afd(%p, %zu)\n", ctx, fd);
     }
 
     ~afd() {
-        printf("~afd::afd(%p, %zu)", ctx, fd);
+        printf("~afd::afd(%p, %zu)\n", ctx, fd);
     }
 
     void on_accept() {
@@ -296,16 +310,8 @@ void on_write(write_params params) {
 void on_accept(accept_params params) {
     context *ctx = (context*)params.ctx;
     auto fd = ctx->on_accept(params);
+
     fd->read()->then([fd](std::string_view data) {
-        std::string response;
-        response.reserve(40000000);
-        int ctr = 0;
-        while(response.length() < 40000000) {
-            std::string num = std::to_string(ctr);
-            response += num + '\n';
-            ctr++;
-        }
-        response = response.substr(0, 40000000);
         fd->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: 40000005\r\n\r\n")->then([](bool ok) {
             //printf("Header: %d\n", ok);
         });
