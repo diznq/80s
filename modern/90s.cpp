@@ -119,7 +119,6 @@ public:
                     written_bytes = (size_t)ok;
                 } else {
                     written_bytes = (size_t)ok;
-                    break;
                 }
             } else {
                 break;
