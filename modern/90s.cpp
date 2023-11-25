@@ -84,13 +84,13 @@ public:
     void on_write(size_t written_bytes) {
         int do_write = 1;
         for(;;) {
-            printf("on_write/write back offset: %zu -> %zu (written: %zu)\n", write_back_offset, write_back_offset + written_bytes, written_bytes);
+            dbgf("on_write/write back offset: %zu -> %zu (written: %zu)\n", write_back_offset, write_back_offset + written_bytes, written_bytes);
             write_back_offset += written_bytes;
             size_t i = 0;
             for(auto it = write_back_buffer_info.begin(); it != write_back_buffer_info.end(); it++, i++) {
                 auto& promise = *it;
                 if(promise.sent + written_bytes >= promise.length) {
-                    printf("on_write/write exceeded promise #%zu, filled length: %zu, gap was %zu\n", i, promise.length, promise.length - promise.sent);
+                    dbgf("on_write/write exceeded promise #%zu, filled length: %zu, gap was %zu\n", i, promise.length, promise.length - promise.sent);
                     written_bytes -= promise.length - promise.sent;
                     promise.sent = promise.length;
                     promise.promise->resolve(true);
@@ -98,18 +98,18 @@ public:
                 } else if(written_bytes > 0) {
                     promise.sent += written_bytes;
                     written_bytes = 0;
-                    printf("on_write/write filled promise #%zu partially, filled length: %zu / %zu\n", i, promise.sent, promise.length);
+                    dbgf("on_write/write filled promise #%zu partially, filled length: %zu / %zu\n", i, promise.sent, promise.length);
                 } else {
-                    printf("on_write/write is out of reach of promise #%zu\n", i);
+                    dbgf("on_write/write is out of reach of promise #%zu\n", i);
                 }
             }
             
             if(write_back_offset < write_back_buffer.size() && do_write) {
-                printf("on_write/write back offset: %zu, size: %zu\n", write_back_offset, write_back_buffer.size());
+                dbgf("on_write/write back offset: %zu, size: %zu\n", write_back_offset, write_back_buffer.size());
                 size_t buffer_size = write_back_buffer.size();
                 size_t to_write = buffer_size - write_back_offset;
                 int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), write_back_offset, buffer_size);
-                printf("on_write/written: %d\n", ok);
+                dbgf("on_write/written: %d\n", ok);
                 if(ok < 0) {
                     for(auto& promise : write_back_buffer_info) promise.promise->resolve(false);
                     write_back_offset = 0;
@@ -117,7 +117,7 @@ public:
                     write_back_buffer_info.clear();
                     break;
                 } else if(ok == to_write) {
-                    printf("on_write/-------\n");
+                    dbgf("on_write/-------\n");
                     written_bytes = (size_t)ok;
                     do_write = 0;
                 } else {
@@ -129,7 +129,7 @@ public:
             }
         }
 
-        printf("on_write/back buffer promises: %zu\n", write_back_buffer_info.size());
+        dbgf("on_write/back buffer promises: %zu\n", write_back_buffer_info.size());
         if(write_back_buffer_info.size() == 0) {
             write_back_buffer.clear();
             write_back_offset = 0;
@@ -154,18 +154,18 @@ public:
 
         auto& back = write_back_buffer.back();
         if(write_back_buffer_info.size() == 1) {
-            printf("   write/write back offset: %zu, size: %zu\n", write_back_offset, write_back_buffer.size());
+            dbgf("   write/write back offset: %zu, size: %zu\n", write_back_offset, write_back_buffer.size());
             size_t buffer_size = write_back_buffer.size();
             size_t to_write = buffer_size - write_back_offset;
             int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), write_back_offset, buffer_size);
-            printf("   write/written: %d\n", ok);
+            dbgf("   write/written: %d\n", ok);
             if(ok < 0) {
                 for(auto& promise : write_back_buffer_info) promise.promise->resolve(false);
                 write_back_offset = 0;
                 write_back_buffer.clear();
                 write_back_buffer_info.clear();
             } else if((size_t) ok == to_write) {
-                printf("   write/-------\n");
+                dbgf("   write/-------\n");
                 on_write(to_write);
             } else {
                 write_back_offset += (size_t)ok;
@@ -269,11 +269,17 @@ void on_accept(accept_params params) {
     auto fd = ctx->on_accept(params);
     fd->read()->then([fd](std::string_view data) {
         std::string response(40000000, 'A');
-        fd->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: 40000000\r\n\r\n")->then([](bool ok) {
+        for(int i = 1000; i < 40000000; i += 1000) {
+            response[i] = '\n';
+        }
+        fd->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: 40000005\r\n\r\n")->then([](bool ok) {
             printf("write result 1: %d\n", ok);
         });
         fd->write(response)->then([](bool ok) {
             printf("write result 2: %d\n", ok);
+        });
+        fd->write("BCDEF")->then([](bool ok) {
+            printf("write result 3: %d\n", ok);
         });
     });
 }
