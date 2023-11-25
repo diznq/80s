@@ -16,20 +16,6 @@
 class context;
 class afd;
 
-std::string create_response() {
-    std::string response;
-    int ctr = 0;
-    response.reserve(40000000);
-    while(response.length() < 40000000) {
-        std::string num = std::to_string(ctr);
-        response += num + '\n';
-        ctr++;
-    }
-    return response.substr(0, 40000000);
-}
-
-static std::string response = create_response();
-
 template<class T>
 class aiopromise {
     std::optional<std::function<void(T)>> callback;
@@ -97,8 +83,7 @@ class afd {
     struct kmp_state {
         int offset = 0,
             match = 0,
-            pivot = 0,
-            body = -1;
+            pivot = 0;
     };
 
     size_t write_back_offset = 0;
@@ -124,62 +109,65 @@ public:
     }
 
     void on_data(std::string_view data) {
-        if(read_commands.empty() && on_command_queue_empty) {
-            on_command_queue_empty();
-        }
-        if(!buffering && read_commands.empty()) return;
-        kmp_result part;
-        size_t offset = read_buffer.size();
-        bool iterate = true;
-        read_buffer.insert(read_buffer.end(), data.begin(), data.end());
-        std::string_view window(read_buffer.data() + read_offset, read_buffer.size() - read_offset);
-        for(auto it = read_commands.begin(); iterate && !window.empty() && it != read_commands.end();) {
-            auto& command = *it;
-            switch(command.type) {
-                case read_command_type::any:
-                    command.promise->resolve(window);
-                    it = read_commands.erase(it);
-                    window = window.substr(window.size());
-                    iterate = false;
-                    break;
-                case read_command_type::n:
-                    if(window.length() < command.n) {
-                        iterate = false;
-                    } else {
-                        command.promise->resolve(window.substr(0, command.n));
-                        window = window.substr(command.n);
-                        it = read_commands.erase(it);
-                        read_offset += command.n;
-                    }
-                    break;
-                case read_command_type::until:
-                    part = kmp(window.data(), window.length(), command.delimiter.c_str() + delim_state.match, command.delimiter.size() - delim_state.match, delim_state.offset);
-                    if(part.length + delim_state.match == command.delimiter.size()) {
-                        delim_state.match = 0;
-                        delim_state.offset = part.offset + part.length;
-                        command.promise->resolve(window.substr(0, delim_state.offset - command.delimiter.size()));
-                        window = window.substr(delim_state.offset);
-                        read_offset += delim_state.offset;
-                        delim_state.body = 0;
-                        it = read_commands.erase(it);
-                    } else if(part.length > 0) {
-                        delim_state.match += part.length;
-                        delim_state.offset = part.offset + part.length;
-                        iterate = false;
-                    } else {
-                        delim_state.match = 0;
-                        delim_state.offset = part.offset;
-                        iterate = false;
-                    }
-                    break;
+        for(;;) {
+            if(read_commands.empty() && on_command_queue_empty) {
+                on_command_queue_empty();
             }
-        }
-        if(read_commands.empty() && on_command_queue_empty) {
-            on_command_queue_empty();
-        }
-        if(window.empty() || (!buffering && read_commands.empty())) {
-            read_buffer.clear();
-            read_buffer.shrink_to_fit();
+            if((!buffering && read_commands.empty()) || (read_buffer.size() + data.size()) == 0) return;
+            kmp_result part;
+            bool iterate = true;
+            if(data.size() > 0) {
+                read_buffer.insert(read_buffer.end(), data.begin(), data.end());
+                data = data.substr(data.size());
+            }
+            std::string_view window(read_buffer.data() + read_offset, read_buffer.size() - read_offset);
+            for(auto it = read_commands.begin(); iterate && !window.empty() && it != read_commands.end();) {
+                auto& command = *it;
+                switch(command.type) {
+                    case read_command_type::any:
+                        command.promise->resolve(window);
+                        it = read_commands.erase(it);
+                        window = window.substr(window.size());
+                        iterate = false;
+                        break;
+                    case read_command_type::n:
+                        if(window.length() < command.n) {
+                            iterate = false;
+                        } else {
+                            command.promise->resolve(window.substr(0, command.n));
+                            window = window.substr(command.n);
+                            it = read_commands.erase(it);
+                            read_offset += command.n;
+                        }
+                        break;
+                    case read_command_type::until:
+                        part = kmp(window.data(), window.length(), command.delimiter.c_str() + delim_state.match, command.delimiter.size() - delim_state.match, delim_state.offset);
+                        if(part.length + delim_state.match == command.delimiter.size()) {
+                            delim_state.match = 0;
+                            delim_state.offset = part.offset + part.length;
+                            command.promise->resolve(window.substr(0, delim_state.offset - command.delimiter.size()));
+                            window = window.substr(delim_state.offset);
+                            read_offset += delim_state.offset;
+                            delim_state.offset = 0;
+                            it = read_commands.erase(it);
+                        } else if(part.length > 0) {
+                            delim_state.match += part.length;
+                            delim_state.offset = part.offset + part.length;
+                            iterate = false;
+                        } else {
+                            delim_state.match = 0;
+                            delim_state.offset = part.offset;
+                            iterate = false;
+                        }
+                        break;
+                }
+            }
+            if(window.empty() || (!buffering && read_commands.empty())) {
+                read_offset = 0;
+                read_buffer.clear();
+                read_buffer.shrink_to_fit();
+            }
+            if(read_buffer.size() == 0) break;
         }
     }
 
