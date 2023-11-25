@@ -313,7 +313,7 @@ int s80_mail(mailbox *mailbox, mailbox_message *message) {
     s80_acquire_mailbox(mailbox);
     if(mailbox->size >= mailbox->reserved) {
         mailbox->reserved = mailbox->reserved + 1000;
-        mailbox->messages = realloc(mailbox->messages, sizeof(mailbox_message) * mailbox->reserved);
+        mailbox->messages = (mailbox_message*)realloc(mailbox->messages, sizeof(mailbox_message) * mailbox->reserved);
         if(!mailbox->messages) {
             s80_release_mailbox(mailbox);
             return -1;
