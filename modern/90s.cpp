@@ -24,7 +24,7 @@ class aiopromise {
 
 public:
     aiopromise() {}
-    void resolve(T value) {
+    void resolve(const T& value) {
         result.emplace(value);
         if(callback.has_value() && !resolved) {
             resolved = true;
@@ -155,7 +155,7 @@ public:
         return current_read_promise = std::make_shared<aiopromise<std::string_view>>();
     }
 
-    std::shared_ptr<aiopromise<bool>> write(std::string_view data) {
+    std::shared_ptr<aiopromise<bool>> write(const std::string_view& data) {
         std::shared_ptr<aiopromise<bool>> promise = std::make_shared<aiopromise<bool>>();
         size_t offset = write_back_buffer.size();
 
