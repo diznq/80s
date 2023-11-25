@@ -118,6 +118,7 @@ public:
                     write_back_offset = 0;
                     write_back_buffer.clear();
                     write_back_buffer_info.clear();
+                    write_back_buffer.shrink_to_fit(); 
                     break;
                 } else if(ok == to_write) {
                     dbgf("on_write/-------\n");
@@ -133,6 +134,7 @@ public:
         dbgf("on_write/back buffer promises: %zu\n", write_back_buffer_info.size());
         if(write_back_buffer_info.size() == 0) {
             write_back_buffer.clear();
+            write_back_buffer.shrink_to_fit(); 
             write_back_offset = 0;
         }
     }
@@ -176,6 +178,7 @@ public:
                 write_back_offset = 0;
                 write_back_buffer.clear();
                 write_back_buffer_info.clear();
+                write_back_buffer.shrink_to_fit(); 
             } else if(ok > 0) {
                 dbgf("   write/-------\n");
                 on_write((size_t)ok);
@@ -245,7 +248,8 @@ public:
             fd = std::make_shared<afd>(this, params.elfd, params.childfd, params.fdtype);
             fds.insert(std::make_pair(params.childfd, fd)).first;
         }
-        fd->on_accept();
+        fd->on_accept();    
+        printf("Active connetions: %zu\n", fds.size());
         return fd;
     }
 
