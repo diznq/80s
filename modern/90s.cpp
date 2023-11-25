@@ -120,6 +120,9 @@ public:
                     dbgf("on_write/-------\n");
                     written_bytes = (size_t)ok;
                     do_write = 0;
+                } else {
+                    written_bytes = (size_t)ok;
+                    do_write = 0;
                 }
             } else {
                 break;
