@@ -112,9 +112,11 @@ public:
                 write_back_offset = 0;
                 write_back_buffer.clear();
                 write_back_buffer_info.clear();
-            } else if(ok > 0) {
+            } else if(ok == to_write) {
                 printf("on_write/-------\n");
                 on_write((size_t)ok);
+            } else {
+                write_back_offset += (size_t)ok;
             }
         }
 
@@ -144,16 +146,19 @@ public:
         auto& back = write_back_buffer.back();
         if(write_back_buffer_info.size() == 1) {
             printf("   write/write back offset: %zu, size: %zu\n", write_back_offset, write_back_buffer.size());
-            int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), 0, write_back_buffer.size());
+            size_t requested = write_back_buffer.size();
+            int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), 0, requested);
             printf("   write/written: %d\n", ok);
             if(ok < 0) {
                 for(auto& promise : write_back_buffer_info) promise.promise->resolve(false);
                 write_back_offset = 0;
                 write_back_buffer.clear();
                 write_back_buffer_info.clear();
-            } else if(ok > 0) {
+            } else if((size_t) ok == requested) {
                 printf("   write/-------\n");
-                on_write((size_t)ok);
+                on_write(requested);
+            } else {
+                write_back_offset += (size_t)ok;
             }
             return promise;
         } else {
