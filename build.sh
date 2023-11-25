@@ -50,9 +50,15 @@ if [ "$LINK" = "dynamic" ]; then
   LUA_LIB=$(echo "$LUA_LIB" | sed 's/.*[/]lib/-l/g' | sed 's/.so.*//g' | sed 's/.dll.*//g')
 fi
 
+DEFAULT_COMPILER="gcc"
+
+if ! type "$DEFAULT_COMPILER" &> /dev/null; then
+  DEFAULT_COMPILER="clang"
+fi
+
 FLAGS="-s -O3"
 OUT="${OUT:-bin/80s}"
-CC="${CC:-gcc}"
+CC="${CC:-$DEFAULT_COMPILER}"
 
 mkdir -p bin
 
