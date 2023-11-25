@@ -52,6 +52,7 @@ class afd {
     fd_t elfd;
     fd_t fd;
     int fd_type;
+    bool closed = false;
 
     struct back_buffer {
         std::shared_ptr<aiopromise<bool>> promise;
@@ -137,7 +138,17 @@ public:
     }
 
     void on_close() {
+        if(!closed) {
+            closed = true;
+        }
+    }
 
+    void close() {
+        if(!closed) {
+            s80_close(ctx, elfd, fd, fd_type);
+            on_close();
+            closed = true;
+        }
     }
 
     std::shared_ptr<aiopromise<std::string_view>> read() {
@@ -277,13 +288,14 @@ void on_accept(accept_params params) {
         }
         response = response.substr(0, 40000000);
         fd->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: 40000005\r\n\r\n")->then([](bool ok) {
-            printf("write result 1: %d\n", ok);
+            printf("Header: %d\n", ok);
         });
         fd->write(response)->then([](bool ok) {
-            printf("write result 2: %d\n", ok);
+            printf("Partial body: %d\n", ok);
         });
-        fd->write("BCDEF")->then([](bool ok) {
-            printf("write result 3: %d\n", ok);
+        fd->write("BCDEF")->then([fd](bool ok) {
+            printf("Full body: %d\n", ok);
+            fd->close();
         });
     });
 }
