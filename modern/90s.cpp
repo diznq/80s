@@ -266,7 +266,6 @@ void on_write(write_params params) {
 void on_accept(accept_params params) {
     context *ctx = (context*)params.ctx;
     auto fd = ctx->on_accept(params);
-    printf("accepted new fd!\n");
     fd->read()->then([fd](std::string_view data) {
         std::string response;
         response.reserve(40000000);
