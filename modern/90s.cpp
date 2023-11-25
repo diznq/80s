@@ -273,7 +273,6 @@ void on_accept(accept_params params) {
         for(int i = 80; i < 40000000; i += 80, ctr++) {
             response[i] = '\n';
             response[i - 1] = ('a' + ctr % 26);
-            response[i - 80] = ('A' + ctr % 26);
         }
         fd->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: 40000005\r\n\r\n")->then([](bool ok) {
             printf("write result 1: %d\n", ok);
