@@ -181,7 +181,7 @@ void *serve(void *vparams) {
                 params_accept.ctx = ctxes[cx->worker]; // different worker has different context!
                 params_accept.elfd = els[cx->worker];  // same with event loop
                 params_accept.parentfd = parentfd;
-                params_accept.childfd = childfd;
+                params_accept.childfd = (fd_t)cx->recv;
                 params_accept.fdtype = S80_FD_SOCKET;
                 if(cx->worker == id) {
                     on_accept(params_accept);
@@ -191,7 +191,7 @@ void *serve(void *vparams) {
                     message->sender_fd = parentfd;
                     message->receiver_fd = childfd;
                     message->type = S80_MB_ACCEPT;
-                    message->message = calloc(sizeof(accept_params), 1);
+                    message->message = (char*)calloc(sizeof(accept_params), 1);
                     if(message->message) {
                         memcpy(message->message, &params_accept, sizeof(accept_params));
                         if(s80_mail(params->reload->mailboxes + cx->worker, message) < 0) {

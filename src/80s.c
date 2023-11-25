@@ -334,11 +334,19 @@ int main(int argc, const char **argv) {
     if(!cli) {
         parentfd = (fd_t)socket(v6 ? AF_INET6 : AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
+#ifdef _WIN32
+        if (parentfd == (fd_t)INVALID_SOCKET)
+#else
         if (parentfd < 0)
+#endif
             error("main: failed to create server socket");
 
         optval = 1;
+        #ifdef _WIN32
+        setsockopt((sock_t)parentfd, SOL_SOCKET, SO_REUSEADDR, (const char *)&optval, sizeof(int));
+        #else
         setsockopt((sock_t)parentfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
+        #endif
         memset((void *)&serveraddr, 0, sizeof(serveraddr));
 
         if (v6) {
@@ -392,7 +400,7 @@ int main(int argc, const char **argv) {
 
         mailboxes[i].size = 0;
         mailboxes[i].reserved = 32;
-        mailboxes[i].messages = calloc(mailboxes[i].reserved, sizeof(mailbox_message));
+        mailboxes[i].messages = (mailbox_message*)calloc(mailboxes[i].reserved, sizeof(mailbox_message));
         params[i].initialized = 0;
         params[i].reload = &reload;
         params[i].parentfd = parentfd;

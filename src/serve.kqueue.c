@@ -151,7 +151,7 @@ void *serve(void *vparams) {
                     message->sender_fd = parentfd;
                     message->receiver_fd = childfd;
                     message->type = S80_MB_ACCEPT;
-                    message->message = calloc(sizeof(accept_params), 1);
+                    message->message = (char*)calloc(sizeof(accept_params), 1);
                     if(message->message) {
                         memcpy(message->message, &params_accept, sizeof(accept_params));
                         if(s80_mail(params->reload->mailboxes + accepts, message) < 0) {
