@@ -279,6 +279,7 @@ void on_accept(accept_params params) {
             } else {
                 response += num + '\n';
             }
+            ctr++;
         }
         fd->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: 40000005\r\n\r\n")->then([](bool ok) {
             printf("write result 1: %d\n", ok);
