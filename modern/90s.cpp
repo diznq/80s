@@ -82,6 +82,7 @@ public:
     }
 
     void on_write(size_t written_bytes) {
+        int do_write = 1;
         for(;;) {
             printf("on_write/write back offset: %zu -> %zu (written: %zu)\n", write_back_offset, write_back_offset + written_bytes, written_bytes);
             write_back_offset += written_bytes;
@@ -103,7 +104,7 @@ public:
                 }
             }
             
-            if(write_back_offset < write_back_buffer.size()) {
+            if(write_back_offset < write_back_buffer.size() && do_write) {
                 printf("on_write/write back offset: %zu, size: %zu\n", write_back_offset, write_back_buffer.size());
                 size_t to_write = write_back_buffer.size() - write_back_offset;
                 int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), write_back_offset, to_write);
@@ -117,8 +118,10 @@ public:
                 } else if(ok == to_write) {
                     printf("on_write/-------\n");
                     written_bytes = (size_t)ok;
+                    do_write = 0;
                 } else {
                     written_bytes = (size_t)ok;
+                    do_write = 0;
                 }
             } else {
                 break;
