@@ -152,7 +152,7 @@ public:
         write_back_buffer_info.emplace_back(back_buffer(promise, data.size(), 0));
         memcpy(write_back_buffer.data() + offset, data.data(), data.length());
 
-        auto& back = write_back_buffer.back();
+        auto& back = write_back_buffer_info.back();
         if(write_back_buffer_info.size() == 1) {
             dbgf("   write/write back offset: %zu, size: %zu\n", write_back_offset, write_back_buffer.size());
             size_t buffer_size = write_back_buffer.size();
@@ -169,6 +169,7 @@ public:
                 on_write(to_write);
             } else {
                 write_back_offset += (size_t)ok;
+                back.sent += (size_t)ok;
             }
             return promise;
         } else {
@@ -268,11 +269,16 @@ void on_accept(accept_params params) {
     context *ctx = (context*)params.ctx;
     auto fd = ctx->on_accept(params);
     fd->read()->then([fd](std::string_view data) {
-        std::string response(40000000, 'A');
+        std::string response;
+        response.reserve(40000000);
         int ctr = 0;
-        for(int i = 80; i < 40000000; i += 80, ctr++) {
-            response[i] = '\n';
-            response[i - 1] = ('a' + ctr % 26);
+        while(response.length() < 40000000) {
+            std::string num = std::to_string(ctr);
+            if(response.length() + num.length() + 1 > 40000000) {
+                response += std::string('-', 40000000 - response.length());
+            } else {
+                response += num + '\n';
+            }
         }
         fd->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: 40000005\r\n\r\n")->then([](bool ok) {
             printf("write result 1: %d\n", ok);
