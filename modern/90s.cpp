@@ -120,9 +120,6 @@ public:
                     dbgf("on_write/-------\n");
                     written_bytes = (size_t)ok;
                     do_write = 0;
-                } else {
-                    written_bytes = (size_t)ok;
-                    do_write = 0;
                 }
             } else {
                 break;
@@ -269,8 +266,11 @@ void on_accept(accept_params params) {
     auto fd = ctx->on_accept(params);
     fd->read()->then([fd](std::string_view data) {
         std::string response(40000000, 'A');
-        for(int i = 1000; i < 40000000; i += 1000) {
+        int ctr = 0;
+        for(int i = 80; i < 40000000; i += 80, ctr++) {
             response[i] = '\n';
+            response[i - 1] = ('a' + ctr % 26);
+            response[i - 80] = ('A' + ctr % 26);
         }
         fd->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-length: 40000005\r\n\r\n")->then([](bool ok) {
             printf("write result 1: %d\n", ok);
