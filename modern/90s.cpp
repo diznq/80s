@@ -82,8 +82,8 @@ public:
     }
 
     void on_write(size_t written_bytes) {
-        int do_write = 1;
         for(;;) {
+            int do_write = written_bytes == 0;
             dbgf("on_write/write back offset: %zu -> %zu (written: %zu)\n", write_back_offset, write_back_offset + written_bytes, written_bytes);
             write_back_offset += written_bytes;
             size_t i = 0;
@@ -121,10 +121,8 @@ public:
                 } else if(ok == to_write) {
                     dbgf("on_write/-------\n");
                     written_bytes = (size_t)ok;
-                    do_write = 0;
                 } else {
                     written_bytes = (size_t)ok;
-                    do_write = 0;
                 }
             } else {
                 break;
@@ -155,6 +153,7 @@ public:
         memcpy(write_back_buffer.data() + offset, data.data(), data.length());
 
         auto& back = write_back_buffer_info.back();
+        dbgf("   write/write back queue size: %zu\n", write_back_buffer_info.size());
         if(write_back_buffer_info.size() == 1) {
             dbgf("   write/write back offset: %zu, size: %zu\n", write_back_offset, write_back_buffer.size());
             size_t buffer_size = write_back_buffer.size();
@@ -166,12 +165,9 @@ public:
                 write_back_offset = 0;
                 write_back_buffer.clear();
                 write_back_buffer_info.clear();
-            } else if((size_t) ok == to_write) {
+            } else if(ok > 0) {
                 dbgf("   write/-------\n");
-                on_write(to_write);
-            } else {
-                write_back_offset += (size_t)ok;
-                back.sent += (size_t)ok;
+                on_write((size_t)ok);
             }
             return promise;
         } else {
@@ -276,11 +272,7 @@ void on_accept(accept_params params) {
         int ctr = 0;
         while(response.length() < 40000000) {
             std::string num = std::to_string(ctr);
-            if(response.length() + num.length() + 1 > 40000000) {
-                response += std::string('-', 40000000 - response.length());
-            } else {
-                response += num + '\n';
-            }
+            response += num + '\n';
             ctr++;
         }
         response = response.substr(0, 40000000);
