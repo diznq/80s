@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 INC_SEARCH_PATH="$LUA_INC_PATH /usr/include/lua.h /usr/include/lua5.4/lua.h /usr/local/include/lua54/lua.h /usr/local/include/lua.h /mingw64/include/lua.h"
 JIT_INC_SEARCH_PATH="$LUA_INC_PATH /usr/local/include/luajit-2.1/lua.h /mingw64/include/luajit-2.1/lua.h"
-SO_SEARCH_PATH="$LUA_LIB_PATH /usr/lib64/liblua.so /usr/local/lib/liblua-5.4.so /usr/lib/x86_64-linux-gnu/liblua5.4.so /mingw64/lib/liblua.dll.a"
+SO_SEARCH_PATH="$LUA_LIB_PATH /usr/lib64/liblua.so /usr/lib64/liblua-5.4.so /usr/local/lib/liblua-5.4.so /usr/lib/x86_64-linux-gnu/liblua5.4.so /mingw64/lib/liblua.dll.a"
 JIT_SO_SEARCH_PATH="$LUA_LIB_PATH /usr/lib64/libluajit-5.1.so* /usr/local/lib/libluajit-5.1.so*"
 LIB_SEARCH_PATH="$LUA_LIB_PATH /usr/local/lib/liblua.a /usr/local/lib/liblua-5.4.a /mingw64/lib/liblua.a"
 JIT_LIB_SEARCH_PATH="$LUA_LIB_PATH /usr/local/lib/libluajit-5.1.a /mingw64/lib/libluajit-5.1.a /mingw64/lib/libluajit-5.1.dll.a"
@@ -52,7 +52,7 @@ fi
 
 DEFAULT_COMPILER="gcc"
 
-if ! type "$DEFAULT_COMPILER" &> /dev/null; then
+if ! [ -x "$(command -v $DEFAULT_COMPILER)" ]; then
   DEFAULT_COMPILER="clang"
 fi
 
@@ -93,6 +93,7 @@ echo "Libraries: $LIBS"
 echo "Flags: $FLAGS"
 echo "Lua include directory: $LUA_INC"
 echo "Lua library directory: $LUA_LIB"
+echo "Compiler: $CC"
 
 if [ "$LINK" = "dynamic" ]; then
   DEFINES="$DEFINES -DS80_DYNAMIC=1"
