@@ -179,7 +179,7 @@ static void set_package_path(lua_State *L) {
     const char *current_path;
     char buf[500];
     char exe_path[1000];
-    struct dynstr str;
+    dynstr str;
     int parents = 0;
     size_t len;
     memset(exe_path, 0, sizeof(exe_path));

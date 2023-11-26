@@ -269,7 +269,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
     fd_t piperd[2] = {INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE}, pipewr[2] = {INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE};
     fd_t childfd;
     context_holder *cx;
-    struct dynstr ds;
+    dynstr ds;
     char buf[8192];
     int i, j;
     char pipe_names[2][255];

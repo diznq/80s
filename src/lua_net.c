@@ -83,7 +83,7 @@ static int l_net_sockname(lua_State *L) {
 
 static int l_net_readfile(lua_State *L) {
     char buf[10000];
-    struct dynstr dyn;
+    dynstr dyn;
     size_t size;
     const char *name = lua_tostring(L, 1);
     const char *mode = lua_tostring(L, 2);
@@ -412,7 +412,7 @@ static int l_net_popen(lua_State *L) {
 
 static int l_net_info(lua_State *L) {
     char buf[500];
-    struct dynstr str;
+    dynstr str;
     dynstr_init(&str, buf, sizeof(buf));
     dynstr_putsz(&str, "date: ");
     dynstr_putsz(&str, __DATE__);

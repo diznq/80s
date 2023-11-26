@@ -9,7 +9,7 @@
 
 char url_encode_lut[256];
 
-static void encode_string(struct dynstr *out, const char *value, size_t value_len) {
+static void encode_string(dynstr *out, const char *value, size_t value_len) {
     dynstr_putc(out, '"');
     while (value_len--) {
         switch (*value) {
@@ -46,7 +46,7 @@ static void encode_string(struct dynstr *out, const char *value, size_t value_le
     dynstr_putc(out, '"');
 }
 
-static void json_encode(lua_State *L, struct dynstr *out) {
+static void json_encode(lua_State *L, dynstr *out) {
     size_t value_len;
     const char *key = 0, *value;
     int type, x, is_array, is_empty = 1, idx = lua_gettop(L);
@@ -108,7 +108,7 @@ static void json_encode(lua_State *L, struct dynstr *out) {
     }
 }
 
-static void lua_encode(lua_State *L, struct dynstr *out) {
+static void lua_encode(lua_State *L, dynstr *out) {
     size_t value_len;
     const char *key, *value;
     int type, x, is_array, is_empty = 1, idx = lua_gettop(L);
@@ -182,7 +182,7 @@ static void json_decode(lua_State *L, const char *text, size_t len) {
     size_t i = 0;
     enum state states[32], *current_state;
     char buffer[4096], k;
-    struct dynstr str;
+    dynstr str;
     int start = lua_gettop(L) + 1, at = 0, ok = 1, top_now = 0, negative = 0, top[32] = {0}, pushes[32] = {0};
     int64_t num = 0, real = 0, fractions = 0;
     double real_num = 0.0;
@@ -545,7 +545,7 @@ static void json_decode(lua_State *L, const char *text, size_t len) {
 static int l_codec_json_encode(lua_State *L) {
     char buffer[65536];
     size_t offset = 0;
-    struct dynstr str;
+    dynstr str;
     if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TTABLE) {
         return luaL_error(L, "expecting 1 argument: data (table)");
     }
@@ -570,7 +570,7 @@ static int l_codec_json_decode(lua_State *L) {
 static int l_codec_lua_encode(lua_State *L) {
     char buffer[65536];
     size_t offset = 0;
-    struct dynstr str;
+    dynstr str;
     int args = lua_gettop(L);
     if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TTABLE) {
         return luaL_error(L, "expecting 1 argument: data (table)");
@@ -587,7 +587,7 @@ static int l_codec_hex_encode(lua_State *L) {
     if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TSTRING) {
         return luaL_error(L, "expecting 1 argument: text (string)");
     }
-    struct dynstr str;
+    dynstr str;
     size_t len, i, j = 0;
     char buffer[2048], c;
     char chars[] = "0123456789abcdef";
@@ -612,7 +612,7 @@ static int l_codec_url_encode(lua_State *L) {
         return luaL_error(L, "expecting 1 argument: text (string)");
     }
     size_t len, i, j = 0;
-    struct dynstr str;
+    dynstr str;
     char buffer[2048], c;
     char chars[] = "0123456789ABCDEF";
     char buf[3] = {'%', 0, 0};
@@ -642,7 +642,7 @@ static int l_codec_url_decode(lua_State *L) {
         return luaL_error(L, "expecting 1 argument: text (string)");
     }
     size_t len, i, j = 0;
-    struct dynstr str;
+    dynstr str;
     char buffer[2048], c;
     char lut[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 
                 // A   B   C   D   E   F  G  H  I  J  K  L  M  N  O  P  Q  R  S  T  U  V  W  X  Y  Z
@@ -688,7 +688,7 @@ static int l_codec_mysql_encode(lua_State *L) {
         return luaL_error(L, "expecting 1 argument: text (string)");
     }
     size_t len, i;
-    struct dynstr str;
+    dynstr str;
     char buffer[512], c;
     const char *data = lua_tolstring(L, 1, &len);
     dynstr_init(&str, buffer, sizeof(buffer));
@@ -733,7 +733,7 @@ static int l_codec_html_encode(lua_State *L) {
         return luaL_error(L, "expecting 1 argument: text (string)");
     }
     size_t len, i;
-    struct dynstr str;
+    dynstr str;
     char buffer[4096], c;
     const char *data = lua_tolstring(L, 1, &len);
     dynstr_init(&str, buffer, sizeof(buffer));
