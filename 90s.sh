@@ -7,7 +7,7 @@ fi
 
 FLAGS="-s -O3"
 OUT="${OUT:-bin/90s}"
-CC="${CC:-$DEFAULT_COMPILER}"
+CXX="${CXX:-$DEFAULT_COMPILER}"
 
 mkdir -p bin
 
@@ -31,7 +31,7 @@ echo "Defines: $DEFINES"
 echo "Libraries: $LIBS"
 echo "Flags: $FLAGS"
 
-CPPFLAGS="-std=c++20" $CC $FLAGS \
+CPPFLAGS="-std=c++20" $CXX $FLAGS \
     src/80s.c src/80s_common.c src/80s_common.windows.c src/dynstr.c src/algo.c \
     src/serve.epoll.c src/serve.kqueue.c src/serve.iocp.c \
     modern/90s.cpp \
