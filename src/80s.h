@@ -108,7 +108,6 @@ typedef struct serve_params_ serve_params;
 typedef struct module_extension_ module_extension;
 typedef struct reload_context_ reload_context;
 typedef struct node_id_ node_id;
-typedef struct fd_holder_ fd_holder;
 typedef struct mailbox_ mailbox;
 typedef struct mailbox_message_ mailbox_message;
 
@@ -221,10 +220,10 @@ struct serve_params_ {
     reload_context *reload;
 };
 
-struct fd_holder_ {
+typedef struct fd_holder_ {
     int type;
     fd_t fd;
-};
+} fd_holder;
 
 #define SET_FD_HOLDER(ev, Type, Fd) do {\
     ((fd_holder*)(uintptr_t)&ev.data.ptr)->type = Type;\
