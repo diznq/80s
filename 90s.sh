@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 DEFAULT_COMPILER="g++"
 
-if ! type "$DEFAULT_COMPILER" &> /dev/null; then
+if ! [ -x "$(command -v $DEFAULT_COMPILER)" ]; then
   DEFAULT_COMPILER="clang++"
 fi
 
