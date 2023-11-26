@@ -52,7 +52,7 @@ fi
 
 DEFAULT_COMPILER="gcc"
 
-if ! command -v "$DEFAULT_COMPILER" &> /dev/null; then
+if ! [ -x "$(command -v $DEFAULT_COMPILER)" ]; then
   DEFAULT_COMPILER="clang"
 fi
 

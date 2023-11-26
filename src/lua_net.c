@@ -349,8 +349,8 @@ static int l_net_mkdir(lua_State *L) {
     const int len = strlen(dir_name);
     char copy[len + 1];
     strcpy(copy, dir_name);
-    for(int i = 0; i <len; i++) {
-        if(copy[i] == '/') copy[i] == '\\';
+    for(int i = 0; i < len; i++) {
+        if(copy[i] == '/') copy[i] = '\\';
     }
     int status = CreateDirectoryA(copy, NULL);
     if(!status && GetLastError() == ERROR_ALREADY_EXISTS) status = 1;
