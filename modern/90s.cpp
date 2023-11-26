@@ -312,7 +312,7 @@ public:
             fd = it->second;
         } else {
             fd = std::make_shared<afd>(this, params.elfd, params.childfd, params.fdtype);
-            fds.insert(std::make_pair(params.childfd, fd)).first;
+            fds.insert(std::make_pair(params.childfd, fd));
             fd->on_accept();
         }
         fd->on_data(std::string_view(params.buf, params.readlen));
@@ -347,7 +347,7 @@ public:
             fd = it->second;
         } else {
             fd = std::make_shared<afd>(this, params.elfd, params.childfd, params.fdtype);
-            fds.insert(std::make_pair(params.childfd, fd)).first;
+            fds.insert(std::make_pair(params.childfd, fd));
         }
         fd->on_accept();    
         return fd;
