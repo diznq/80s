@@ -152,7 +152,7 @@ static int l_net_inotify_init(lua_State *L) {
 
 #ifdef USE_EPOLL
     ev.events = EPOLLIN;
-    SET_FD_HOLDER(&ev.data, S80_FD_OTHER, childfd);
+    SET_FD_HOLDER(ev, S80_FD_OTHER, childfd);
     status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, &ev);
 #endif
     if (status < 0) {

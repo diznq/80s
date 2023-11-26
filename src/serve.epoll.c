@@ -78,7 +78,7 @@ void *serve(void *vparams) {
             error("serve: failed to create epoll");
 
         ev.events = EPOLLIN;
-        SET_FD_HOLDER(&ev.data, S80_FD_PIPE, selfpipe);
+        SET_FD_HOLDER(ev, S80_FD_PIPE, selfpipe);
         if(epoll_ctl(elfd, EPOLL_CTL_ADD, selfpipe, &ev) < 0) {
             error("serve: failed to add self pipe to epoll");
         }
@@ -90,7 +90,7 @@ void *serve(void *vparams) {
         if (id == 0 && parentfd >= 0) {
             ev.events = EPOLLIN;
             s80_enable_async(parentfd);
-            SET_FD_HOLDER(&ev.data, S80_FD_SERVER_SOCKET, parentfd);
+            SET_FD_HOLDER(ev, S80_FD_SERVER_SOCKET, parentfd);
             if (epoll_ctl(elfd, EPOLL_CTL_ADD, parentfd, &ev) < 0) {
                 error("serve: failed to add server socket to epoll");
             }
@@ -107,7 +107,7 @@ void *serve(void *vparams) {
             }
             
             ev.events = EPOLLIN;
-            SET_FD_HOLDER(&ev.data, S80_FD_OTHER, sigfd);
+            SET_FD_HOLDER(ev, S80_FD_OTHER, sigfd);
             if (epoll_ctl(elfd, EPOLL_CTL_ADD, sigfd, &ev) < 0) {
                 error("serve: failed to add signal fd to epoll");
             }
@@ -150,8 +150,8 @@ void *serve(void *vparams) {
         resolve_mail(params, id);
 
         for (n = 0; n < nfds; ++n) {
-            childfd = FD_HOLDER_FD(&events[n].data);
-            fdtype = FD_HOLDER_TYPE(&events[n].data);
+            childfd = FD_HOLDER_FD(events[n]);
+            fdtype = FD_HOLDER_TYPE(events[n]);
             flags = events[n].events;
             closed = 0;
 
@@ -169,7 +169,7 @@ void *serve(void *vparams) {
                 // set non blocking flag to the newly created child socket
                 s80_enable_async(childfd);
                 ev.events = EPOLLIN;
-                SET_FD_HOLDER(&ev.data, S80_FD_SOCKET, childfd);
+                SET_FD_HOLDER(ev, S80_FD_SOCKET, childfd);
                 // add the child socket to the event loop it belongs to based on modulo
                 // with number of workers, to balance the load to other threads
                 if (epoll_ctl(els[accepts], EPOLL_CTL_ADD, childfd, &ev) < 0) {
@@ -226,7 +226,7 @@ void *serve(void *vparams) {
                     // we should receive this only after socket is writeable, after that we remove it from EPOLLOUT queue
                     if(fdtype != S80_FD_PIPE) {
                         ev.events = EPOLLIN;
-                        SET_FD_HOLDER(&ev.data, fdtype, childfd);
+                        SET_FD_HOLDER(ev, fdtype, childfd);
                         if (epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev) < 0) {
                             dbg("serve: failed to move child socket from out to in");
                         }
@@ -240,7 +240,7 @@ void *serve(void *vparams) {
                     // if length is <= 0, remove the socket from event loop
                     if (readlen <= 0) {
                         ev.events = EPOLLIN | EPOLLOUT;
-                        SET_FD_HOLDER(&ev.data, fdtype, childfd);
+                        SET_FD_HOLDER(ev, fdtype, childfd);
                         if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
                             dbg("serve: failed to remove child socket on readlen < 0");
                         }
@@ -270,7 +270,7 @@ void *serve(void *vparams) {
                         on_receive(params_read);
                     }
                     ev.events = EPOLLIN | EPOLLOUT;
-                    SET_FD_HOLDER(&ev.data, fdtype, childfd);
+                    SET_FD_HOLDER(ev, fdtype, childfd);
                     if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
                         dbg("serve: failed to remove hungup child");
                     }
