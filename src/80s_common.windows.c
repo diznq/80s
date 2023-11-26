@@ -175,7 +175,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
     // create a new throw-away buffer and fill it with contents to be sent
     // we gotta do it this way, as directly sending data buffer
     // doesn't guarantee it wouldn't get GC-ed in meantime
-    cx->send->wsaBuf.buf = (char*)malloc(len - offset);
+    cx->send->wsaBuf.buf = (char*)calloc(len - offset, 1);
     cx->send->wsaBuf.len = len - offset;
     memcpy(cx->send->wsaBuf.buf, data + offset, len - offset);
     // wsa send the stuff, if it's too large it later produces cx->send->ol event

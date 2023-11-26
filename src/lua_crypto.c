@@ -487,7 +487,7 @@ static int l_crypto_ssl_bio_new(lua_State *L) {
     if(lua_gettop(L) < 3 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TLIGHTUSERDATA || lua_type(L, 3) != LUA_TLIGHTUSERDATA) {
         return luaL_error(L, "expecting 3 arguments: ssl context (lightuserdata), elfd (lightuserdata), childfd (lightuserdata)[, ktls (boolean)]");
     }
-    struct ssl_nb_context *ctx = (struct ssl_nb_context*)malloc(sizeof(struct ssl_nb_context));
+    struct ssl_nb_context *ctx = (struct ssl_nb_context*)calloc(1, sizeof(struct ssl_nb_context));
     int do_ktls = lua_gettop(L) == 4 && lua_type(L, 4) == LUA_TBOOLEAN ? lua_toboolean(L, 4) : 0;
     if(!ctx) {
         return 0;
@@ -513,7 +513,7 @@ static int l_crypto_ssl_bio_new_connect(lua_State *L) {
     if(lua_gettop(L) < 4 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TSTRING || lua_type(L, 3) != LUA_TLIGHTUSERDATA || lua_type(L, 4) != LUA_TLIGHTUSERDATA) {
         return luaL_error(L, "expecting 4 arguments: ssl context (lightuserdata), host:port (string), elfd (lightuserdata), childfd (lightuserdata)[, ktls (boolean)]");
     }
-    struct ssl_nb_context *ctx = (struct ssl_nb_context*)malloc(sizeof(struct ssl_nb_context));
+    struct ssl_nb_context *ctx = (struct ssl_nb_context*)calloc(1, sizeof(struct ssl_nb_context));
     const char *hostport = lua_tostring(L, 2);
     int do_ktls = lua_gettop(L) == 5 && lua_type(L, 5) == LUA_TBOOLEAN ? lua_toboolean(L, 5) : 0;
     if(!ctx) {
