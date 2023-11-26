@@ -52,7 +52,7 @@ fi
 
 DEFAULT_COMPILER="gcc"
 
-if ! type "$DEFAULT_COMPILER" &> /dev/null; then
+if ! command -v "$DEFAULT_COMPILER" &> /dev/null; then
   DEFAULT_COMPILER="clang"
 fi
 
@@ -93,6 +93,7 @@ echo "Libraries: $LIBS"
 echo "Flags: $FLAGS"
 echo "Lua include directory: $LUA_INC"
 echo "Lua library directory: $LUA_LIB"
+echo "Compiler: $CC"
 
 if [ "$LINK" = "dynamic" ]; then
   DEFINES="$DEFINES -DS80_DYNAMIC=1"
