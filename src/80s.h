@@ -227,12 +227,12 @@ struct fd_holder_ {
 };
 
 #define SET_FD_HOLDER(ev, Type, Fd) do {\
-    ((fd_holder*)&ev.data.ptr)->type = Type;\
-    ((fd_holder*)&ev.data.ptr)->fd = Fd;\
+    ((fd_holder*)(uintptr_t)&ev.data.ptr)->type = Type;\
+    ((fd_holder*)(uintptr_t)&ev.data.ptr)->fd = Fd;\
 } while(0)
 
-#define FD_HOLDER_TYPE(ev) ((fd_holder*)&ev.data.ptr)->type
-#define FD_HOLDER_FD(ev) ((fd_holder*)&ev.data.ptr)->fd
+#define FD_HOLDER_TYPE(ev) ((fd_holder*)(uintptr_t)&ev.data.ptr)->type
+#define FD_HOLDER_FD(ev) ((fd_holder*)(uintptr_t)&ev.data.ptr)->fd
 
 static void error(const char *msg) {
     perror(msg);
