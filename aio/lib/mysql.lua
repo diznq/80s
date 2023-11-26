@@ -16,7 +16,9 @@ local mysql = {
     --- @type aiosocket
     fd = nil,
     connected = false,   -- whether we are authenticated to db
+    --- @type {callback: function, query: string}[]
     callbacks = {},
+    --- @type {callback: function, query: string}?
     active_callback = nil,
 
     user = "root",
@@ -318,7 +320,7 @@ function mysql:connect(user, password, db, host, port)
                 -- in case active_callback was set and keeps returning true, it will be called until it doesn't return
                 -- true anymore
                 if self.active_callback ~= nil then
-                    local ok, res = pcall(self.active_callback, seq, command)
+                    local ok, res = pcall(self.active_callback.callback, seq, command, self.active_callback.query)
                     if not ok then
                         print("[mysql] mysql.on_data: next call failed: ", res)
                         self.active_callback = nil
@@ -330,7 +332,7 @@ function mysql:connect(user, password, db, host, port)
                     table.remove(self.callbacks, 1)
                     -- use protected call, so it doesn't break our loop
                     -- if it returns true, it means more sequences are needed!
-                    local ok, res = pcall(first, seq, command)
+                    local ok, res = pcall(first.callback, seq, command, first.query)
                     if not ok then
                         print("[mysql] mysql.on_data: first call failed: ", res)
                     elseif res == true then
@@ -487,7 +489,7 @@ end
 --- Execute SQL query in raw mode
 ---@param query string query
 ---@param ... string arguments
----@return fun(on_resolved: fun(seq: integer, response: string)|thread) promise response promise
+---@return fun(on_resolved: fun(seq: integer, response: string, query: string)|thread) promise response promise
 function mysql:raw_exec(query, ...)
     local params = {...}
     local on_resolved, resolve_event = aio:prepare_promise()
@@ -503,7 +505,7 @@ function mysql:raw_exec(query, ...)
                 return
             end
         end
-        table.insert(self.callbacks, on_resolved)
+        table.insert(self.callbacks, {callback = on_resolved, query = command})
         self:write_packet(0, string.char(3) .. command)
     end
     if not self.fd then
@@ -528,8 +530,9 @@ end
 ---@return fun(on_resolved: fun(result: mysqlerror|mysqlok|mysqleof))
 function mysql:exec(query, ...)
     local on_resolved, resolve_event = aio:prepare_promise()
-    self:raw_exec(query, ...)(function (seq, response)
+    self:raw_exec(query, ...)(function (seq, response, query)
         if not seq and type(response) == "table" and response.error then
+            response.original_query = query
             on_resolved(response)
         else
             local response = self:decode_packet(response)
