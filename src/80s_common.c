@@ -103,7 +103,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
     #ifdef USE_EPOLL
         // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
         ev[0].events = EPOLLIN | EPOLLOUT;
-        SET_FD_HOLDER(&ev[0].data, S80_FD_SOCKET, childfd);
+        SET_FD_HOLDER(ev[0], S80_FD_SOCKET, childfd);
         status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
     #elif defined(USE_KQUEUE)
         // subscribe for both read and write separately
@@ -135,7 +135,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
         if (writelen < len) {
     #ifdef USE_EPOLL
             ev.events = EPOLLIN | EPOLLOUT;
-            SET_FD_HOLDER(&ev.data, fdtype, childfd);
+            SET_FD_HOLDER(ev, fdtype, childfd);
             status = epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev);
     #elif defined(USE_KQUEUE)
             EV_SET(&ev, childfd, EVFILT_WRITE, fdtype == S80_FD_PIPE ? (EV_ADD | EV_CLEAR) : (EV_ADD | EV_ONESHOT), 0, 0, int_to_void(fdtype));
@@ -156,7 +156,7 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
     int status = 0;
 #ifdef USE_EPOLL
     ev.events = EPOLLIN | EPOLLOUT;
-    SET_FD_HOLDER(&ev.data, fdtype, childfd);
+    SET_FD_HOLDER(ev, fdtype, childfd);
     status = epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev);
 #endif
 
@@ -225,7 +225,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
     #ifdef USE_EPOLL
         // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
         ev[0].events = i == 0 ? EPOLLIN : EPOLLOUT;
-        SET_FD_HOLDER(&ev[0].data, S80_FD_PIPE, childfd);
+        SET_FD_HOLDER(ev[0], S80_FD_PIPE, childfd);
         status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, ev);
     #elif defined(USE_KQUEUE)
         // subscribe for both read and write separately
@@ -371,7 +371,7 @@ static int cleanup_pipes(fd_t elfd, fd_t *pipes, int allocated) {
         if(i < 2) {
             // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
             ev[0].events = i == 0 ? EPOLLIN : EPOLLOUT;
-            SET_FD_HOLDER(&ev[0].data, S80_FD_PIPE, childfd);
+            SET_FD_HOLDER(ev[0], S80_FD_PIPE, childfd);
             epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, ev);
         }
     #endif
