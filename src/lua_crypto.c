@@ -159,7 +159,7 @@ static int l_crypto_ssl_new_client(lua_State *L) {
         privkey = lua_tostring(L, 4);
     }
 
-    status = crypto_ssl_new_server(pubkey, privkey, &ctx, &error_message);
+    status = crypto_ssl_new_client(ca_file, ca_path, pubkey, privkey, &ctx, &error_message);
     if(status < 0) {
         lua_pushnil(L);
         lua_pushstring(L, error_message);

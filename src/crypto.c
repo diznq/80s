@@ -702,4 +702,5 @@ int crypto_init() {
     SSL_library_init();
     OpenSSL_add_all_algorithms();
     OpenSSL_add_ssl_algorithms();
+    return 0;
 }
