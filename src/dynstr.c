@@ -8,7 +8,7 @@ int dynstr_check(struct dynstr *self, size_t space) {
     if (self->length + space >= self->size) {
         new_size = self->size + space + (self->size >> 1) + 65536;
         if (self->on_stack) {
-            arr = (char*)malloc(new_size);
+            arr = (char*)calloc(new_size, 1);
             if (!arr) {
                 self->ok = 0;
                 return 0;

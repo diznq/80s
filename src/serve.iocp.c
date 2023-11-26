@@ -8,7 +8,7 @@ union addr_common {
 
 // create a new iocp context
 context_holder* new_context_holder(fd_t fd, int fdtype) {
-    context_holder *ctx = (context_holder*)malloc(sizeof(context_holder));
+    context_holder *ctx = (context_holder*)calloc(1, sizeof(context_holder));
     memset(ctx, 0, sizeof(context_holder));
     ctx->ol.Pointer = ctx;
     ctx->wsaBuf.buf = ctx->data;

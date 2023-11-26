@@ -108,7 +108,6 @@ typedef struct serve_params_ serve_params;
 typedef struct module_extension_ module_extension;
 typedef struct reload_context_ reload_context;
 typedef struct node_id_ node_id;
-typedef struct fd_holder_ fd_holder;
 typedef struct mailbox_ mailbox;
 typedef struct mailbox_message_ mailbox_message;
 
@@ -221,18 +220,18 @@ struct serve_params_ {
     reload_context *reload;
 };
 
-struct fd_holder_ {
+typedef struct fd_holder_ {
     int type;
     fd_t fd;
-};
+} fd_holder;
 
 #define SET_FD_HOLDER(ev, Type, Fd) do {\
-    ((fd_holder*)&ev.data.ptr)->type = Type;\
-    ((fd_holder*)&ev.data.ptr)->fd = Fd;\
+    ((fd_holder*)(uintptr_t)&ev.data.ptr)->type = Type;\
+    ((fd_holder*)(uintptr_t)&ev.data.ptr)->fd = Fd;\
 } while(0)
 
-#define FD_HOLDER_TYPE(ev) ((fd_holder*)&ev.data.ptr)->type
-#define FD_HOLDER_FD(ev) ((fd_holder*)&ev.data.ptr)->fd
+#define FD_HOLDER_TYPE(ev) ((fd_holder*)(uintptr_t)&ev.data.ptr)->type
+#define FD_HOLDER_FD(ev) ((fd_holder*)(uintptr_t)&ev.data.ptr)->fd
 
 static void error(const char *msg) {
     perror(msg);

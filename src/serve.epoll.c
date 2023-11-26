@@ -49,8 +49,8 @@ void *serve(void *vparams) {
 
     memset(&clientaddr, 0, sizeof(clientaddr));
 
-    if(sizeof(fd_holder) != sizeof(uint64_t)) {
-        error("serve: sizeof(fdholder) != sizeof(uint64_t)");
+    if(sizeof(fd_holder) != sizeof(void*)) {
+        error("serve: sizeof(fdholder) != sizeof(void*)");
     }
 
     accepts = 0;
