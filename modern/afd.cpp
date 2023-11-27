@@ -32,7 +32,7 @@ namespace s90 {
                 auto& command = *it;
                 switch(command.type) {
                     case read_command_type::any:
-                        command.promise->resolve(window);
+                        command.promise->resolve({true, window});
                         it = read_commands.erase(it);
                         window = window.substr(window.size());
                         iterate = false;
@@ -41,7 +41,7 @@ namespace s90 {
                         if(window.length() < command.n) {
                             iterate = false;
                         } else {
-                            command.promise->resolve(window.substr(0, command.n));
+                            command.promise->resolve({true, window.substr(0, command.n)});
                             window = window.substr(command.n);
                             it = read_commands.erase(it);
                             read_offset += command.n;
@@ -52,7 +52,7 @@ namespace s90 {
                         if(part.length + delim_state.match == command.delimiter.size()) {
                             delim_state.match = 0;
                             delim_state.offset = part.offset + part.length;
-                            command.promise->resolve(window.substr(0, delim_state.offset - command.delimiter.size()));
+                            command.promise->resolve({true, window.substr(0, delim_state.offset - command.delimiter.size())});
                             window = window.substr(delim_state.offset);
                             read_offset += delim_state.offset;
                             delim_state.offset = 0;
@@ -138,6 +138,13 @@ namespace s90 {
     void afd::on_close() {
         if(!closed) {
             closed = true;
+            for(auto& item : read_commands) item.promise->resolve({false, ""});
+            write_back_buffer.clear();
+            write_back_buffer_info.clear();
+            write_back_buffer.shrink_to_fit();
+            read_commands.clear();
+            read_buffer.clear();
+            read_buffer.shrink_to_fit();
         }
     }
 
@@ -149,24 +156,26 @@ namespace s90 {
         }
     }
 
+    bool afd::is_closed() const { return closed; }
+
     void afd::set_on_empty_queue(std::function<void()> on_empty) {
         on_command_queue_empty = on_empty;
     }
 
-    std::shared_ptr<aiopromise<std::string_view>> afd::read_any() {
-        auto promise = std::make_shared<aiopromise<std::string_view>>();
+    std::shared_ptr<aiopromise<read_arg>> afd::read_any() {
+        auto promise = std::make_shared<aiopromise<read_arg>>();
         read_commands.emplace_back(read_command(promise, read_command_type::any, 0, ""));
         return promise;
     }
 
-    std::shared_ptr<aiopromise<std::string_view>> afd::read_n(size_t n_bytes) {
-        auto promise = std::make_shared<aiopromise<std::string_view>>();
+    std::shared_ptr<aiopromise<read_arg>> afd::read_n(size_t n_bytes) {
+        auto promise = std::make_shared<aiopromise<read_arg>>();
         read_commands.emplace_back(read_command(promise, read_command_type::n, n_bytes, ""));
         return promise;
     }
 
-    std::shared_ptr<aiopromise<std::string_view>> afd::read_until(std::string&& delim) {
-        auto promise = std::make_shared<aiopromise<std::string_view>>();
+    std::shared_ptr<aiopromise<read_arg>> afd::read_until(std::string&& delim) {
+        auto promise = std::make_shared<aiopromise<read_arg>>();
         read_commands.emplace_back(read_command(promise, read_command_type::until, 0, std::move(delim)));
         return promise;
     }

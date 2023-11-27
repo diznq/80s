@@ -12,6 +12,11 @@ namespace s90 {
 
     class context;
 
+    struct read_arg {
+        bool error;
+        std::string_view data;
+    };
+
     class afd {
         context *ctx;
         fd_t elfd;
@@ -32,13 +37,13 @@ namespace s90 {
         };
 
         struct read_command {
-            std::shared_ptr<aiopromise<std::string_view>> promise;
+            std::shared_ptr<aiopromise<read_arg>> promise;
             read_command_type type;
             size_t n;
             std::string delimiter;
 
             read_command(
-                std::shared_ptr<aiopromise<std::string_view>> promise,
+                std::shared_ptr<aiopromise<read_arg>> promise,
                 read_command_type type,
                 size_t n,
                 std::string&& delimiter
@@ -64,15 +69,17 @@ namespace s90 {
         afd(context *ctx, fd_t elfd, fd_t fd, int fdtype);
         ~afd();
 
+        bool is_closed() const;
+
         void on_accept();
         void on_data(std::string_view data);
         void on_write(size_t written_bytes);
         void on_close();
 
         void set_on_empty_queue(std::function<void()> on_empty);
-        std::shared_ptr<aiopromise<std::string_view>> read_any();
-        std::shared_ptr<aiopromise<std::string_view>> read_n(size_t n_bytes);
-        std::shared_ptr<aiopromise<std::string_view>> read_until(std::string&& delim);
+        std::shared_ptr<aiopromise<read_arg>> read_any();
+        std::shared_ptr<aiopromise<read_arg>> read_n(size_t n_bytes);
+        std::shared_ptr<aiopromise<read_arg>> read_until(std::string&& delim);
         std::shared_ptr<aiopromise<bool>> write(const std::string_view& data);
         void close();
     };

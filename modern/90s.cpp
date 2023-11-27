@@ -38,14 +38,16 @@ void on_accept(accept_params params) {
     auto fd = ctx->on_accept(params);
 
     fd->set_on_empty_queue([fd]() {
-        fd->read_until("\r\n\r\n")->then([fd](std::string_view request) {
+        if(fd->is_closed()) return;
+        fd->read_until("\r\n\r\n")->then([fd](s90::read_arg request) {
+            if(!request.error) return;
             std::string response = 
                 std::string(
                 "HTTP/1.1 200 OK\r\n"
                 "Content-type: text/plain\r\n"
                 "Connection: keep-alive\r\n"
-                "Content-length: ") + std::to_string(request.length()) + "\r\n\r\n";
-            response += request;
+                "Content-length: ") + std::to_string(request.data.length()) + "\r\n\r\n";
+            response += request.data;
             fd->write(response);
         });
     });

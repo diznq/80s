@@ -11,12 +11,8 @@ namespace s90 {
         auto it = fds.find(params.childfd);
         if(it != fds.end()) {
             fd = it->second;
-        } else {
-            fd = std::make_shared<afd>(this, params.elfd, params.childfd, params.fdtype);
-            fds.insert(std::make_pair(params.childfd, fd));
-            fd->on_accept();
+            fd->on_data(std::string_view(params.buf, params.readlen));
         }
-        fd->on_data(std::string_view(params.buf, params.readlen));
         return fd;
     }
 
