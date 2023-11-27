@@ -1,6 +1,9 @@
 #ifndef __80S_DYNSTR_H__
 #define __80S_DYNSTR_H__
 #include <stdlib.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // Dynamic string implementation
 typedef struct dynstr_ {
@@ -18,4 +21,8 @@ int dynstr_putsz(dynstr *self, const char *data);
 int dynstr_putg(dynstr *self, double num);
 void dynstr_init(dynstr *self, char *stkData, size_t size);
 void dynstr_release(dynstr *self);
+
+#ifdef __cplusplus
+}
+#endif
 #endif

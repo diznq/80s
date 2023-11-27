@@ -115,6 +115,8 @@ void *serve(void *vparams) {
             error("serve: error on kevent");
         }
 
+        resolve_mail(params, id);
+
         for (n = 0; n < nfds; ++n) {
             childfd = (int)events[n].ident;
             flags = (int)events[n].flags;

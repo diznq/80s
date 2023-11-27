@@ -2,9 +2,9 @@
 #include <string.h>
 #include <stdint.h>
 
-struct kmp_result kmp(const char* haystack, size_t len, const char* pattern, size_t pattern_len, size_t offset) {
+kmp_result kmp(const char* haystack, size_t len, const char* pattern, size_t pattern_len, size_t offset) {
     int64_t i, j, k, KMP_T[256];
-    struct kmp_result result;
+    kmp_result result;
     int match = 0;
     result.offset = len;
     result.length = 0;

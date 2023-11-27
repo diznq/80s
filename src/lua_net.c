@@ -382,7 +382,7 @@ static int l_net_partscan(lua_State *L) {
     const char *pattern = lua_tolstring(L, 2, &pattern_len);
     offset = ((size_t)lua_tointeger(L, 3)) - 1;
 
-    struct kmp_result result = kmp(haystack, len, pattern, pattern_len, offset);
+    kmp_result result = kmp(haystack, len, pattern, pattern_len, offset);
     lua_pushinteger(L, (lua_Integer)(result.offset + 1));
     lua_pushinteger(L, (lua_Integer)result.length);
     return 2;

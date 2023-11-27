@@ -2,6 +2,9 @@
 #define __80S_CRYPTO_H__
 #include "80s.h"
 #include "dynstr.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 int crypto_init();
 int crypto_sha1(const char *data, size_t len, unsigned char *out_buffer, size_t out_length);
@@ -25,4 +28,8 @@ int crypto_ssl_accept(void *bio_ctx, int *output_ok, const char **output_error_m
 int crypto_ssl_connect(void *bio_ctx, int *output_ok, const char **output_error_message);
 int crypto_ssl_requests_io(void *bio_ctx, int n);
 int crypto_random(char *buf, size_t len);
+
+#ifdef __cplusplus
+}
+#endif
 #endif
