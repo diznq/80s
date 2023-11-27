@@ -10,7 +10,7 @@ if ! [ -x "$(command -v $DEFAULT_C_COMPILER)" ]; then
   DEFAULT_COMPILER="clang"
 fi
 
-FLAGS="-s -O3"
+FLAGS="-s -O2"
 OUT="${OUT:-bin/90s}"
 CXX="${CXX:-$DEFAULT_COMPILER}"
 CC="${CC:-$DEFAULT_C_COMPILER}"
@@ -38,16 +38,19 @@ echo "Defines: $DEFINES"
 echo "Libraries: $LIBS"
 echo "Flags: $FLAGS"
 
-$CC $FLAGS -c \
-    src/80s.c src/80s_common.c src/80s_common.windows.c src/dynstr.c src/algo.c \
-    src/serve.epoll.c src/serve.kqueue.c src/serve.iocp.c
+if [ ! -f "bin/lib80s.a" ]; then
+  $CC $FLAGS -c \
+      src/80s.c src/80s_common.c src/80s_common.windows.c src/dynstr.c src/algo.c \
+      src/serve.epoll.c src/serve.kqueue.c src/serve.iocp.c
 
-mv *.o bin/obj/
+  mv *.o bin/obj/
 
-ar rcs bin/lib80s.a bin/obj/*.o
+  ar rcs bin/lib80s.a bin/obj/*.o
+fi
 
-CPPFLAGS="-std=c++20" $CXX $FLAGS bin/lib80s.a \
+$CXX $FLAGS -std=c++20 \
     modern/90s.cpp modern/afd.cpp modern/context.cpp \
+    bin/lib80s.a \
     $DEFINES \
     $LIBS \
     -o "$OUT"
