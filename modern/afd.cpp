@@ -32,7 +32,7 @@ namespace s90 {
                 auto& command = *it;
                 switch(command.type) {
                     case read_command_type::any:
-                        command.promise->resolve({true, window});
+                        command.promise->resolve({false, window});
                         it = read_commands.erase(it);
                         window = window.substr(window.size());
                         iterate = false;
@@ -41,7 +41,7 @@ namespace s90 {
                         if(window.length() < command.n) {
                             iterate = false;
                         } else {
-                            command.promise->resolve({true, window.substr(0, command.n)});
+                            command.promise->resolve({false, window.substr(0, command.n)});
                             window = window.substr(command.n);
                             it = read_commands.erase(it);
                             read_offset += command.n;
@@ -52,7 +52,7 @@ namespace s90 {
                         if(part.length + delim_state.match == command.delimiter.size()) {
                             delim_state.match = 0;
                             delim_state.offset = part.offset + part.length;
-                            command.promise->resolve({true, window.substr(0, delim_state.offset - command.delimiter.size())});
+                            command.promise->resolve({false, window.substr(0, delim_state.offset - command.delimiter.size())});
                             window = window.substr(delim_state.offset);
                             read_offset += delim_state.offset;
                             delim_state.offset = 0;
@@ -138,7 +138,7 @@ namespace s90 {
     void afd::on_close() {
         if(!closed) {
             closed = true;
-            for(auto& item : read_commands) item.promise->resolve({false, ""});
+            for(auto& item : read_commands) item.promise->resolve({true, ""});
             write_back_buffer.clear();
             write_back_buffer_info.clear();
             write_back_buffer.shrink_to_fit();
