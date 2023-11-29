@@ -16,7 +16,7 @@ namespace s90 {
     }
 
     void afd::on_data(std::string_view data, bool cycle) {
-        for(;;) {
+        do {
 
             if(closed) {
                 handle_failure();
@@ -32,6 +32,12 @@ namespace s90 {
                 on_command_queue_empty();
             }
 
+            if(!cycle && data.empty()) {
+                return;
+            }
+            
+            dbgf("on_data, read_commands: %zu, read_buffer: %zu, read_offset: %zu, data: %zu, cycle: %d\n", read_commands.size(), read_buffer.size(), read_offset, data.size(), cycle);
+
             if((!buffering && read_commands.empty()) || (read_buffer.size() + data.size() - read_offset) == 0) {
                 // if read buffer + incoming data is empty, no point in resolving the promises
                 return;
@@ -46,6 +52,7 @@ namespace s90 {
 
             // select a read_buffer window based on where we ended up last time
             std::string_view window(read_buffer.data() + read_offset, read_buffer.size() - read_offset);
+            std::string arg;
             for(auto it = read_commands.begin(); iterate && !window.empty() && it != read_commands.end();) {
                 auto command_promise = it->promise;
                 auto command_n = it->n;
@@ -53,36 +60,46 @@ namespace s90 {
                 // handle different read command types differently
                 switch(it->type) {
                     case read_command_type::any:
+                        dbgf("READ ANY\n");
                         // any is fulfilled whenever any data comes in, no matter the size
-                        it = read_commands.erase(it);
                         read_offset += window.size();
-                        command_promise->resolve({false, window});
+                        it = read_commands.erase(it);
+                        arg = std::string(window);
                         window = window.substr(window.size());
+                        command_promise.resolve({false, std::move(arg)});
                         iterate = false;
                         break;
                     case read_command_type::n:
+                        dbgf("READ %zu\n", command_n);
                         // n is fulfilled only when n bytes of data is read and receives only those n bytes
                         if(window.length() < command_n) {
                             iterate = false;
                         } else {
-                            it = read_commands.erase(it);
                             read_offset += command_n;
-                            command_promise->resolve({false, window.substr(0, command_n)});
+                            it = read_commands.erase(it);
+                            arg = std::string(window.substr(0, command_n));
                             window = window.substr(command_n);
+                            command_promise.resolve({false, std::move(arg)});
                         }
                         break;
                     case read_command_type::until:
+                        dbgf("READ UNTIL %s, %d, %d\n", it->delimiter.c_str(), delim_state.match, delim_state.offset);
                         // until is fulfilled until a delimiter appears, this implemenation makes use of specially optimized partial
                         // search based on Knuth-Morris-Pratt algorithm, so it's O(n)
                         part = kmp(window.data(), window.length(), it->delimiter.c_str() + delim_state.match, command_delim_length - delim_state.match, delim_state.offset);
+                        dbgf("Window: %s", std::string(window).c_str());
                         if(part.length + delim_state.match == command_delim_length) {
                             delim_state.match = 0;
                             delim_state.offset = part.offset + part.length;
-                            it = read_commands.erase(it);
                             read_offset += delim_state.offset;
-                            command_promise->resolve({false, window.substr(0, delim_state.offset - command_delim_length)});
+
+                            arg = window.substr(0, delim_state.offset - command_delim_length);
                             window = window.substr(delim_state.offset);
                             delim_state.offset = 0;
+                            it = read_commands.erase(it);
+
+                            dbgf("OK!\n");
+                            command_promise.resolve({false, std::move(arg)});
                         } else if(part.length > 0) {
                             delim_state.match += part.length;
                             delim_state.offset = part.offset + part.length;
@@ -107,7 +124,8 @@ namespace s90 {
             if(read_buffer.size() == 0) {
                 break;
             }
-        }
+            
+        } while(!cycle);
     }
 
     void afd::on_write(size_t written_bytes) {
@@ -123,7 +141,7 @@ namespace s90 {
                 if(promise.sent + written_bytes >= promise.length) {
                     written_bytes -= promise.length - promise.sent;
                     promise.sent = promise.length;
-                    promise.promise->resolve(true);
+                    promise.promise.resolve(true);
                     it = write_back_buffer_info.erase(it);
                 } else if(written_bytes > 0) {
                     // there is no point iterating any further than this as this is the first
@@ -166,8 +184,8 @@ namespace s90 {
     }
 
     void afd::handle_failure() {
-        for(auto& item : write_back_buffer_info) item.promise->resolve(false);
-        for(auto& item : read_commands) item.promise->resolve({true, ""});
+        for(auto& item : write_back_buffer_info) item.promise.resolve(false);
+        for(auto& item : read_commands) item.promise.resolve({true, ""});
         write_back_offset = 0;
         write_back_buffer.clear();
         write_back_buffer_info.clear();
@@ -191,35 +209,38 @@ namespace s90 {
         on_command_queue_empty = on_empty;
     }
 
-    std::shared_ptr<aiopromise<read_arg>> afd::read_any() {
-        auto promise = std::make_shared<aiopromise<read_arg>>();
+    aiopromise<read_arg> afd::read_any() {
+        auto promise = aiopromise<read_arg>();
         if(closed) {
-            promise->resolve({true, ""});
+            promise.resolve({true, ""});
         } else {
             read_commands.emplace_back(read_command(promise, read_command_type::any, 0, ""));
-            on_data("", true); // force the cycle if there is any previous remaining data to be read
+            if(read_buffer.size() > 0 && read_commands.size() == 1)
+                on_data("", true); // force the cycle if there is any previous remaining data to be read
         }
         return promise;
     }
 
-    std::shared_ptr<aiopromise<read_arg>> afd::read_n(size_t n_bytes) {
-        auto promise = std::make_shared<aiopromise<read_arg>>();
+    aiopromise<read_arg> afd::read_n(size_t n_bytes) {
+        auto promise = aiopromise<read_arg>();
         if(closed) {
-            promise->resolve({true, ""});
+            promise.resolve({true, ""});
         } else {
             read_commands.emplace_back(read_command(promise, read_command_type::n, n_bytes, ""));
-            on_data("", true); // force the cycle if there is any previous remaining data to be read
+            if(read_buffer.size() > 0 && read_commands.size() == 1)
+                on_data("", true); // force the cycle if there is any previous remaining data to be read
         }
         return promise;
     }
 
-    std::shared_ptr<aiopromise<read_arg>> afd::read_until(std::string&& delim) {
-        auto promise = std::make_shared<aiopromise<read_arg>>();
+    aiopromise<read_arg> afd::read_until(std::string&& delim) {
+        auto promise = aiopromise<read_arg>();
         if(closed) {
-            promise->resolve({true, ""});
+            promise.resolve({true, ""});
         } else {
             read_commands.emplace_back(read_command(promise, read_command_type::until, 0, std::move(delim)));
-            on_data("", true); // force the cycle if there is any previous remaining data to be read
+            if(read_buffer.size() > 0 && read_commands.size() == 1)
+                on_data("", true); // force the cycle if there is any previous remaining data to be read
         }
         return promise;
     }
@@ -236,11 +257,11 @@ namespace s90 {
         }
     }
 
-    std::shared_ptr<aiopromise<bool>> afd::write(const std::string_view& data) {
-        std::shared_ptr<aiopromise<bool>> promise = std::make_shared<aiopromise<bool>>();
+    aiopromise<bool> afd::write(const std::string_view& data) {
+        aiopromise<bool> promise = aiopromise<bool>();
 
         if(closed) {
-            promise->resolve(false);
+            promise.resolve(false);
             return promise;
         }
         

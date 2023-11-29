@@ -1,6 +1,7 @@
 #pragma once
 #include <optional>
 #include <functional>
+#include <memory>
 #if __cplusplus >= 202002L
 #include <coroutine>
 #endif
@@ -27,56 +28,58 @@ namespace s90 {
 
     template<class T>
     class aiopromise {
-        std::optional<T> result;
-        std::function<void(T)> callback;
+
+        struct state {
+            bool resolved = false;
+            std::optional<T> result;
+            std::function<void(T)> callback;
     #if __cplusplus >= 202002L
-        std::coroutine_handle<> coro_callback;
+            std::coroutine_handle<> coro_callback;
     #endif
-        bool resolved = false;
+        };
+
+        std::shared_ptr<state> s;
 
     public:
-        aiopromise() {}
+        aiopromise() : s(std::make_shared<state>()) {
+
+        }
 
         void resolve(const T& value) {
-            if(!resolved) {
-                result.emplace(value);
-                if(callback) {
-                    resolved = true;
-                    callback(value);
+            if(!s->resolved) {
+                s->resolved = true;
+                s->result.emplace(value);
+                if(s->callback) {
+                    s->callback(value);
                 }
             #if __cplusplus >= 202002L
-                else if(coro_callback) {
-                    resolved = true;
-                    coro_callback();
+                else if(s->coro_callback) {
+                    s->coro_callback();
                 }
             #endif
             }
         }
 
         void resolve(T&& value) {
-            if(!resolved) {
-                result.emplace(std::move(value));
-                if(callback) {
-                    resolved = true;
-                    callback(result.value());
+            if(!s->resolved) {
+                s->resolved = true;
+                s->result.emplace(std::move(value));
+                if(s->callback) {
+                    s->callback(s->result.value());
                 }
             #if __cplusplus >= 202002L
-                 else if(coro_callback) {
-                    resolved = true;
-                    coro_callback();
+                else if(s->coro_callback) {
+                    s->coro_callback();
                 }
             #endif
             }
         }
 
         void then(std::function<void(T)> cb) {
-            if(result.has_value()) {
-                if(!resolved) {
-                    resolved = true;
-                    cb(result.value());
-                }
+            if(s->result.has_value()) {
+                cb(s->result.value());
             } else {
-                callback = cb;
+                s->callback = cb;
             }
         }
 
@@ -86,22 +89,19 @@ namespace s90 {
 
     #if __cplusplus >= 202002L
         bool await_ready() const {
-            return result.has_value();
+            return s->result.has_value();
         }
 
         void await_suspend(std::coroutine_handle<> resume) {
-            if(result.has_value()) {
-                if(!resolved) {
-                    resolved = true;
-                    resume();
-                }
+            if(s->result.has_value()) {
+                resume();
             } else {
-                coro_callback = resume;
+                s->coro_callback = resume;
             }
         }
 
-        T await_resume() const {
-            return result.value();
+        const T& await_resume() const {
+            return s->result.value();
         }
 
     #endif

@@ -3,7 +3,6 @@
 #include "aiopromise.hpp"
 
 #include <list>
-#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -15,7 +14,7 @@ namespace s90 {
 
     struct read_arg {
         bool error;
-        std::string_view data;
+        std::string data;
     };
 
     class afd {
@@ -29,22 +28,22 @@ namespace s90 {
         enum class read_command_type { any, n, until };
 
         struct back_buffer {
-            std::shared_ptr<aiopromise<bool>> promise;
+            aiopromise<bool> promise;
             size_t length = 0;
             size_t sent = 0;
 
-            back_buffer(std::shared_ptr<aiopromise<bool>> promise, size_t length, size_t sent) 
+            back_buffer(aiopromise<bool> promise, size_t length, size_t sent) 
             : promise(promise), length(length), sent(sent) {}
         };
 
         struct read_command {
-            std::shared_ptr<aiopromise<read_arg>> promise;
+            aiopromise<read_arg> promise;
             read_command_type type;
             size_t n;
             std::string delimiter;
 
             read_command(
-                std::shared_ptr<aiopromise<read_arg>> promise,
+                aiopromise<read_arg> promise,
                 read_command_type type,
                 size_t n,
                 std::string&& delimiter
@@ -82,10 +81,10 @@ namespace s90 {
         void on_close();
 
         void set_on_empty_queue(std::function<void()> on_empty);
-        std::shared_ptr<aiopromise<read_arg>> read_any();
-        std::shared_ptr<aiopromise<read_arg>> read_n(size_t n_bytes);
-        std::shared_ptr<aiopromise<read_arg>> read_until(std::string&& delim);
-        std::shared_ptr<aiopromise<bool>> write(const std::string_view& data);
+        aiopromise<read_arg> read_any();
+        aiopromise<read_arg> read_n(size_t n_bytes);
+        aiopromise<read_arg> read_until(std::string&& delim);
+        aiopromise<bool> write(const std::string_view& data);
 
         void close();
     };
