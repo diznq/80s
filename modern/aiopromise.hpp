@@ -43,10 +43,13 @@ namespace s90 {
                 if(callback) {
                     resolved = true;
                     callback(value);
-                } else if(coro_callback) {
+                }
+            #if __cplusplus >= 202002L
+                else if(coro_callback) {
                     resolved = true;
                     coro_callback();
                 }
+            #endif
             }
         }
 
