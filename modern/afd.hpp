@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <tuple>
 
 namespace s90 {
 
@@ -65,6 +66,10 @@ namespace s90 {
         std::vector<char> read_buffer;
         std::list<read_command> read_commands;
         std::function<void()> on_command_queue_empty;
+
+        void handle_failure();
+        std::tuple<int, bool> perform_write();
+
     public:
         afd(context *ctx, fd_t elfd, fd_t fd, int fdtype);
         ~afd();
@@ -72,7 +77,7 @@ namespace s90 {
         bool is_closed() const;
 
         void on_accept();
-        void on_data(std::string_view data);
+        void on_data(std::string_view data, bool cycle = false);
         void on_write(size_t written_bytes);
         void on_close();
 
