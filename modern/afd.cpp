@@ -4,11 +4,11 @@
 namespace s90 {
 
     afd::afd(context *ctx, fd_t elfd, fd_t fd, int fdtype) : ctx(ctx), elfd(elfd), fd(fd), fd_type(fdtype) {
-        dbgf("afd::afd(%p, %zu)\n", ctx, fd);
+    
     }
 
     afd::~afd() {
-        dbgf("~afd::afd(%p, %zu)\n", ctx, fd);
+    
     }
 
     void afd::on_accept() {
@@ -17,6 +17,12 @@ namespace s90 {
 
     void afd::on_data(std::string_view data, bool cycle) {
         for(;;) {
+
+            if(closed) {
+                handle_failure();
+                break;
+            }
+            
             kmp_result part;
             bool iterate = true;
             
@@ -26,11 +32,11 @@ namespace s90 {
                 on_command_queue_empty();
             }
 
-            if((!buffering && read_commands.empty()) || (read_buffer.size() + data.size()) == 0) {
+            if((!buffering && read_commands.empty()) || (read_buffer.size() + data.size() - read_offset) == 0) {
                 // if read buffer + incoming data is empty, no point in resolving the promises
                 return;
             }
-
+            
             if(data.size() > 0) {
                 // extend the read buffer with new data and clear the current data so future
                 // loops won't extend it again
@@ -41,39 +47,42 @@ namespace s90 {
             // select a read_buffer window based on where we ended up last time
             std::string_view window(read_buffer.data() + read_offset, read_buffer.size() - read_offset);
             for(auto it = read_commands.begin(); iterate && !window.empty() && it != read_commands.end();) {
-                auto& command = *it;
+                auto command_promise = it->promise;
+                auto command_n = it->n;
+                auto command_delim_length = it->delimiter.size();
                 // handle different read command types differently
-                switch(command.type) {
+                switch(it->type) {
                     case read_command_type::any:
                         // any is fulfilled whenever any data comes in, no matter the size
-                        command.promise->resolve({false, window});
                         it = read_commands.erase(it);
+                        read_offset += window.size();
+                        command_promise->resolve({false, window});
                         window = window.substr(window.size());
                         iterate = false;
                         break;
                     case read_command_type::n:
                         // n is fulfilled only when n bytes of data is read and receives only those n bytes
-                        if(window.length() < command.n) {
+                        if(window.length() < command_n) {
                             iterate = false;
                         } else {
-                            command.promise->resolve({false, window.substr(0, command.n)});
-                            window = window.substr(command.n);
                             it = read_commands.erase(it);
-                            read_offset += command.n;
+                            read_offset += command_n;
+                            command_promise->resolve({false, window.substr(0, command_n)});
+                            window = window.substr(command_n);
                         }
                         break;
                     case read_command_type::until:
                         // until is fulfilled until a delimiter appears, this implemenation makes use of specially optimized partial
                         // search based on Knuth-Morris-Pratt algorithm, so it's O(n)
-                        part = kmp(window.data(), window.length(), command.delimiter.c_str() + delim_state.match, command.delimiter.size() - delim_state.match, delim_state.offset);
-                        if(part.length + delim_state.match == command.delimiter.size()) {
+                        part = kmp(window.data(), window.length(), it->delimiter.c_str() + delim_state.match, command_delim_length - delim_state.match, delim_state.offset);
+                        if(part.length + delim_state.match == command_delim_length) {
                             delim_state.match = 0;
                             delim_state.offset = part.offset + part.length;
-                            command.promise->resolve({false, window.substr(0, delim_state.offset - command.delimiter.size())});
-                            window = window.substr(delim_state.offset);
-                            read_offset += delim_state.offset;
-                            delim_state.offset = 0;
                             it = read_commands.erase(it);
+                            read_offset += delim_state.offset;
+                            command_promise->resolve({false, window.substr(0, delim_state.offset - command_delim_length)});
+                            window = window.substr(delim_state.offset);
+                            delim_state.offset = 0;
                         } else if(part.length > 0) {
                             delim_state.match += part.length;
                             delim_state.offset = part.offset + part.length;

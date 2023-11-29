@@ -86,6 +86,7 @@ namespace s90 {
         std::shared_ptr<aiopromise<read_arg>> read_n(size_t n_bytes);
         std::shared_ptr<aiopromise<read_arg>> read_until(std::string&& delim);
         std::shared_ptr<aiopromise<bool>> write(const std::string_view& data);
+
         void close();
     };
 
