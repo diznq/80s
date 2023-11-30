@@ -36,7 +36,7 @@ namespace s90 {
                 return;
             }
             
-            dbgf("on_data, read_commands: %zu, read_buffer: %zu, read_offset: %zu, data: %zu, cycle: %d\n", read_commands.size(), read_buffer.size(), read_offset, data.size(), cycle);
+            //dbgf("on_data, read_commands: %zu, read_buffer: %zu, read_offset: %zu, data: %zu, cycle: %d\n", read_commands.size(), read_buffer.size(), read_offset, data.size(), cycle);
 
             if((!buffering && read_commands.empty()) || (read_buffer.size() + data.size() - read_offset) == 0) {
                 // if read buffer + incoming data is empty, no point in resolving the promises
@@ -83,12 +83,11 @@ namespace s90 {
                         }
                         break;
                     case read_command_type::until:
-                        dbgf("READ UNTIL %s, %d, %d\n", it->delimiter.c_str(), delim_state.match, delim_state.offset);
                         // until is fulfilled until a delimiter appears, this implemenation makes use of specially optimized partial
                         // search based on Knuth-Morris-Pratt algorithm, so it's O(n)
                         part = kmp(window.data(), window.length(), it->delimiter.c_str() + delim_state.match, command_delim_length - delim_state.match, delim_state.offset);
-                        dbgf("Window: %s", std::string(window).c_str());
-                        if(part.length + delim_state.match == command_delim_length) {
+                        if(part.offset == delim_state.offset && part.length + delim_state.match == command_delim_length) {
+                            dbgf("1/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                             delim_state.match = 0;
                             delim_state.offset = part.offset + part.length;
                             read_offset += delim_state.offset;
@@ -100,11 +99,14 @@ namespace s90 {
 
                             dbgf("OK!\n");
                             command_promise.resolve({false, std::move(arg)});
-                        } else if(part.length > 0) {
+                        } else if(part.offset == delim_state.offset + delim_state.match && part.length > 0) {
+                            dbgf("2/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                             delim_state.match += part.length;
                             delim_state.offset = part.offset + part.length;
                             iterate = false;
                         } else {
+                            dbgf("3/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
+                        
                             delim_state.match = 0;
                             delim_state.offset = part.offset;
                             iterate = false;

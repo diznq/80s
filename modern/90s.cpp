@@ -40,7 +40,7 @@ void on_accept(accept_params params) {
 #if __cplusplus >= 202002L
     ([](std::shared_ptr<s90::afd> fd) -> s90::coroutine {
         while(true) {
-            auto request = co_await fd->read_until("\r\n\r\n");;
+            auto request = co_await fd->read_until("\r\n\r\n");
             if(request.error) co_return;
             std::string response = 
                 std::string(
