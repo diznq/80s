@@ -86,7 +86,7 @@ namespace s90 {
                         // until is fulfilled until a delimiter appears, this implemenation makes use of specially optimized partial
                         // search based on Knuth-Morris-Pratt algorithm, so it's O(n)
                         part = kmp(window.data(), window.length(), it->delimiter.c_str() + delim_state.match, command_delim_length - delim_state.match, delim_state.offset);
-                        if(part.offset == delim_state.offset && part.length + delim_state.match == command_delim_length) {
+                        if(part.length == command_delim_length || (part.offset == delim_state.offset && part.length + delim_state.match == command_delim_length)) {
                             dbgf("1/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                             delim_state.match = 0;
                             delim_state.offset = part.offset + part.length;
@@ -96,8 +96,6 @@ namespace s90 {
                             window = window.substr(delim_state.offset);
                             delim_state.offset = 0;
                             it = read_commands.erase(it);
-
-                            dbgf("OK!\n");
                             command_promise.resolve({false, std::move(arg)});
                         } else if(part.offset == delim_state.offset + delim_state.match && part.length > 0) {
                             dbgf("2/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);

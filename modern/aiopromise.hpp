@@ -50,10 +50,12 @@ namespace s90 {
                 s->resolved = true;
                 s->result.emplace(value);
                 if(s->callback) {
+                    s->resolved = true;
                     s->callback(value);
                 }
             #if __cplusplus >= 202002L
                 else if(s->coro_callback) {
+                    s->resolved = true;
                     s->coro_callback();
                 }
             #endif
@@ -62,13 +64,14 @@ namespace s90 {
 
         void resolve(T&& value) {
             if(!s->resolved) {
-                s->resolved = true;
                 s->result.emplace(std::move(value));
                 if(s->callback) {
+                    s->resolved = true;
                     s->callback(s->result.value());
                 }
             #if __cplusplus >= 202002L
                 else if(s->coro_callback) {
+                    s->resolved = true;
                     s->coro_callback();
                 }
             #endif
@@ -77,7 +80,10 @@ namespace s90 {
 
         void then(std::function<void(T)> cb) {
             if(s->result.has_value()) {
-                cb(s->result.value());
+                if(!s->resolved) {
+                    s->resolved = true;
+                    cb(s->result.value());
+                }
             } else {
                 s->callback = cb;
             }
@@ -93,11 +99,7 @@ namespace s90 {
         }
 
         void await_suspend(std::coroutine_handle<> resume) {
-            if(s->result.has_value()) {
-                resume();
-            } else {
-                s->coro_callback = resume;
-            }
+            s->coro_callback = resume;
         }
 
         const T& await_resume() const {
