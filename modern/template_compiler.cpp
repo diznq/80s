@@ -13,43 +13,44 @@ class TemplateCompiler {
     };
     public:
 
-    std::string cppize(const std::string& ctx_name, std::string cpp, bool has_vars = false) {
+    std::string cppize(const std::string& ctx_name, std::string&& source_code, bool has_vars = false) {
         std::string result = "";
         std::string vars = "";
+        std::string internal_source;
         size_t i = 0;
 
         if(has_vars) {
             size_t offset = 0;
-            std::string new_cpp;
             while(true) {
-                auto match = kmp(cpp.c_str(), cpp.length(), "#[[", 3, offset);
+                auto match = kmp(source_code.c_str(), source_code.length(), "#[[", 3, offset);
                 if(match.length == 3) {
-                    auto end_match = kmp(cpp.c_str(), cpp.length(), "]]", 2, match.offset + 3);
+                    auto end_match = kmp(source_code.c_str(), source_code.length(), "]]", 2, match.offset + 3);
                     if(end_match.length != 2) {
-                        new_cpp += cpp.substr(offset, cpp.length() - offset);
+                        internal_source += source_code.substr(offset, source_code.length() - offset);
                         break;
                     } else {
-                        auto var = cpp.substr(match.offset + 3, end_match.offset - match.offset - 3);
+                        auto var = source_code.substr(match.offset + 3, end_match.offset - match.offset - 3);
                         vars += ", " + var;
-                        new_cpp += cpp.substr(offset, match.offset - offset);
-                        new_cpp += "{}";
+                        internal_source += source_code.substr(offset, match.offset - offset);
+                        internal_source += "{}";
                         offset = end_match.offset + 2;
                     }
                 } else {
-                    new_cpp += cpp.substr(offset, cpp.length() - offset);
+                    internal_source += source_code.substr(offset, source_code.length() - offset);
                     break;
                 }
             }
-            cpp = new_cpp;
+        } else {
+            internal_source = std::move(source_code);
         }
 
-        for(char c : cpp) {
+        for(char c : internal_source) {
             switch(c) {
                 case '"':
                     result += "\\\"";
                     break;
                 case '\n':
-                    if(i != cpp.length() - 1)
+                    if(i != internal_source.length() - 1)
                         result += "\\n\"\n\t\"";
                     else
                         result += "\\n";
@@ -80,7 +81,7 @@ class TemplateCompiler {
             switch(c) {
                 case '\n':
                     if(state == code_hit) {
-                        out += cppize(ctx_name, outline, true);
+                        out += cppize(ctx_name, std::move(outline), true);
                         outline = "";
                     } else {
                         out += c;
@@ -114,7 +115,7 @@ class TemplateCompiler {
             }
         }
         if(outline.length() > 0) {
-            out += cppize(ctx_name, outline, true);
+            out += cppize(ctx_name, std::move(outline), true);
         }
         return out;
     }
