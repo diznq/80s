@@ -146,12 +146,12 @@ namespace s90 {
             pages[webpage->name()] = webpage;
         }
 
-        std::map<std::string, std::string> server::parse_query_string(std::string&& query_string) const {
+        std::map<std::string, std::string> server::parse_query_string(std::string_view query_string) const {
             size_t prev_pos = 0, pos = -1;
             std::map<std::string, std::string> qs;
             while(prev_pos < query_string.length()) {
                 pos = query_string.find('&', prev_pos);
-                std::string current;
+                std::string_view current;
                 if(pos == std::string::npos) {
                     current = query_string.substr(prev_pos);
                     prev_pos = query_string.length();
@@ -162,9 +162,9 @@ namespace s90 {
                 if(current.length() == 0) break;
                 auto mid = current.find('=');
                 if(mid == std::string::npos) {
-                    qs[current] = "";
+                    qs[std::string(current)] = "";
                 } else {
-                    qs[current.substr(0, mid)] = current.substr(mid + 1);
+                    qs[std::string(current.substr(0, mid))] = current.substr(mid + 1);
                 }
             }
             return qs;
@@ -174,68 +174,74 @@ namespace s90 {
             http_state state = http_state::read_status_line;
             std::map<std::string, page*>::iterator it;
             page *current_page = not_found;
-            std::string script, header_key, header_value, query_string, query_key, query_value;
+            std::string_view script;
             read_arg arg;
             environment env;
             size_t pivot = 0, body_length = 0, prev_pivot = 0;
             bool write_status = true;
             while(true) {
-                switch(state) {
-                    case http_state::read_status_line:
-                        arg = co_await fd->read_until(" ");
-                        if(arg.error) co_return {};
-                        env.write_method(std::move(arg.data));
-                        arg = co_await fd->read_until(" ");
-                        if(arg.error) co_return {};
-                        script = std::move(arg.data);
-                        arg = co_await fd->read_until("\r\n");
-                        if(arg.error) co_return {};
-                        state = http_state::read_header;
-                        break;
-                    case http_state::read_header:
-                        arg = co_await fd->read_until("\r\n");
-                        if(arg.error) co_return {};
-                        if(arg.data.length() == 0) {
-                            auto content_length = env.header("content-length");
-                            if(content_length) body_length = atoll(content_length.value().c_str());
-                            state = body_length > 0 ? http_state::read_body : http_state::generate_response;
-                        } else {
-                            pivot = arg.data.find(": ");
-                            if(pivot != std::string::npos) {
-                                header_key = arg.data.substr(0, pivot);
-                                header_value = arg.data.substr(pivot + 2);
-                                env.write_header(std::move(header_key), std::move(header_value));
-                            }
-                        }
-                        break;
-                    case http_state::read_body:
-                        arg = co_await fd->read_n(body_length);
-                        if(arg.error) co_return {};
-                        env.write_body(std::move(arg.data));
-                        state = http_state::generate_response;
-                        break;
-                    case http_state::generate_response:
-                        pivot = script.find('?');
-                        if(pivot != std::string::npos) {
-                            query_string = script.substr(pivot + 1);
-                            script = script.substr(0, pivot);
-                            env.write_query(std::move(parse_query_string(std::move(query_string))));
-                        }
-                        it = pages.find(env.method() + " " + script);
-                        if(it == pages.end()) {
-                            current_page = not_found;
-                        } else {
-                            current_page = it->second;
-                        }
-                        env.header("connection", "keep-alive");
-                        write_status = co_await fd->write(co_await env.render(current_page));
-                        if(!write_status) {
-                            co_return {};
-                        } else {
-                            env = environment {};
-                            state = http_state::read_status_line;
-                        }
-                        break;
+                arg = co_await fd->read_until("\r\n\r\n");
+                if(arg.error) co_return {};
+                pivot = arg.data.find_first_of("\r\n");
+                std::string_view remaining(arg.data);
+                std::string_view status(arg.data);
+                if(pivot == std::string::npos) co_return {};
+                status = std::string_view(arg.data.begin(), arg.data.begin() + pivot);
+                pivot = status.find_first_of(' ');
+                if(pivot != std::string::npos) {
+                    env.write_method(std::string(status.substr(0, pivot)));
+                    status = status.substr(pivot + 1);
+                    pivot = status.find_first_of(' ');
+                    if(pivot != std::string::npos) {
+                        script = status.substr(0, pivot);
+                    } else {
+                        co_return {};
+                    }
+                } else {
+                    co_return {};
+                }
+                remaining = remaining.substr(pivot + 2);
+                while(true) {
+                    pivot = remaining.find_first_of("\r\n");
+                    std::string_view header_line = remaining.substr(0, pivot);
+                    auto mid_key = header_line.find_first_of(": ");
+                    if(mid_key != std::string::npos) {
+                        env.write_header(
+                            std::string(header_line.substr(0, mid_key)),
+                            std::string(header_line.substr(mid_key + 2))
+                        );
+                    }
+                    if(pivot == std::string::npos) break;
+                    remaining = remaining.substr(pivot + 2);
+                }
+                auto content_length = env.header("content-length");
+                if(content_length) {
+                    auto len = atoll(content_length.value().c_str());
+                    if(len > 0) {
+                        auto body = co_await fd->read_n(len);
+                        if(body.error) co_return {};
+                        env.write_body(std::move(body.data));
+                    }
+                }
+                pivot = script.find('?');
+                if(pivot != std::string::npos) {
+                    auto query_string = script.substr(pivot + 1);
+                    script = script.substr(0, pivot);
+                    env.write_query(std::move(parse_query_string(query_string)));
+                }
+                it = pages.find(env.method() + " " + std::string(script));
+                if(it == pages.end()) {
+                    current_page = not_found;
+                } else {
+                    current_page = it->second;
+                }
+                env.header("connection", "keep-alive");
+                write_status = co_await fd->write(co_await env.render(current_page));
+                if(!write_status) {
+                    co_return {};
+                } else {
+                    env = environment {};
+                    state = http_state::read_status_line;
                 }
             }
             co_return {};
