@@ -1,8 +1,7 @@
 #include "server.hpp"
 #include "environment.hpp"
-
-#define PAGE_INCLUDE
-#include "pages/time_page.hpp"
+#include <filesystem>
+#include <iostream>
 
 namespace s90 {
     namespace httpd {
@@ -14,8 +13,14 @@ namespace s90 {
             generate_response
         };
 
+        std::map<std::string, server::loaded_lib> server::loaded_libs;
+        std::mutex server::loaded_libs_lock;
+
         class page404 : public page {
         public:
+            const char *name() const override {
+                return "GET /404";
+            }
             aiopromise<nil> render(ienvironment& env) const {
                 env.status("404 Not found");
                 env.header("Content-type", "text/plain");
@@ -26,7 +31,6 @@ namespace s90 {
 
         server::server() {
             not_found = new page404;
-            pages["GET /time"] = new time_renderable;
         }
 
         server::~server() {
@@ -35,6 +39,97 @@ namespace s90 {
             }
             if(not_found) delete not_found;
             not_found = 0;
+        }
+
+        void server::on_load() {
+            load_libs();
+        }
+
+        void server::on_pre_refresh() {
+            unload_libs();
+        }
+
+        void server::on_refresh() {
+            load_libs();
+        }
+
+        void server::load_libs() {
+            const char *web_root_env = getenv("WEB_ROOT");
+            std::string web_root = "modern/httpd/pages/";
+            if(web_root_env != NULL) web_root = web_root_env;
+            for(const auto& entry : std::filesystem::recursive_directory_iterator(web_root)) {
+                if(entry.path().extension() == "so" || entry.path().extension() == ".dll") {
+                    load_lib(entry.path().string());
+                }
+            }
+        }
+
+        void server::load_lib(const std::string& name) {
+            std::lock_guard guard(loaded_libs_lock);
+            auto it = loaded_libs.find(name);
+            if(it != loaded_libs.end()) {
+                it->second.references++;
+                pages[it->second.webpage->name()] = it->second.webpage;
+            } else {
+                #ifdef _WIN32
+                HMODULE hLib = LoadLibraryA(name.c_str());
+                if(hLib != INVALID_HANDLE_VALUE) {
+                    typedef void*(*pfnloadpage)();
+                    pfnloadpage loader = (pfnloadpage)GetProcAddress(hLib, "load_page");
+                    if(loader == NULL) {
+                        FreeLibrary(hLib);
+                    } else {
+                        page *webpage = (page*)loader();
+                        if(!webpage) {
+                            FreeLibrary(hLib);
+                        } else {
+                            pages[webpage->name()] = webpage;
+                            loaded_libs[name] = {hLib, webpage, 1};
+                        }
+                    }
+                }
+                #else
+                void *hLib = dlopen(name.c_str(), RTLD_LAZY);
+                if(hLib) {
+                    typedef void*(*pfnloadpage)();
+                    pfnloadpage loader = (pfnloadpage)dlsym(hLib, "load_page");
+                    if(loader == NULL) {
+                        dlclose(hLib);
+                    } else {
+                        page *webpage = (page*)loader();
+                        if(!webpage) {
+                            dlclose(hLib);
+                        } else {
+                            pages[webpage->name()] = webpage;
+                            loaded_libs[name] = {hLib, webpage, 1};
+                        }
+                    }
+                }
+                #endif
+            }
+        }
+
+        void server::unload_libs() {
+            std::lock_guard guard(loaded_libs_lock);
+            for(auto it = loaded_libs.begin(); it != loaded_libs.end();) {
+                auto page_it = pages.find(it->second.webpage->name());
+                if(page_it != pages.end()) pages.erase(page_it);
+                it->second.references--;
+                if(it->second.references == 0) {
+                    #ifdef _WIN32
+                    FreeLibrary(it->second.lib);
+                    #else
+                    dlclose(it->second.lib);
+                    #endif
+                    it = loaded_libs.erase(it);
+                } else {
+                    it++;
+                }
+            }
+        }
+
+        void server::load_page(page* webpage) {
+            pages[webpage->name()] = webpage;
         }
 
         std::map<std::string, std::string> server::parse_query_string(std::string&& query_string) const {

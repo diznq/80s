@@ -14,7 +14,7 @@ namespace s90 {
             std::string compile_cpp(const std::string& ctx_name, const std::string& in);
 
             public:
-            std::string compile(const std::string& output_context, const std::string& data);
+            std::string compile(const std::string& file_name, const std::string& output_context, const std::string& data);
         };
     }
 }

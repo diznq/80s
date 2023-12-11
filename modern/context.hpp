@@ -10,6 +10,10 @@ namespace s90 {
     class connection_handler {
     public:
         virtual aiopromise<nil> on_accept(std::shared_ptr<afd> fd) = 0;
+        
+        virtual void on_load() = 0;
+        virtual void on_pre_refresh() = 0;
+        virtual void on_refresh() = 0;
     };
 
     class context {
@@ -23,6 +27,10 @@ namespace s90 {
 
         fd_t event_loop() const;
         void set_handler(std::shared_ptr<connection_handler> handler);
+
+        void on_load();
+        void on_pre_refresh();
+        void on_refresh();
 
         std::shared_ptr<afd> on_receive(read_params params);
         std::shared_ptr<afd> on_close(close_params params);

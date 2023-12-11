@@ -8,11 +8,18 @@ using s90::context;
 void *create_context(fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
     context* ctx = new context(id);
     ctx->set_handler(static_pointer_cast<s90::connection_handler>(std::make_shared<s90::httpd::server>()));
+    ctx->on_load();
     return ctx;
 }
 
-void refresh_context(void *ctx, fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
-    
+void pre_refresh_context(void *vctx, fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
+    context *ctx = (context*)vctx;
+    ctx->on_pre_refresh();
+}
+
+void refresh_context(void *vctx, fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
+    context *ctx = (context*)vctx;
+    ctx->on_refresh();
 }
 
 void close_context(void *vctx) {

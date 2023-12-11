@@ -11,6 +11,7 @@ namespace s90 {
     namespace httpd {
         class page {
         public:
+            virtual const char* name() const = 0;
             virtual aiopromise<nil> render(ienvironment& env) const = 0;
         };
     }

@@ -10,6 +10,18 @@ namespace s90 {
         handler = conn_handler;
     }
 
+    void context::on_load() {
+        if(handler) handler->on_load();
+    }
+
+    void context::on_pre_refresh() {
+        if(handler) handler->on_pre_refresh();
+    }
+
+    void context::on_refresh() {
+        if(handler) handler->on_refresh();
+    }
+
     std::shared_ptr<afd> context::on_receive(read_params params) {
         std::shared_ptr<afd> fd;
         auto it = fds.find(params.childfd);

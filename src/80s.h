@@ -243,6 +243,7 @@ void *serve(void *vparams);
 #endif
 
 void *create_context(fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload);
+void pre_refresh_context(void *ctx, fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload);
 void refresh_context(void *ctx, fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload);
 void close_context(void *ctx);
 
