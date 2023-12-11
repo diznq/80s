@@ -7,6 +7,8 @@
 
 namespace s90 {
 
+    struct nil {};
+
     template<typename T>
     class aiopromise;
 
@@ -24,12 +26,12 @@ namespace s90 {
 
     public:
         struct promise_type {
-            std::shared_ptr<s90::aiopromise_state<T>> state;
+            std::shared_ptr<aiopromise_state<T>> state;
 
             promise_type() : state(std::make_shared<aiopromise_state<T>>()) {}
 
-            s90::aiopromise<T> get_return_object() {
-                return s90::aiopromise<T>(*this);
+            aiopromise<T> get_return_object() {
+                return aiopromise<T>(*this);
             }
 
             std::suspend_never initial_suspend() {
@@ -61,7 +63,7 @@ namespace s90 {
         aiopromise() {}
         aiopromise(const promise_type& p) : p(p) {}
 
-        std::shared_ptr<s90::aiopromise_state<T>> state() const {
+        std::shared_ptr<aiopromise_state<T>> state() const {
             return p.state;
         }
 

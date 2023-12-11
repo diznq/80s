@@ -1,11 +1,13 @@
 #include "../src/80s.h"
 #include "afd.hpp"
 #include "context.hpp"
+#include "httpd/server.hpp"
 
 using s90::context;
 
 void *create_context(fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
     context* ctx = new context(id);
+    ctx->set_handler(static_pointer_cast<s90::connection_handler>(std::make_shared<s90::httpd::server>()));
     return ctx;
 }
 
@@ -36,22 +38,6 @@ void on_write(write_params params) {
 void on_accept(accept_params params) {
     context *ctx = (context*)params.ctx;
     auto fd = ctx->on_accept(params);
-  
-    ([](std::shared_ptr<s90::afd> fd) -> s90::aiopromise<int> {
-        while(true) {
-            auto request = co_await fd->read_until("\r\n\r\n");
-            if(request.error) co_return -1;
-            std::string data = request.data;
-            std::string response = 
-                std::string(
-                "HTTP/1.1 200 OK\r\n"
-                "Content-type: text/plain\r\n"
-                "Connection: keep-alive\r\n"
-                "Content-length: ") + std::to_string(request.data.length()) + "\r\n\r\n";
-            response += request.data;
-            co_await fd->write(response);
-        }
-    })(fd);
 }
 
 void on_init(init_params params) {

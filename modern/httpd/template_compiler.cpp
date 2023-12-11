@@ -6,7 +6,7 @@
 
 namespace s90 {
     namespace httpd {
-        std::string template_compiler::cppize(const std::string& ctx_name, std::string&& source_code, bool has_vars = false) {
+        std::string template_compiler::cppize(const std::string& ctx_name, std::string&& source_code, bool has_vars) {
                 std::string result = "";
                 std::string vars = "";
                 std::string internal_source;
@@ -44,7 +44,7 @@ namespace s90 {
                             break;
                         case '\n':
                             if(i != internal_source.length() - 1)
-                                result += "\\n\"\n\t\"";
+                                result += "\\n\"\n\t\t\"";
                             else
                                 result += "\\n";
                             break;
@@ -61,7 +61,7 @@ namespace s90 {
                     i++;
                 }
 
-                result = std::string("\t" + ctx_name + "->write") + (vars.empty() ? "" : "_formatted") + "(\"" + result + "\"" + vars + ");\n";
+                result = std::string("\t\t" + ctx_name + "->write") + (vars.empty() ? "" : "_formatted") + "(\"" + result + "\"" + vars + ");\n";
                 return result;
             }
 
@@ -113,24 +113,24 @@ namespace s90 {
                 return out;
             }
 
-            std::string template_compiler::compile(const std::string& data) {
+            std::string template_compiler::compile(const std::string& output_context, const std::string& data) {
                 size_t offset = 0;
                 size_t block_counter = 0;
                 std::string out = "";
                 while(true) {
                     auto match = kmp(data.c_str(), data.length(), "<?cpp", 5, offset);
                     if(match.length != 5) {
-                        out += cppize("ctx", data.substr(offset, data.length() - offset));
+                        out += cppize(output_context, data.substr(offset, data.length() - offset));
                         break;
                     }
-                    out += cppize("ctx", data.substr(offset, match.offset - offset));
+                    out += cppize(output_context, data.substr(offset, match.offset - offset));
                     auto end_match = kmp(data.c_str(), data.length(), "?>", 2, match.offset + 5);
 
                     match.offset += 5;
                     auto content = data.substr(match.offset, end_match.length != 2 ? data.length() - match.offset : end_match.offset - match.offset);
                     
-                    out += "\tauto block_" + std::to_string(block_counter) + " = ctx->append_context();\n";
-                    out += compile_cpp(std::string("block_") + std::to_string(block_counter), content);
+                    out += "\t\tauto block_output_content_" + std::to_string(block_counter) + " = " + output_context + "->append_context();\n";
+                    out += compile_cpp(std::string("block_output_content_") + std::to_string(block_counter), content);
                     block_counter++;
 
                     if(end_match.length != 2) {
@@ -138,7 +138,16 @@ namespace s90 {
                     }
                     offset = end_match.offset + 2;
                 }
-                return "void load(s90::httpd::render_context_spec *context_spec) {\n\tstd::stared_ptr<s90::httpd::render_context> ctx = context_spec->ctx;\n" + out + "\n}";
+                return  "#include <httpd/page.hpp>\n"
+                        "\n"
+                        "class renderable : public s90::httpd::page {\n"
+                        "public:\n"
+                        "    virtual s90::aiopromise<s90::nil> render(s90::httpd::environment& env) {\n"
+                        + out + "\n"
+                        "        co_return s90::nil {};\n"
+                        "    }\n"
+                        "};\n\n"
+                        "extern \"C\" LIBRARY_EXPORT void* load() { return new renderable; }";
             }
     }
 }
@@ -151,7 +160,7 @@ int main() {
     std::stringstream ss;
     is.open("private/render.html");
     ss << is.rdbuf();
-    auto out = compiler.compile(ss.str());
+    auto out = compiler.compile("env.output()", ss.str());
 
     std::cout << out;
 }

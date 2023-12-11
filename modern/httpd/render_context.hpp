@@ -1,7 +1,8 @@
+#pragma once
 #include <string>
 #include <memory>
 #include <vector>
-#include "aiopromise.hpp"
+#include "../aiopromise.hpp"
 
 namespace s90 {
     namespace httpd {
@@ -19,12 +20,14 @@ namespace s90 {
 
             std::vector<output_block> blocks;
             size_t est_length = 0;
+            bool disabled = false;
 
             public:
 
             void write(std::string&& text);
+            void disable();
             std::shared_ptr<render_context> append_context();
-            s90::aiopromise<std::string> finalize();
+            aiopromise<std::string> finalize();
         };
     }
 }

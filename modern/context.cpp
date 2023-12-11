@@ -6,6 +6,10 @@ namespace s90 {
 
     fd_t context::event_loop() const { return elfd; }
 
+    void context::set_handler(std::shared_ptr<connection_handler> conn_handler) {
+        handler = conn_handler;
+    }
+
     std::shared_ptr<afd> context::on_receive(read_params params) {
         std::shared_ptr<afd> fd;
         auto it = fds.find(params.childfd);
@@ -47,6 +51,9 @@ namespace s90 {
             fds.insert(std::make_pair(params.childfd, fd));
         }
         fd->on_accept();    
+        if(handler) {
+            handler->on_accept(fd);
+        }
         return fd;
     }
 

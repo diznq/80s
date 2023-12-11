@@ -50,6 +50,7 @@ fi
 
 $CXX $FLAGS -std=c++20 -fcoroutines -Isrc/ \
     modern/90s.cpp modern/afd.cpp modern/context.cpp \
+    modern/httpd/environment.cpp modern/httpd/render_context.cpp modern/httpd/server.cpp \
     bin/lib80s.a \
     $DEFINES \
     $LIBS \
