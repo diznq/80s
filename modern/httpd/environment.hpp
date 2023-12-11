@@ -17,6 +17,7 @@ namespace s90 {
             virtual void header(std::string&& key, std::string&& value) = 0;
 
             virtual std::optional<std::string> query(std::string&& key) const = 0;
+            virtual const std::string& body() const = 0;
 
             virtual void content_type(std::string&& value) = 0;
             
@@ -41,7 +42,7 @@ namespace s90 {
             std::string http_method = "GET";
             std::map<std::string, std::string> query_params;
             std::map<std::string, std::string> headers;
-            std::string body;
+            std::string http_body;
         public:
 
             void disable() const override;
@@ -52,6 +53,7 @@ namespace s90 {
             void header(std::string&& key, std::string&& value) override;
 
             std::optional<std::string> query(std::string&& key) const override;
+            const std::string& body() const override;
 
             void content_type(std::string&& value) override;
             void status(std::string&& status_code) override;

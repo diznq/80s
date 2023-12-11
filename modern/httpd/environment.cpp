@@ -50,6 +50,10 @@ namespace s90 {
             return it->second;
         }
 
+        const std::string& environment::body() const {
+            return http_body;
+        }
+
         void environment::content_type(std::string&& value) {
             output_headers["content-type"] = value;
         }
@@ -67,7 +71,7 @@ namespace s90 {
         }
 
         void environment::write_body(std::string&& data) {
-            body = std::move(data);
+            http_body = std::move(data);
         }
 
         void environment::write_header(std::string&& key, std::string&& value) {

@@ -187,6 +187,8 @@ namespace s90 {
                         arg = co_await fd->read_until("\r\n");
                         if(arg.error) co_return {};
                         if(arg.data.length() == 0) {
+                            auto content_length = env.header("content-length");
+                            if(content_length) body_length = atoll(content_length.value().c_str());
                             state = body_length > 0 ? http_state::read_body : http_state::generate_response;
                         } else {
                             pivot = arg.data.find(": ");
