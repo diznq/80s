@@ -14,10 +14,12 @@ namespace s90 {
         }
 
         std::shared_ptr<render_context> render_context::append_context() {
-            output_block blk { output_type::block, "", std::make_shared<render_context>() };
+            auto ctx = std::make_shared<render_context>();
+            output_block blk { output_type::block, "", ctx };
             blocks.emplace_back(std::move(blk));
-            blocks.back().block->disable();
-            return blocks.back().block;
+            if(disabled)
+                ctx->disable();
+            return ctx;
         }
         
         aiopromise<std::string> render_context::finalize() {

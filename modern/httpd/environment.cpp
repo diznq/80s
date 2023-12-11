@@ -1,5 +1,7 @@
 #include "environment.hpp"
 #include "page.hpp"
+#include <algorithm>
+#include <cctype>
 
 namespace s90 {
     namespace httpd {
@@ -24,23 +26,27 @@ namespace s90 {
             return http_method;
         }
 
-        const std::string& environment::header(std::string&& key) const {
+        std::optional<std::string> environment::header(std::string&& key) const {
+            std::transform(key.begin(), key.end(), key.begin(), [](auto c) -> auto { return std::tolower(c); });
             auto it = headers.find(std::move(key));
-            if(it == headers.end()) return "";
+            if(it == headers.end()) return {};
             return it->second;
         }
 
         void environment::header(const std::string& key, const std::string& value) {
+            std::string lower_key = key;
+            std::transform(lower_key.begin(), lower_key.end(), lower_key.begin(), [](auto c) -> auto { return std::tolower(c); });
             output_headers[key] = value;
         }
 
         void environment::header(std::string&& key, std::string&& value) {
+            std::transform(key.begin(), key.end(), key.begin(), [](auto c) -> auto { return std::tolower(c); });
             output_headers[std::move(key)] = std::move(value);
         }
 
-        const std::string& environment::content_type() const {
-            auto it = headers.find("content-type");
-            if(it == headers.end()) return "application/octet-stream";
+        std::optional<std::string> environment::query(std::string&& key) const {
+            auto it = query_params.find(std::move(key));
+            if(it == query_params.end()) return {};
             return it->second;
         }
 
@@ -70,6 +76,10 @@ namespace s90 {
 
         void environment::write_method(std::string&& method) {
             method = std::move(method);
+        }
+
+        void environment::write_query(std::map<std::string, std::string>&& qs) {
+            query_params = std::move(qs);
         }
     }
 }

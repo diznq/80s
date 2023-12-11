@@ -14,6 +14,7 @@ namespace s90 {
             server();
             ~server();
             aiopromise<nil> on_accept(std::shared_ptr<afd> fd) override;
+            std::map<std::string, std::string> parse_query_string(std::string&& query_string) const;
         };
     }
 }

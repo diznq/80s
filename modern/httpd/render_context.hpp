@@ -2,6 +2,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <format>
 #include "../aiopromise.hpp"
 
 namespace s90 {
@@ -28,6 +29,11 @@ namespace s90 {
             void disable();
             std::shared_ptr<render_context> append_context();
             aiopromise<std::string> finalize();
+
+            template< class... Args >
+            void write_formatted( std::format_string<Args...> fmt, Args&&... args ) {
+                write(std::vformat(fmt.get(), std::make_format_args(args...)));
+            }
         };
     }
 }

@@ -2,6 +2,7 @@
 #include "render_context.hpp"
 #include <map>
 #include <string>
+#include <optional>
 
 namespace s90 {
     namespace httpd {
@@ -11,11 +12,12 @@ namespace s90 {
         public:
             virtual void disable() const = 0;
             virtual const std::string& method() const = 0;
-            virtual const std::string& header(std::string&& key) const = 0;
+            virtual std::optional<std::string> header(std::string&& key) const = 0;
             virtual void header(const std::string& key, const std::string& value) = 0;
             virtual void header(std::string&& key, std::string&& value) = 0;
 
-            virtual const std::string& content_type() const = 0;
+            virtual std::optional<std::string> query(std::string&& key) const = 0;
+
             virtual void content_type(std::string&& value) = 0;
             
             virtual void status(std::string&& status_code) = 0;
@@ -37,16 +39,20 @@ namespace s90 {
 
             void *global_context = nullptr;
             std::string http_method = "GET";
+            std::map<std::string, std::string> query_params;
             std::map<std::string, std::string> headers;
             std::string body;
         public:
 
             void disable() const override;
             const std::string& method() const override;
-            const std::string& header(std::string&& key) const override;
+
+            std::optional<std::string> header(std::string&& key) const override;
             void header(const std::string& key, const std::string& value) override;
             void header(std::string&& key, std::string&& value) override;
-            const std::string& content_type() const override;
+
+            std::optional<std::string> query(std::string&& key) const override;
+
             void content_type(std::string&& value) override;
             void status(std::string&& status_code) override;
             std::shared_ptr<render_context> output() const override;
@@ -55,7 +61,9 @@ namespace s90 {
 
             void write_method(std::string&& method);
             void write_header(std::string&& key, std::string&& value);
+            void write_query(std::map<std::string, std::string>&& qs);
             void write_body(std::string&& data);
+
         };
     }
 }

@@ -48,7 +48,7 @@ if [ ! -f "bin/lib80s.a" ]; then
   ar rcs bin/lib80s.a bin/obj/*.o
 fi
 
-$CXX $FLAGS -std=c++20 -fcoroutines -Isrc/ \
+$CXX $FLAGS -std=c++23 -fcoroutines -Isrc/ \
     modern/90s.cpp modern/afd.cpp modern/context.cpp \
     modern/httpd/environment.cpp modern/httpd/render_context.cpp modern/httpd/server.cpp \
     bin/lib80s.a \
