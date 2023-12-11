@@ -10,8 +10,13 @@
     <title>Document</title>
 </head>
 <body>
-    <h1>Hello!</h1>
     <?cpp
+        auto name = env.query("name");
+        if(name) {
+            | <h1>Hi, #[[name.value()]]</h1>
+        } else {
+            | <h1>Hello!</h1>
+        }
         std::time_t t = std::time(NULL);
         std::tm *tm = std::localtime(&t);
         const char *days[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
