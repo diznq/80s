@@ -2,111 +2,119 @@
 #include <optional>
 #include <functional>
 #include <memory>
-#if __cplusplus >= 202002L
 #include <coroutine>
-#endif
+#include <exception>
 
 namespace s90 {
 
-    #if __cplusplus >= 202002L
-    struct coroutine
-    {
-        struct promise_type
-        {
-            coroutine get_return_object() { return {}; }
+    template<typename T>
+    class aiopromise;
+
+    template<typename T>
+    struct aiopromise_state {
+        bool resolved = false;
+        std::optional<T> result;
+        std::function<void(T)> callback;
+        std::coroutine_handle<> coro_callback;
+        std::exception_ptr exception;
+    };
+
+    template<typename T>
+    class aiopromise {
+
+    public:
+        struct promise_type {
+            std::shared_ptr<s90::aiopromise_state<T>> state;
+
+            promise_type() : state(std::make_shared<aiopromise_state<T>>()) {}
+
+            s90::aiopromise<T> get_return_object() {
+                return s90::aiopromise<T>(*this);
+            }
+
             std::suspend_never initial_suspend() {
                 return {};
             }
+
             std::suspend_never final_suspend() noexcept {
                 return {}; 
             }
-            void return_void() {}
-            void unhandled_exception() {}
+
+            template<std::convertible_to<T> From>
+            std::suspend_always yield_value(From&& from)
+            {
+                state->result.emplace(std::forward<From>(from));
+                return {};
+            }
+
+            void return_value(const T& value) {
+                state->result.emplace(value);
+            }
+
+            void unhandled_exception() {
+                state->exception = std::current_exception();
+            }
         };
-    };
-    #endif
 
-    template<class T>
-    class aiopromise {
+        promise_type p;
 
-        struct state {
-            bool resolved = false;
-            std::optional<T> result;
-            std::function<void(T)> callback;
-    #if __cplusplus >= 202002L
-            std::coroutine_handle<> coro_callback;
-    #endif
-        };
+        aiopromise() {}
+        aiopromise(const promise_type& p) : p(p) {}
 
-        std::shared_ptr<state> s;
-
-    public:
-        aiopromise() : s(std::make_shared<state>()) {
-
+        std::shared_ptr<s90::aiopromise_state<T>> state() const {
+            return p.state;
         }
 
         void resolve(const T& value) {
-            if(!s->resolved) {
-                s->resolved = true;
-                s->result.emplace(value);
-                if(s->callback) {
-                    s->resolved = true;
-                    s->callback(value);
+            if(!state()->resolved) {
+                state()->result.emplace(value);
+                if(state()->callback) {
+                    state()->resolved = true;
+                    state()->callback(value);
+                } else if(state()->coro_callback) {
+                    state()->resolved = true;
+                    state()->coro_callback();
                 }
-            #if __cplusplus >= 202002L
-                else if(s->coro_callback) {
-                    s->resolved = true;
-                    s->coro_callback();
-                }
-            #endif
             }
         }
 
         void resolve(T&& value) {
-            if(!s->resolved) {
-                s->result.emplace(std::move(value));
-                if(s->callback) {
-                    s->resolved = true;
-                    s->callback(s->result.value());
+            if(!state()->resolved) {
+                state()->result.emplace(std::forward<T>(value));
+                if(state()->callback) {
+                    state()->resolved = true;
+                    state()->callback(state()->result.value());
                 }
-            #if __cplusplus >= 202002L
-                else if(s->coro_callback) {
-                    s->resolved = true;
-                    s->coro_callback();
+                else if(state()->coro_callback) {
+                    state()->resolved = true;
+                    state()->coro_callback();
                 }
-            #endif
             }
         }
 
         void then(std::function<void(T)> cb) {
-            if(s->result.has_value()) {
-                if(!s->resolved) {
-                    s->resolved = true;
-                    cb(s->result.value());
+            if(state()->result.has_value()) {
+                if(!state()->resolved) {
+                    state()->resolved = true;
+                    cb(state()->result.value());
                 }
             } else {
-                s->callback = cb;
+                state()->callback = cb;
             }
         }
 
-        aiopromise<T>& cor() {
-            return *this;
-        }
-
-    #if __cplusplus >= 202002L
         bool await_ready() const {
-            return s->result.has_value();
+            return state()->result.has_value();
         }
 
         void await_suspend(std::coroutine_handle<> resume) {
-            s->coro_callback = resume;
+            state()->coro_callback = resume;
         }
 
         const T& await_resume() const {
-            return s->result.value();
+            return state()->result.value();
         }
 
-    #endif
     };
 
 }

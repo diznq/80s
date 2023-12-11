@@ -1,5 +1,5 @@
 #pragma once
-#include "../src/80s.h"
+#include <80s.h>
 #include "aiopromise.hpp"
 
 #include <list>

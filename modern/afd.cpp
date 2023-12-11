@@ -1,5 +1,5 @@
 #include "afd.hpp"
-#include "../src/algo.h"
+#include <algo.h>
 
 namespace s90 {
 
