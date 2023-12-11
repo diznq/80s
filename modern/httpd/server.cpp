@@ -85,7 +85,7 @@ namespace s90 {
                             FreeLibrary(hLib);
                         } else {
                             pages[webpage->name()] = webpage;
-                            loaded_libs[name] = {hLib, webpage, 1};
+                            loaded_libs[name] = {hLib, webpage, 1, (pfnunloadwebpage)GetProcAddress(hLib, "unload_page")};
                         }
                     }
                 }
@@ -102,7 +102,7 @@ namespace s90 {
                             dlclose(hLib);
                         } else {
                             pages[webpage->name()] = webpage;
-                            loaded_libs[name] = {hLib, webpage, 1};
+                            loaded_libs[name] = {hLib, webpage, 1, (pfnunloadwebpage)dlsym(hLib, "unload_page")};
                         }
                     }
                 }
@@ -114,7 +114,10 @@ namespace s90 {
             std::lock_guard guard(loaded_libs_lock);
             for(auto it = loaded_libs.begin(); it != loaded_libs.end();) {
                 auto page_it = pages.find(it->second.webpage->name());
-                if(page_it != pages.end()) pages.erase(page_it);
+                if(page_it != pages.end()) {
+                    if(it->second.unload) it->second.unload((void*)page_it->second);
+                    pages.erase(page_it);
+                }
                 it->second.references--;
                 if(it->second.references == 0) {
                     std::cout << "unloading library " << it->first << std::endl;

@@ -8,6 +8,9 @@
 
 namespace s90 {
     namespace httpd {
+
+        typedef void(*pfnunloadwebpage)(void*);
+
         class server : public connection_handler {
 
             struct loaded_lib {
@@ -18,6 +21,7 @@ namespace s90 {
 #endif
                 page *webpage;
                 int references = 0;
+                pfnunloadwebpage unload = nullptr;
             };
 
             std::map<std::string, page*> pages;

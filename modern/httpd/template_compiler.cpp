@@ -262,6 +262,7 @@ namespace s90 {
                         "};\n\n"
                         "#ifndef PAGE_INCLUDE\n"
                         "extern \"C\" LIBRARY_EXPORT void* load_page() { return new renderable; }\n"
+                        "extern \"C\" LIBRARY_EXPORT void unload_page(renderable *entity) { delete entity; }\n"
                         "#endif\n";
             }
     }
