@@ -2,6 +2,7 @@
 DEFAULT_C_COMPILER="gcc"
 DEFAULT_COMPILER="g++"
 EXE_EXT=""
+SO_EXT="so"
 
 if ! [ -x "$(command -v $DEFAULT_COMPILER)" ]; then
   DEFAULT_COMPILER="clang++"

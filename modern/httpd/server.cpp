@@ -3,6 +3,15 @@
 #include <filesystem>
 #include <iostream>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
 namespace s90 {
     namespace httpd {
 
@@ -58,7 +67,7 @@ namespace s90 {
             std::string web_root = "modern/httpd/pages/";
             if(web_root_env != NULL) web_root = web_root_env;
             for(const auto& entry : std::filesystem::recursive_directory_iterator(web_root)) {
-                if(entry.path().extension() == "so" || entry.path().extension() == ".dll") {
+                if(entry.path().extension() == ".so" || entry.path().extension() == ".dll") {
                     load_lib(entry.path().string());
                 }
             }
