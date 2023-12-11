@@ -31,5 +31,5 @@ public:
 };
 
 #ifndef PAGE_INCLUDE
-extern "C" LIBRARY_EXPORT void* load_page() { return new renderable; }
+extern "C" LIBRARY_EXPORT void* load_page() { return new time_renderable; }
 #endif
