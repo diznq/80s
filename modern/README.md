@@ -22,6 +22,8 @@ To compile web pages, run `./90s.sh pages`
 
 To run, same syntax as for `80s` web server can be used: `bin/90s -c 4 -p 8080` to run web server with 4 workers on port 8080.
 
+Alternatively `WEB_ROOT` environment variable can be used to specify where to look for webpages, i.e. `WEB_ROOT=modern/httpd/pages/ bin/90s`.
+
 ## Template syntax
 
 Template compiler supports syntax similar to that of PHP, that is source code is located between `<?cpp` and `?>`.
