@@ -147,6 +147,17 @@ namespace s90 {
                 std::string data = input_data;
                 std::string out = "";
                 std::string includes = "";
+                std::string mime_type = "text/plain";
+
+                if(file_name.ends_with(".txt")) mime_type = "text/plain";
+                else if(file_name.ends_with(".js")) mime_type = "application/javascript";
+                else if(file_name.ends_with(".json")) mime_type = "applicaton/json";
+                else if(file_name.ends_with(".xml")) mime_type = "text/xml";
+                else if(file_name.ends_with(".md")) mime_type = "text/markdown";
+                else if(file_name.ends_with(".html")) mime_type = "text/html";
+                else if(file_name.ends_with(".xhtml")) mime_type = "application/xhtml+xml";
+
+                trim(data);
 
                 for(char& c : estimate_name) {
                     if(c == '\\') c = '/';
@@ -166,7 +177,7 @@ namespace s90 {
                     estimate_name = estimate_name.replace(name_pos + 1, 4, "");
                 }
 
-                if(estimate_name.find(".html") == estimate_name.length() - 5) {
+                if(estimate_name.ends_with(".html") || estimate_name.ends_with(".xhtml")) {
                     script_name += estimate_name.substr(0, estimate_name.length() - 5);
                 } else {
                     script_name += estimate_name;
@@ -175,11 +186,17 @@ namespace s90 {
                 if(data.find("#!") == 0) {
                     size_t line_end = data.find("\n");
                     std::string line;
-                    if(line_end == std::string::npos) line = data.substr(2);
-                    else line = data.substr(2, line_end - 2);
+                    if(line_end == std::string::npos) {
+                        line = data.substr(2);
+                    } else {
+                        line = data.substr(2, line_end - 2);
+                        data = data.substr(line_end);
+                    }
                     trim(line);
                     script_name = line;
                 }
+
+                trim(data);
 
                 // extract all <?hpp ... ?> into `include` variable that goes at the beginning of the script
                 while(true) {
@@ -196,6 +213,8 @@ namespace s90 {
                         }
                     }
                 }
+
+                trim(data);
 
                 offset = 0;
 
@@ -236,6 +255,7 @@ namespace s90 {
                         "        return \"" + script_name + "\";\n"
                         "    }\n"
                         "    s90::aiopromise<s90::nil> render(s90::httpd::ienvironment& env) const override {\n"
+                        "        env.content_type(\"" + mime_type + "\");\n"
                         + out + "\n"
                         "        co_return s90::nil {};\n"
                         "    }\n"

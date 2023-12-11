@@ -71,6 +71,7 @@ namespace s90 {
                 it->second.references++;
                 pages[it->second.webpage->name()] = it->second.webpage;
             } else {
+                std::cout << "loading library " << name << std::endl;
                 #ifdef _WIN32
                 HMODULE hLib = LoadLibraryA(name.c_str());
                 if(hLib != INVALID_HANDLE_VALUE) {
@@ -116,6 +117,7 @@ namespace s90 {
                 if(page_it != pages.end()) pages.erase(page_it);
                 it->second.references--;
                 if(it->second.references == 0) {
+                    std::cout << "unloading library " << it->first << std::endl;
                     #ifdef _WIN32
                     FreeLibrary(it->second.lib);
                     #else

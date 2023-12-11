@@ -7,3 +7,7 @@ gsemu/
 *.env.sh
 /i.*
 mail/
+modern/httpd/pages/*.hpp
+modern/httpd/pages/*.cpp
+modern/httpd/pages/*.so
+modern/httpd/pages/*.dll

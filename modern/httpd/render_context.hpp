@@ -25,9 +25,9 @@ namespace s90 {
 
             public:
 
-            void write(std::string&& text);
-            void disable();
-            std::shared_ptr<render_context> append_context();
+            virtual void write(std::string&& text);
+            virtual void disable();
+            virtual std::shared_ptr<render_context> append_context();
             aiopromise<std::string> finalize();
 
             template< class... Args >
