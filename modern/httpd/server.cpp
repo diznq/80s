@@ -116,6 +116,7 @@ namespace s90 {
                         } else {
                             current_page = it->second;
                         }
+                        env.header("connection", "keep-alive");
                         write_status = co_await fd->write(co_await env.render(current_page));
                         if(!write_status) {
                             co_return {};
