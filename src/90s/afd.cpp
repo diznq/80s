@@ -121,7 +121,6 @@ namespace s90 {
                 // if everything was executed, clear the read buffer
                 read_offset = 0;
                 read_buffer.clear();
-                read_buffer.shrink_to_fit();
                 break;
             }
 
@@ -175,7 +174,6 @@ namespace s90 {
 
         if(write_back_buffer_info.size() == 0) {
             write_back_buffer.clear();
-            write_back_buffer.shrink_to_fit(); 
             write_back_offset = 0;
         }
     }
@@ -193,10 +191,8 @@ namespace s90 {
         write_back_offset = 0;
         write_back_buffer.clear();
         write_back_buffer_info.clear();
-        write_back_buffer.shrink_to_fit();
         read_commands.clear();
         read_buffer.clear();
-        read_buffer.shrink_to_fit();
     }
 
     void afd::close() {
