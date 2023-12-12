@@ -41,33 +41,80 @@ echo "Defines: $DEFINES"
 echo "Libraries: $LIBS"
 echo "Flags: $FLAGS"
 
+arg="$1"
+
+if [ "$1" = "clean" ]; then
+  rm -rf bin/obj
+  arg="$2"
+fi
+
+xmake() {
+  cc="$1"
+  flags="$2"
+  rem_libs="$3"
+  outname="$4"
+  obj_files=""
+  if [ "$rem_libs" = "-" ]; then
+    rem_libs=""
+  fi
+
+  for (( i=5; i <= "$#"; i++ )); do
+    file="${!i}"
+    echo "> Compiling $file"
+    dir=$(dirname "$file")
+    mkdir -p "bin/obj/$dir"
+    obj_file=$(echo "bin/obj/$file" | sed -e s/\\.c\$/.o/g | sed -e s/\\.cpp\$/.o/g)
+    do_compile="1"
+    if [ -f "$obj_file" ]; then
+      script_time=$(stat -c %y $file)
+      obj_time=$(stat -c %y $obj_file)
+      if [ "$obj_time" = "$script_time" ]; then
+        do_compile="0"
+      fi
+    fi
+    if [ $do_compile -eq "1" ]; then
+      $cc $flags -c $file -o "$obj_file"
+      if [ -f "$obj_file" ]; then
+        touch -r "$file" "$obj_file"
+      fi
+    fi
+    obj_files="$obj_files $obj_file"
+  done
+  # link it
+  if [ "${outname: -2}" == ".a" ]; then
+    ar rcs "$outname" $obj_files
+  else
+    $cc -o "$outname" $obj_files $rem_libs $flags
+  fi
+}
+
 if [ ! -f "bin/lib80s.a" ]; then
   echo "Compiling lib80s"
-  $CC $FLAGS -c \
+  xmake "$CC" "$FLAGS $LIBS $DEFINES" "-" "bin/lib80s.a" \
       src/80s.c src/80s_common.c src/80s_common.windows.c src/dynstr.c src/algo.c \
       src/serve.epoll.c src/serve.kqueue.c src/serve.iocp.c
-
-  mv *.o bin/obj/
-
-  ar rcs bin/lib80s.a bin/obj/*.o
 fi
+
+FLAGS="$FLAGS -std=c++23 -Isrc/ -fcoroutines -Imodern/"
 
 if [ ! -f "bin/template$EXE_EXT" ]; then
   echo "Compiling template compiler"
-  $CXX $FLAGS -std=c++23 -Isrc/ modern/httpd/template_compiler.cpp bin/lib80s.a -O2 -o "bin/template$EXE_EXT"
+  xmake "$CXX" "$FLAGS" "bin/lib80s.a" "bin/template$EXE_EXT" modern/httpd/template_compiler.cpp
 fi
 
-if [ "$1" = "pages" ]; then
+if [ "$arg" = "pages" ]; then
   echo "Compiling webpages"
   find modern/httpd/pages -name *.html -type f -exec sh -c "bin/template {} {} \$(echo "{}" | sed  s/html/cpp/g)" \;
-  find modern/httpd/pages/ -name *.cpp -type f -exec sh -c "$CXX $FLAGS -fPIC -shared -std=c++23 -fcoroutines -Isrc/ -Imodern/ {} bin/lib80s.a $DEFINES $LIBS -o \$(echo "{}" | sed  s/cpp/$SO_EXT/g)" \;
+  to_compile=$(find modern/httpd/pages/ -name *.cpp -type f)
+  FLAGS="$FLAGS $LIBS $DEFINES -fPIC -shared"
+  for file in $to_compile; do
+    outname=$(echo "$file" | sed s/\\.cpp$/.$SO_EXT/g)
+    xmake "$CXX" "$FLAGS" "-" "$outname" "$file"
+  done
 else
   echo "Compiling 90s web server"
-  $CXX $FLAGS -std=c++23 -fcoroutines -Isrc/ \
+  FLAGS="$FLAGS $LIBS $DEFINES"
+  xmake "$CXX" "$FLAGS" "bin/lib80s.a" "$OUT" \
     modern/90s.cpp modern/afd.cpp modern/context.cpp \
-    modern/httpd/environment.cpp modern/httpd/render_context.cpp modern/httpd/server.cpp modern/util/util.cpp \
-    bin/lib80s.a \
-    $DEFINES \
-    $LIBS \
-    -o "$OUT"
+    modern/httpd/environment.cpp modern/httpd/render_context.cpp modern/httpd/server.cpp modern/util/util.cpp
 fi
