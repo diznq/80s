@@ -112,7 +112,7 @@ namespace s90 {
             // decode the method & scrabmle
             auto [method, scramble] = decode_handshake_packet(result.data);
             if(method != "mysql_native_password") {
-                co_return {false, "unspported auth method: " + method};
+                co_return {false, "unsupported auth method: \"" + method + "\""};
             }
             // perform login
             std::string login = 
