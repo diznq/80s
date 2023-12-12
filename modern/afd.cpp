@@ -56,7 +56,7 @@ namespace s90 {
 
             // select a read_buffer window based on where we ended up last time
             std::string_view window(read_buffer.data() + read_offset, read_buffer.size() - read_offset);
-            std::string arg;
+            std::string_view arg;
             for(auto it = read_commands.begin(); iterate && !window.empty() && it != read_commands.end();) {
                 auto command_promise = it->promise;
                 auto command_n = it->n;
@@ -68,7 +68,7 @@ namespace s90 {
                         // any is fulfilled whenever any data comes in, no matter the size
                         read_offset += window.size();
                         it = read_commands.erase(it);
-                        arg = std::string(window);
+                        arg = window;
                         window = window.substr(window.size());
                         command_promise.resolve({false, std::move(arg)});
                         iterate = false;
@@ -81,7 +81,7 @@ namespace s90 {
                         } else {
                             read_offset += command_n;
                             it = read_commands.erase(it);
-                            arg = std::string(window.substr(0, command_n));
+                            arg = window.substr(0, command_n);
                             window = window.substr(command_n);
                             command_promise.resolve({false, std::move(arg)});
                         }

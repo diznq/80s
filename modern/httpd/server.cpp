@@ -200,17 +200,6 @@ namespace s90 {
                     if(remaining.length() == 0) break;
                 }
 
-                // read body if applicable
-                auto content_length = env.header("content-length");
-                if(content_length) {
-                    auto len = atoll(content_length.value().c_str());
-                    if(len > 0) {
-                        auto body = co_await fd->read_n(len);
-                        if(body.error) co_return {};
-                        env.write_body(std::move(body.data));
-                    }
-                }
-
                 // parse status line into script & query params
                 pivot = script.find('?');
                 if(pivot != std::string::npos) {
@@ -223,6 +212,17 @@ namespace s90 {
                     current_page = not_found;
                 } else {
                     current_page = it->second;
+                }
+
+                // read body if applicable
+                auto content_length = env.header("content-length");
+                if(content_length) {
+                    auto len = atoll(content_length.value().c_str());
+                    if(len > 0) {
+                        auto body = co_await fd->read_n(len);
+                        if(body.error) co_return {};
+                        env.write_body(std::string(body.data));
+                    }
                 }
 
                 // generate the response

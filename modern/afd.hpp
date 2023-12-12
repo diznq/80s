@@ -14,7 +14,7 @@ namespace s90 {
 
     struct read_arg {
         bool error;
-        std::string data;
+        std::string_view data;
     };
 
     class iafd {
