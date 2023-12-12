@@ -85,5 +85,9 @@ namespace s90 {
         void environment::write_query(std::map<std::string, std::string>&& qs) {
             query_params = std::move(qs);
         }
+
+        void environment::write_context(void *ctx) {
+            global_context = ctx;
+        }
     }
 }

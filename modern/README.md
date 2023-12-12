@@ -39,6 +39,50 @@ Inside `<?cpp ... ?>` blocks on code `ienvironment& env` is always available and
 
 When files are included, `#!` is stripped from within of them, so `#!` is always applies only to the currently parsed file
 
+## Webpages (pagelets)
+
+Webpages are dynamic linked libraries that are automatically loaded by the server on load and reloaded on refresh.
+
+Webpages can also serve as initializer to create a global context reused by other webpages, in usual scenario only one webpage can do this, i.e. `main.so`.
+
+### Creating a global context
+
+To create a global context, webpage has to expose `extern "C" void* initialize();` and `extern "C" void release(void*)` procedures.
+
+The context is later available when webpage is rendered using `env.context()` or `env.context<T>()` to retrieve `const T&` context.
+
+Here is an example:
+
+```cpp
+#include <httpd/page.hpp>
+
+struct my_context {
+    sql_connection *sql;
+};
+
+class renderable : public page {
+public:
+    const char *name() const override {
+        return "GET /test";
+    }
+    s90::aiopromise<s90::nil> render(s90::httpd::ienvironment& env) const override {
+        // retrieve the context back from environment
+        auto& ctx = env.context<my_context>();
+        auto result = ctx.sql->select(...);
+    }
+};
+
+extern "C" {
+    // provide pagelet initializer
+    LIBRARY_EXPORT void* load_page() { return new renderable; }
+    LIBRARY_EXPORT void unload_page(renderable *entity) { delete entity; }
+
+    // provide context initializer
+    LIBRARY_EXPORT void* initialize() { return new my_context; }
+    LIBRARY_EXPORT void release(my_context* ctx) { delete ctx; }
+}
+```
+
 ### Example template
 
 ```html

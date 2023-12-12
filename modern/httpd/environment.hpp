@@ -67,6 +67,7 @@ namespace s90 {
             void write_header(std::string&& key, std::string&& value);
             void write_query(std::map<std::string, std::string>&& qs);
             void write_body(std::string&& data);
+            void write_context(void *ctx);
         };
     }
 }

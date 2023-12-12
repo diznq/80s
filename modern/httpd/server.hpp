@@ -9,7 +9,10 @@
 namespace s90 {
     namespace httpd {
 
+        typedef void*(*pfnloadpage)();
         typedef void(*pfnunloadwebpage)(void*);
+        typedef void(*pfnrelease)(void*);
+        typedef void*(*pfninitialize)();
 
         class server : public connection_handler {
 
@@ -21,12 +24,16 @@ namespace s90 {
 #endif
                 page *webpage = nullptr;
                 int references = 0;
+                pfnloadpage load = nullptr;
                 pfnunloadwebpage unload = nullptr;
+                pfninitialize initialize = nullptr;
+                pfnrelease release = nullptr;
             };
 
             std::map<std::string, page*> pages;
             static std::map<std::string, loaded_lib> loaded_libs;
             static std::mutex loaded_libs_lock;
+            void *global_context = nullptr;
             page *not_found;
             
             void load_lib(const std::string& name);

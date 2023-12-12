@@ -9,8 +9,16 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
+#define DL_OPEN(lib) LoadLibraryA(lib)
+#define DL_CLOSE(lib) FreeLibrary(lib)
+#define DL_FIND(lib, name) GetProcAddress(lib, name)
+#define DL_INVALID INVALID_HANDLE_VALUE
 #else
 #include <dlfcn.h>
+#define DL_OPEN(lib) dlopen(lib, RTLD_LAZY)
+#define DL_CLOSE(lib) dlclose(lib)
+#define DL_FIND(lib, name) dlsym(lib, name)
+#define DL_INVALID NULL
 #endif
 
 namespace s90 {
@@ -79,44 +87,34 @@ namespace s90 {
             auto it = loaded_libs.find(name);
             if(it != loaded_libs.end()) {
                 it->second.references++;
-                pages[it->second.webpage->name()] = it->second.webpage;
+                if(it->second.webpage) {
+                    pages[it->second.webpage->name()] = it->second.webpage;
+                }
+                if(it->second.initialize) {
+                    global_context = it->second.initialize();
+                }
             } else {
                 std::cout << "loading library " << name << std::endl;
-                #ifdef _WIN32
-                HMODULE hLib = LoadLibraryA(name.c_str());
-                if(hLib != INVALID_HANDLE_VALUE) {
-                    typedef void*(*pfnloadpage)();
-                    pfnloadpage loader = (pfnloadpage)GetProcAddress(hLib, "load_page");
-                    if(loader == NULL) {
-                        FreeLibrary(hLib);
-                    } else {
-                        page *webpage = (page*)loader();
-                        if(!webpage) {
-                            FreeLibrary(hLib);
-                        } else {
-                            pages[webpage->name()] = webpage;
-                            loaded_libs[name] = {hLib, webpage, 1, (pfnunloadwebpage)GetProcAddress(hLib, "unload_page")};
-                        }
+                auto hLib = DL_OPEN(name.c_str());
+                if(hLib != DL_INVALID){
+                    pfnloadpage loader = (pfnloadpage)DL_FIND(hLib, "load_page");
+                    pfnunloadwebpage unloader = (pfnunloadwebpage)DL_FIND(hLib, "unload_page");
+                    pfninitialize initializer = (pfninitialize)DL_FIND(hLib, "initialize");
+                    pfnrelease releaser = (pfnrelease)DL_FIND(hLib, "release");
+                    page* webpage = nullptr;
+                    if(loader){
+                        webpage = (page*)loader();
+                        pages[webpage->name()] = webpage;
                     }
-                }
-                #else
-                void *hLib = dlopen(name.c_str(), RTLD_LAZY);
-                if(hLib) {
-                    typedef void*(*pfnloadpage)();
-                    pfnloadpage loader = (pfnloadpage)dlsym(hLib, "load_page");
-                    if(loader == NULL) {
-                        dlclose(hLib);
-                    } else {
-                        page *webpage = (page*)loader();
-                        if(!webpage) {
-                            dlclose(hLib);
-                        } else {
-                            pages[webpage->name()] = webpage;
-                            loaded_libs[name] = {hLib, webpage, 1, (pfnunloadwebpage)dlsym(hLib, "unload_page")};
-                        }
+                    if(initializer) {
+                        global_context = initializer();
                     }
+                    loaded_libs[name] = {
+                        hLib, webpage, 1,
+                        loader, unloader,
+                        initializer, releaser
+                    };
                 }
-                #endif
             }
         }
 
@@ -127,15 +125,15 @@ namespace s90 {
                 if(page_it != pages.end()) {
                     pages.erase(page_it);
                 }
+                if(global_context && it->second.release) {
+                    it->second.release(global_context);
+                    global_context = nullptr;
+                }
                 it->second.references--;
                 if(it->second.references == 0) {
                     std::cout << "unloading library " << it->first << std::endl;
                     if(it->second.unload) it->second.unload((void*)page_it->second);
-                    #ifdef _WIN32
-                    FreeLibrary(it->second.lib);
-                    #else
-                    dlclose(it->second.lib);
-                    #endif
+                    DL_CLOSE(it->second.lib);
                     it = loaded_libs.erase(it);
                 } else {
                     it++;
@@ -213,6 +211,7 @@ namespace s90 {
                     current_page = it->second;
                 }
                 env.header("connection", "keep-alive");
+                env.write_context(global_context);
                 write_status = co_await fd->write(co_await env.render(current_page));
                 if(!write_status) {
                     co_return {};
