@@ -15,7 +15,7 @@ namespace s90 {
             }
             response += "\r\n";
             response += rendered;
-            co_return response;
+            co_return std::move(response);
         }
         
         void environment::disable() const {

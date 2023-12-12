@@ -21,13 +21,13 @@ mkdir -p bin
 mkdir -p bin/obj
 
 DEFINES=""
-LIBS="-lm -ldl -lpthread"
+LIBS="-lm -ldl -lpthread -lcrypto -lssl"
 
 if [ "$(uname -o)" = "Msys" ]; then
   SO_EXT="dll"
   EXE_EXT=".exe"
   LIBS=$(echo "$LIBS" | sed "s/-ldl//g")
-  LIBS="$LIBS -lws2_32 -lmswsock"
+  LIBS="$LIBS -lws2_32 -lmswsock -lcrypt32"
 fi
 
 if [ "$DEBUG" = "true" ]; then
@@ -91,7 +91,7 @@ xmake() {
 if [ ! -f "bin/lib80s.a" ]; then
   echo "Compiling lib80s"
   xmake "$CC" "$FLAGS $LIBS $DEFINES" "-" "bin/lib80s.a" \
-      src/80s/80s.c src/80s/80s_common.c src/80s/80s_common.windows.c src/80s/dynstr.c src/80s/algo.c \
+      src/80s/80s.c src/80s/80s_common.c src/80s/80s_common.windows.c src/80s/dynstr.c src/80s/algo.c src/80s/crypto.c \
       src/80s/serve.epoll.c src/80s/serve.kqueue.c src/80s/serve.iocp.c
 fi
 
