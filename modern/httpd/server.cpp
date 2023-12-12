@@ -124,12 +124,12 @@ namespace s90 {
             for(auto it = loaded_libs.begin(); it != loaded_libs.end();) {
                 auto page_it = pages.find(it->second.webpage->name());
                 if(page_it != pages.end()) {
-                    if(it->second.unload) it->second.unload((void*)page_it->second);
                     pages.erase(page_it);
                 }
                 it->second.references--;
                 if(it->second.references == 0) {
                     std::cout << "unloading library " << it->first << std::endl;
+                    if(it->second.unload) it->second.unload((void*)page_it->second);
                     #ifdef _WIN32
                     FreeLibrary(it->second.lib);
                     #else

@@ -28,13 +28,16 @@ Alternatively `WEB_ROOT` environment variable can be used to specify where to lo
 
 Template compiler supports syntax similar to that of PHP, that is source code is located between `<?cpp` and `?>`.
 
-There are 4 syntax features in total:
+There are several syntax features:
+- `<?include relative_path ?>` can be used to include other files, path is always relative to the file being compiled, i.e. `<?include header.html ?>`
 - `<?hpp ... code ... ?>` can be used to declare anything that belongs to beginning of file, such as `#include`s etc.
 - `<?cpp ... code ... ?>` can be used to include custom C++ code into the template, to write either use `env.output()->write()` or `| ...` syntax
 - `| Formatted text #[[argument1]] #[[argument2]] ...` is a syntax sugar for `env.output()->write(...)` or `env.output()->write_formatted(...)`
 - `#!` at the beginning files defines the endpoint path, i.e. `#! GET /time`
 
 Inside `<?cpp ... ?>` blocks on code `ienvironment& env` is always available and can be used to declare output headers, content type as such, for all methods see `environment.hpp`.
+
+When files are included, `#!` is stripped from within of them, so `#!` is always applies only to the currently parsed file
 
 ### Example template
 

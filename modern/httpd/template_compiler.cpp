@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <locale>
+#include <filesystem>
 #include <algo.h>
 #include "template_compiler.hpp"
 
@@ -139,7 +140,7 @@ namespace s90 {
                 return out;
             }
 
-            std::string template_compiler::compile(const std::string& file_name, const std::string& output_context, const std::string& input_data) {
+            std::string template_compiler::compile(const std::string& file_name, const std::filesystem::path& path, const std::string& output_context, const std::string& input_data) {
                 size_t offset = 0;
                 size_t block_counter = 0;
                 std::string estimate_name = file_name;
@@ -149,6 +150,7 @@ namespace s90 {
                 std::string includes = "";
                 std::string mime_type = "text/plain";
 
+                // resolve the likely mime type
                 if(file_name.ends_with(".txt")) mime_type = "text/plain";
                 else if(file_name.ends_with(".js")) mime_type = "application/javascript";
                 else if(file_name.ends_with(".json")) mime_type = "applicaton/json";
@@ -183,6 +185,7 @@ namespace s90 {
                     script_name += estimate_name;
                 }
 
+                // resolve the #! beginning of the file and parse the endpoint name from it
                 if(data.find("#!") == 0) {
                     size_t line_end = data.find("\n");
                     std::string line;
@@ -197,6 +200,39 @@ namespace s90 {
                 }
 
                 trim(data);
+
+                // resolve all the includes
+                while(true) {
+                    offset = 0;
+                    auto match = kmp(data.c_str(), data.length(), "<?include ", 10, offset);
+                    if(match.length != 10) {
+                        break;
+                    } else {
+                        auto end_match = kmp(data.c_str(), data.length(), "?>", 2, match.offset + 10);
+                        if(end_match.length != 2) {
+                            break;
+                        } else {
+                            auto file_to_be_included = data.substr(match.offset + 10, end_match.offset - match.offset - 10);
+                            std::string included_file = "";
+                            auto actual_path = path / ".." / file_to_be_included;
+                            std::ifstream is(actual_path);
+                            std::stringstream ss;
+                            if(is.is_open()) {
+                                ss << is.rdbuf();
+                                included_file = ss.str();
+                                // if we include file, make sure we strip the #! from there!
+                                if(included_file.starts_with("#!")) {
+                                    included_file = included_file.substr(included_file.find("\n") + 1);
+                                }
+                            } else {
+                                included_file = "\"Failed to include file " + file_to_be_included + "\"";
+                            }
+                            data = data.substr(0, match.offset) + included_file + data.substr(end_match.offset + 2);
+                        }
+                    }
+                }
+
+                offset = 0;
 
                 // extract all <?hpp ... ?> into `include` variable that goes at the beginning of the script
                 while(true) {
@@ -285,7 +321,7 @@ int main(int argc, const char **argv) {
     std::stringstream ss;
     ss << is.rdbuf();
 
-    auto out = compiler.compile(argv[1], "env.output()", ss.str());
+    auto out = compiler.compile(argv[1], std::filesystem::path(argv[2]), "env.output()", ss.str());
 
     if(!std::strcmp(argv[3], "stdout")) {
         std::cout << out;
