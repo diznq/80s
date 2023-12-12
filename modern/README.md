@@ -60,7 +60,7 @@ This allows to easily create simple separate pagelets but also create a main lib
 
 To create a global context, webpage has to expose `extern "C" void* initialize();` and `extern "C" void release(void*)` procedures.
 
-The context is later available when webpage is rendered using `env.context()` or `env.context<T>()` to retrieve `const T&` context.
+The context is later available when webpage is rendered using `env.context()` to retrieve `void *const` or `env.context<T>()` to retrieve `T *const` context.
 
 Here is an example:
 
@@ -78,8 +78,8 @@ public:
     }
     s90::aiopromise<s90::nil> render(s90::httpd::ienvironment& env) const override {
         // retrieve the context back from environment
-        auto& ctx = env.context<my_context>();
-        auto result = ctx.sql->select(...);
+        auto ctx = env.context<my_context>();
+        auto result = ctx->sql->select(...);
     }
 };
 

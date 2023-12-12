@@ -66,7 +66,7 @@ namespace s90 {
             return static_pointer_cast<irender_context>(output_context);
         }
 
-        const void *environment::context() const {
+        void *const environment::context() const {
             return global_context;
         }
 

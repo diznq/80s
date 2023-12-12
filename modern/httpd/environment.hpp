@@ -26,11 +26,11 @@ namespace s90 {
             virtual std::shared_ptr<irender_context> output() const = 0;
             virtual aiopromise<std::string> render(const page *rendered_page) = 0;
 
-            virtual const void *context() const = 0;
+            virtual void *const context() const = 0;
 
             template<class T>
-            const T& context() const {
-                return static_cast<const T&>(context());
+            T* const context() {
+                return static_cast<T *const>(context());
             }
         };
 
@@ -58,7 +58,7 @@ namespace s90 {
             void content_type(std::string&& value) override;
             void status(std::string&& status_code) override;
             std::shared_ptr<irender_context> output() const override;
-            const void *context() const override;
+            void *const context() const override;
             aiopromise<std::string> render(const page *rendered_page) override;
 
         private:

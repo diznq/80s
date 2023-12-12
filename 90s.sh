@@ -118,8 +118,8 @@ if [ "$arg" = "pages" ]; then
   # Detect all .cpps that aren't generated from .htmls and compile main lib
   to_compile=$(find "$WEB_ROOT" -name *.cpp -type f | grep -v .html.cpp)
   if [ ! -z "$to_compile" ]; then
-    echo "Compiling main$SO_EXT"
-    xmake "$CXX" "$FLAGS" "bin/lib80s.a" "${WEB_ROOT}main$SO_EXT" $to_compile
+    echo "Compiling main.$SO_EXT"
+    xmake "$CXX" "$FLAGS" "bin/lib80s.a" "${WEB_ROOT}main.$SO_EXT" $to_compile
   fi
 else
   echo "Compiling 90s web server"

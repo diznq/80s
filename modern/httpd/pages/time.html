@@ -1,7 +1,7 @@
 #! GET /time
 <?hpp 
 #include <ctime> 
-
+#include "main.hpp"
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,6 +11,7 @@
 </head>
 <body>
     <?cpp
+        auto ctx = env.context<default_context>();
         auto name = env.query("name");
         if(name) {
             | <h1>Hi, #[[name.value()]]</h1>
@@ -24,5 +25,9 @@
         | <h2>Today is: #[[ days[tm->tm_wday] ]]</h2>
     ?>
     <br>
+    <hr>
+    <?cpp
+        | <p>This is coming from global context: #[[ ctx->get_message() ]]</p>
+    ?>
 </body>
 </html>
