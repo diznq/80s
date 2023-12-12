@@ -45,6 +45,17 @@ Webpages are dynamic linked libraries that are automatically loaded by the serve
 
 Webpages can also serve as initializer to create a global context reused by other webpages, in usual scenario only one webpage can do this, i.e. `main.so`.
 
+### Default build strategy
+
+Default build strategy is as follows:
+
+1. Locate all `.html` files in `$WEB_ROOT` (defaults to `modern/httpd/pages/`)
+2. Compile all `.html` files to `.html.cpp` and compile them into standalone dynamically linked libraries
+3. Locate all `.cpp` files in `$WEB_ROOT` that aren't `.html.cpp`
+4. Compile all `.cpp` files into single `main.so` (`main.dll` on Windows)
+
+This allows to easily create simple separate pagelets but also create a main library composed of many C++ files.
+
 ### Creating a global context
 
 To create a global context, webpage has to expose `extern "C" void* initialize();` and `extern "C" void release(void*)` procedures.
@@ -82,6 +93,8 @@ extern "C" {
     LIBRARY_EXPORT void release(my_context* ctx) { delete ctx; }
 }
 ```
+
+Note that this could be also split into two separate modules, where one provides `load_page` & `unload_page` and the other proides `initialize` & `release`. In ideal case `initialize` & `release` should be provided by `main.so` (as described in previous section) and `load_page` & `unload_page` by webpage pagelets.
 
 ### Example template
 
