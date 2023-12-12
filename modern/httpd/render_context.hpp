@@ -7,7 +7,20 @@
 
 namespace s90 {
     namespace httpd {
-        class render_context {
+        class irender_context {
+        public:
+            virtual void write(std::string&& text) = 0;
+            virtual void disable() = 0;
+            virtual std::shared_ptr<irender_context> append_context() = 0;
+            virtual aiopromise<std::string> finalize() = 0;
+
+            template< class... Args >
+            void write_formatted( std::format_string<Args...> fmt, Args&&... args ) {
+                write(std::vformat(fmt.get(), std::make_format_args(args...)));
+            }
+        };
+
+        class render_context : public irender_context {
             enum class output_type {
                 text,
                 block
@@ -23,17 +36,12 @@ namespace s90 {
             size_t est_length = 0;
             bool disabled = false;
 
-            public:
+        public:
 
-            virtual void write(std::string&& text);
-            virtual void disable();
-            virtual std::shared_ptr<render_context> append_context();
-            aiopromise<std::string> finalize();
-
-            template< class... Args >
-            void write_formatted( std::format_string<Args...> fmt, Args&&... args ) {
-                write(std::vformat(fmt.get(), std::make_format_args(args...)));
-            }
+            void write(std::string&& text) override;
+            void disable() override;
+            std::shared_ptr<irender_context> append_context() override;
+            aiopromise<std::string> finalize() override;
         };
     }
 }

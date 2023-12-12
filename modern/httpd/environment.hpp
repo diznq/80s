@@ -7,6 +7,7 @@
 namespace s90 {
     namespace httpd {
         class page;
+        class server;
 
         class ienvironment {
         public:
@@ -22,7 +23,7 @@ namespace s90 {
             virtual void content_type(std::string&& value) = 0;
             
             virtual void status(std::string&& status_code) = 0;
-            virtual std::shared_ptr<render_context> output() const = 0;
+            virtual std::shared_ptr<irender_context> output() const = 0;
             virtual aiopromise<std::string> render(const page *rendered_page) = 0;
 
             virtual const void *context() const = 0;
@@ -44,7 +45,6 @@ namespace s90 {
             std::map<std::string, std::string> headers;
             std::string http_body;
         public:
-
             void disable() const override;
             const std::string& method() const override;
 
@@ -57,15 +57,16 @@ namespace s90 {
 
             void content_type(std::string&& value) override;
             void status(std::string&& status_code) override;
-            std::shared_ptr<render_context> output() const override;
+            std::shared_ptr<irender_context> output() const override;
             const void *context() const override;
             aiopromise<std::string> render(const page *rendered_page) override;
 
+        private:
+            friend class s90::httpd::server;
             void write_method(std::string&& method);
             void write_header(std::string&& key, std::string&& value);
             void write_query(std::map<std::string, std::string>&& qs);
             void write_body(std::string&& data);
-
         };
     }
 }

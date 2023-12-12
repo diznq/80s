@@ -62,8 +62,8 @@ namespace s90 {
             status_line = std::move(status_code);
         }
 
-        std::shared_ptr<render_context> environment::output() const {
-            return output_context;
+        std::shared_ptr<irender_context> environment::output() const {
+            return static_pointer_cast<irender_context>(output_context);
         }
 
         const void *environment::context() const {

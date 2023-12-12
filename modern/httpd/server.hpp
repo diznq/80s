@@ -19,7 +19,7 @@ namespace s90 {
 #else
                 void *lib;
 #endif
-                page *webpage;
+                page *webpage = nullptr;
                 int references = 0;
                 pfnunloadwebpage unload = nullptr;
             };
@@ -28,6 +28,11 @@ namespace s90 {
             static std::map<std::string, loaded_lib> loaded_libs;
             static std::mutex loaded_libs_lock;
             page *not_found;
+            
+            void load_lib(const std::string& name);
+            void load_libs();
+            void unload_libs();
+            void load_page(page *webpage);
         public:
             server();
             ~server();
@@ -35,11 +40,6 @@ namespace s90 {
             void on_load() override;
             void on_pre_refresh() override;
             void on_refresh() override;
-
-            void load_lib(const std::string& name);
-            void load_libs();
-            void unload_libs();
-            void load_page(page *webpage);
             aiopromise<nil> on_accept(std::shared_ptr<afd> fd) override;
         };
     }
