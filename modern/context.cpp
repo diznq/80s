@@ -52,8 +52,8 @@ namespace s90 {
             auto connect_it = connect_promises.find(params.childfd);
             if(connect_it != connect_promises.end()) {
                 connect_it->second.resolve(static_pointer_cast<iafd>(fd));
+                connect_promises.erase(connect_it);
             }
-            connect_promises.erase(connect_it);
         }
         
         return fd;

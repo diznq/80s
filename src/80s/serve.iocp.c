@@ -156,7 +156,7 @@ void *serve(void *vparams) {
         }
 
         resolve_mail(params, id);
-
+        
         // the main difference from unix versions is that fd being sent to on_receive, on_write etc. is not really fd,
         // but it is rather the tied context created by new_fd_context
         for (n = 0; n < nfds; ++n) {
@@ -225,6 +225,7 @@ void *serve(void *vparams) {
                 } else {
                     dbg("serve: acceptex/1 failed");
                 }
+                dbgf("[%d] accept event resolved\n", id);
                 break;
             case S80_WIN_OP_READ:
                 dbgf("[%d] recv from %llu (%d), flags: %d, length: %d (%d)\n", id, cx->fd, cx->fdtype, cx->flags, events[n].dwNumberOfBytesTransferred, cx->length);
@@ -273,6 +274,7 @@ void *serve(void *vparams) {
                         }
                     }
                 }
+                dbgf("[%d] read event resolved\n", id);
                 break;
             case S80_WIN_OP_WRITE:
                 dbgf("[%d] write to %llu (%d), flags: %d, length: %d\n", id, cx->fd, cx->fdtype, cx->flags, events[n].dwNumberOfBytesTransferred);
@@ -289,6 +291,7 @@ void *serve(void *vparams) {
                     params_write.written = events[n].dwNumberOfBytesTransferred;
                     on_write(params_write);
                 }
+                dbgf("[%d] write event resolved\n", id);
                 break;
             case S80_WIN_OP_CONNECT:
                 dbgf("[%d] connect to %llu, flags: %d, length: %d\n", id, cx->fd, cx->flags, events[n].dwNumberOfBytesTransferred);
@@ -317,6 +320,7 @@ void *serve(void *vparams) {
                         dbg("serve: connect recv failed");
                     }
                 }
+                dbgf("[%d] connect event resolved\n", id);
                 break;
             }
         }
