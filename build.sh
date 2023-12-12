@@ -98,9 +98,9 @@ echo "Compiler: $CC"
 if [ "$LINK" = "dynamic" ]; then
   DEFINES="$DEFINES -DS80_DYNAMIC=1"
   DEFINES="$DEFINES -DS80_DYNAMIC_SO=\"$OUT.$SO_EXT\""
-  $CC src/80s_common.c src/80s_common.windows.c src/dynstr.c src/algo.c src/crypto.c \
-      src/lua.c src/lua_net.c src/lua_codec.c src/lua_crypto.c \
-      src/serve.epoll.c src/serve.kqueue.c src/serve.iocp.c \
+  $CC src/80s/80s_common.c src/80s/80s_common.windows.c src/80s/dynstr.c src/80s/algo.c src/80s/crypto.c \
+      src/80s/lua.c src/80s/lua_net.c src/80s/lua_codec.c src/80s/lua_crypto.c \
+      src/80s/serve.epoll.c src/80s/serve.kqueue.c src/80s/serve.iocp.c \
       -shared -fPIC \
       $LUA_LIB \
       "-I$LUA_INC" \
@@ -109,12 +109,12 @@ if [ "$LINK" = "dynamic" ]; then
       $FLAGS \
       -o "$OUT.$SO_EXT"
   if [ ! "$SOONLY" = "true" ]; then
-    $CC src/80s.c $DEFINES $FLAGS -fPIC $LUA_LIB $LIBS -o "$OUT"
+    $CC src/80s/80s.c $DEFINES $FLAGS -fPIC $LUA_LIB $LIBS -o "$OUT"
   fi
 else
-  $CC src/80s.c src/80s_common.c src/80s_common.windows.c src/dynstr.c src/algo.c src/crypto.c \
-      src/lua.c src/lua_net.c src/lua_codec.c src/lua_crypto.c \
-      src/serve.epoll.c src/serve.kqueue.c src/serve.iocp.c \
+  $CC src/80s/80s.c src/80s/80s_common.c src/80s/80s_common.windows.c src/80s/dynstr.c src/80s/algo.c src/80s/crypto.c \
+      src/80s/lua.c src/80s/lua_net.c src/80s/lua_codec.c src/80s/lua_crypto.c \
+      src/80s/serve.epoll.c src/80s/serve.kqueue.c src/80s/serve.iocp.c \
       "$LUA_LIB" \
       "-I$LUA_INC" \
       $DEFINES \

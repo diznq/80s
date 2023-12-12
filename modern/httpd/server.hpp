@@ -11,8 +11,8 @@ namespace s90 {
 
         typedef void*(*pfnloadpage)();
         typedef void(*pfnunloadwebpage)(void*);
-        typedef void(*pfnrelease)(void*);
-        typedef void*(*pfninitialize)();
+        typedef void*(*pfnrelease)(void*);
+        typedef void*(*pfninitialize)(void*);
 
         class server : public connection_handler {
 
@@ -33,7 +33,8 @@ namespace s90 {
             std::map<std::string, page*> pages;
             static std::map<std::string, loaded_lib> loaded_libs;
             static std::mutex loaded_libs_lock;
-            void *global_context = nullptr;
+            void *local_context = nullptr;
+            context *global_context = nullptr;
             page *not_found;
             
             void load_lib(const std::string& name);
@@ -41,7 +42,7 @@ namespace s90 {
             void unload_libs();
             void load_page(page *webpage);
         public:
-            server();
+            server(context *parent);
             ~server();
 
             void on_load() override;

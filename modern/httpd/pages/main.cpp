@@ -5,11 +5,12 @@ std::string default_context::get_message() {
 }
 
 extern "C" {
-    default_context* initialize() {
+    default_context* initialize(default_context *previous) {
         return new default_context;
     }
 
-    void release(default_context *ref) {
-        delete ref;
+    default_context* release(default_context *current) {
+        delete current;
+        return nullptr;
     }
 }

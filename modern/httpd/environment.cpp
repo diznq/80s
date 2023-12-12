@@ -66,8 +66,12 @@ namespace s90 {
             return static_pointer_cast<irender_context>(output_context);
         }
 
-        void *const environment::context() const {
-            return global_context;
+        void *const environment::local_context() const {
+            return local_context_ptr;
+        }
+
+        icontext *const environment::global_context() const {
+            return global_context_ptr;
         }
 
         void environment::write_body(std::string&& data) {
@@ -86,8 +90,12 @@ namespace s90 {
             query_params = std::move(qs);
         }
 
-        void environment::write_context(void *ctx) {
-            global_context = ctx;
+        void environment::write_local_context(void *ctx) {
+            local_context_ptr = ctx;
+        }
+
+        void environment::write_global_context(icontext *ctx) {
+            global_context_ptr = ctx;
         }
     }
 }

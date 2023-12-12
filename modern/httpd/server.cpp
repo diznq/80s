@@ -40,8 +40,9 @@ namespace s90 {
             }
         };
 
-        server::server() {
+        server::server(context *parent) {
             not_found = new page404;
+            global_context = parent;
         }
 
         server::~server() {
@@ -87,7 +88,7 @@ namespace s90 {
                     pages[it->second.webpage->name()] = it->second.webpage;
                 }
                 if(it->second.initialize) {
-                    global_context = it->second.initialize();
+                    local_context = it->second.initialize(local_context);
                 }
             } else {
                 std::cout << "loading library " << name << std::endl;
@@ -110,7 +111,7 @@ namespace s90 {
                         pages[webpage->name()] = webpage;
                     }
                     if(initializer) {
-                        global_context = initializer();
+                        local_context = initializer(local_context);
                     }
                     loaded_libs[name] = {
                         hLib, webpage, 1,
@@ -128,9 +129,8 @@ namespace s90 {
                 if(page_it != pages.end()) {
                     pages.erase(page_it);
                 }
-                if(global_context && it->second.release) {
-                    it->second.release(global_context);
-                    global_context = nullptr;
+                if(local_context && it->second.release) {
+                    local_context = it->second.release(local_context);
                 }
                 it->second.references--;
                 if(it->second.references == 0) {
@@ -226,7 +226,8 @@ namespace s90 {
 
                 // generate the response
                 env.header("connection", "keep-alive");
-                env.write_context(global_context);
+                env.write_global_context(global_context);
+                env.write_local_context(local_context);
                 write_status = co_await fd->write(co_await env.render(current_page));
                 if(!write_status) {
                     co_return {};

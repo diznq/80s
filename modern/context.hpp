@@ -1,5 +1,5 @@
 #pragma once
-#include <80s.h>
+#include <80s/80s.h>
 #include "afd.hpp"
 #include "aiopromise.hpp"
 #include <map>
@@ -16,10 +16,16 @@ namespace s90 {
         virtual void on_refresh() = 0;
     };
 
-    class context {
+    class icontext {
+    public:
+        virtual aiopromise<std::shared_ptr<iafd>> connect(const char *addr, int port, bool udp) = 0;
+    };
+
+    class context : public icontext {
         node_id *id;
         fd_t elfd;
         std::map<fd_t, std::shared_ptr<afd>> fds;
+        std::map<fd_t, aiopromise<std::shared_ptr<iafd>>> connect_promises;
         std::shared_ptr<connection_handler> handler;
 
     public:
@@ -37,6 +43,8 @@ namespace s90 {
         std::shared_ptr<afd> on_write(write_params params);
         std::shared_ptr<afd> on_accept(accept_params params);
         void on_init(init_params params);
+
+        aiopromise<std::shared_ptr<iafd>> connect(const char *addr, int port, bool udp) override;
     };
 
 }

@@ -11,7 +11,7 @@
 </head>
 <body>
     <?cpp
-        auto ctx = env.context<default_context>();
+        auto ctx = env.local_context<default_context>();
         auto name = env.query("name");
         if(name) {
             | <h1>Hi, #[[name.value()]]</h1>

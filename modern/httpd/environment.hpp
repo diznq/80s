@@ -1,4 +1,5 @@
 #pragma once
+#include "../context.hpp"
 #include "render_context.hpp"
 #include <map>
 #include <string>
@@ -26,11 +27,12 @@ namespace s90 {
             virtual std::shared_ptr<irender_context> output() const = 0;
             virtual aiopromise<std::string> render(const page *rendered_page) = 0;
 
-            virtual void *const context() const = 0;
+            virtual void *const local_context() const = 0;
+            virtual icontext *const global_context() const = 0;
 
             template<class T>
-            T* const context() {
-                return static_cast<T *const>(context());
+            T* const local_context() const {
+                return static_cast<T *const>(local_context());
             }
         };
 
@@ -39,7 +41,8 @@ namespace s90 {
             std::shared_ptr<render_context> output_context = std::make_shared<render_context>();
             std::map<std::string, std::string> output_headers;
 
-            void *global_context = nullptr;
+            void *local_context_ptr = nullptr;
+            icontext *global_context_ptr = nullptr;
             std::string http_method = "GET";
             std::map<std::string, std::string> query_params;
             std::map<std::string, std::string> headers;
@@ -58,7 +61,8 @@ namespace s90 {
             void content_type(std::string&& value) override;
             void status(std::string&& status_code) override;
             std::shared_ptr<irender_context> output() const override;
-            void *const context() const override;
+            void *const local_context() const override;
+            icontext *const global_context() const override;
             aiopromise<std::string> render(const page *rendered_page) override;
 
         private:
@@ -67,7 +71,8 @@ namespace s90 {
             void write_header(std::string&& key, std::string&& value);
             void write_query(std::map<std::string, std::string>&& qs);
             void write_body(std::string&& data);
-            void write_context(void *ctx);
+            void write_local_context(void *ctx);
+            void write_global_context(icontext *ctx);
         };
     }
 }

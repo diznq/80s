@@ -1,10 +1,14 @@
 #include "afd.hpp"
-#include <algo.h>
+#include <80s/algo.h>
 
 namespace s90 {
 
     afd::afd(context *ctx, fd_t elfd, fd_t fd, int fdtype) : ctx(ctx), elfd(elfd), fd(fd), fd_type(fdtype) {
     
+    }
+
+    afd::afd(context *ctx, fd_t elfd, bool has_error) : ctx(ctx), elfd(elfd), fd((fd_t)0), fd_type(S80_FD_OTHER), has_error(has_error), closed(true) {
+
     }
 
     afd::~afd() {
@@ -204,6 +208,8 @@ namespace s90 {
     }
 
     bool afd::is_closed() const { return closed; }
+
+    bool afd::is_error() const { return has_error; }
 
     void afd::set_on_empty_queue(std::function<void()> on_empty) {
         on_command_queue_empty = on_empty;

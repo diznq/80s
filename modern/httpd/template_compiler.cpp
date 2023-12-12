@@ -6,7 +6,7 @@
 #include <cctype>
 #include <locale>
 #include <filesystem>
-#include <algo.h>
+#include <80s/algo.h>
 #include "template_compiler.hpp"
 
 namespace s90 {

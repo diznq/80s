@@ -91,8 +91,8 @@ xmake() {
 if [ ! -f "bin/lib80s.a" ]; then
   echo "Compiling lib80s"
   xmake "$CC" "$FLAGS $LIBS $DEFINES" "-" "bin/lib80s.a" \
-      src/80s.c src/80s_common.c src/80s_common.windows.c src/dynstr.c src/algo.c \
-      src/serve.epoll.c src/serve.kqueue.c src/serve.iocp.c
+      src/80s/80s.c src/80s/80s_common.c src/80s/80s_common.windows.c src/80s/dynstr.c src/80s/algo.c \
+      src/80s/serve.epoll.c src/80s/serve.kqueue.c src/80s/serve.iocp.c
 fi
 
 FLAGS="$FLAGS -std=c++23 -Isrc/ -fcoroutines -Imodern/"
