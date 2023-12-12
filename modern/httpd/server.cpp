@@ -1,5 +1,6 @@
 #include "server.hpp"
 #include "environment.hpp"
+#include "../util/util.hpp"
 #include <filesystem>
 #include <iostream>
 
@@ -146,30 +147,6 @@ namespace s90 {
             pages[webpage->name()] = webpage;
         }
 
-        std::map<std::string, std::string> server::parse_query_string(std::string_view query_string) const {
-            size_t prev_pos = 0, pos = -1;
-            std::map<std::string, std::string> qs;
-            while(prev_pos < query_string.length()) {
-                pos = query_string.find('&', prev_pos);
-                std::string_view current;
-                if(pos == std::string::npos) {
-                    current = query_string.substr(prev_pos);
-                    prev_pos = query_string.length();
-                } else {
-                    current = query_string.substr(prev_pos, pos);
-                    prev_pos = pos + 1;
-                }
-                if(current.length() == 0) break;
-                auto mid = current.find('=');
-                if(mid == std::string::npos) {
-                    qs[std::string(current)] = "";
-                } else {
-                    qs[std::string(current.substr(0, mid))] = current.substr(mid + 1);
-                }
-            }
-            return qs;
-        }
-
         aiopromise<nil> server::on_accept(std::shared_ptr<afd> fd) {
             http_state state = http_state::read_status_line;
             std::map<std::string, page*>::iterator it;
@@ -227,9 +204,9 @@ namespace s90 {
                 if(pivot != std::string::npos) {
                     auto query_string = script.substr(pivot + 1);
                     script = script.substr(0, pivot);
-                    env.write_query(std::move(parse_query_string(query_string)));
+                    env.write_query(std::move(s90::util::parse_query_string(query_string)));
                 }
-                it = pages.find(env.method() + " " + std::string(script));
+                it = pages.find(env.method() + " " + s90::util::url_decode(script));
                 if(it == pages.end()) {
                     current_page = not_found;
                 } else {

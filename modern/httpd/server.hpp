@@ -41,7 +41,6 @@ namespace s90 {
             void unload_libs();
             void load_page(page *webpage);
             aiopromise<nil> on_accept(std::shared_ptr<afd> fd) override;
-            std::map<std::string, std::string> parse_query_string(std::string_view query_string) const;
         };
     }
 }

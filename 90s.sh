@@ -65,7 +65,7 @@ else
   echo "Compiling 90s web server"
   $CXX $FLAGS -std=c++23 -fcoroutines -Isrc/ \
     modern/90s.cpp modern/afd.cpp modern/context.cpp \
-    modern/httpd/environment.cpp modern/httpd/render_context.cpp modern/httpd/server.cpp \
+    modern/httpd/environment.cpp modern/httpd/render_context.cpp modern/httpd/server.cpp modern/util/util.cpp \
     bin/lib80s.a \
     $DEFINES \
     $LIBS \
