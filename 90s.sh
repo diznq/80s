@@ -126,5 +126,7 @@ else
   FLAGS="$FLAGS $LIBS $DEFINES"
   xmake "$CXX" "$FLAGS" "bin/lib80s.a" "$OUT" \
     modern/90s.cpp modern/afd.cpp modern/context.cpp \
-    modern/httpd/environment.cpp modern/httpd/render_context.cpp modern/httpd/server.cpp modern/util/util.cpp
+    modern/httpd/environment.cpp modern/httpd/render_context.cpp modern/httpd/server.cpp \
+    modern/util/util.cpp \
+    modern/sql/mysql.cpp
 fi

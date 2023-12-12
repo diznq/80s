@@ -11,7 +11,7 @@ namespace s90 {
     }
 
     void context::on_load() {
-        if(handler) handler->on_load();
+
     }
 
     void context::on_pre_refresh() {
@@ -81,7 +81,7 @@ namespace s90 {
         if(fd == (fd_t)-1) {
             promise.resolve(static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, true)));
         } else {
-            this->fds[fd] = std::make_shared<afd>(this, elfd, true);
+            this->fds[fd] = std::make_shared<afd>(this, elfd, fd, S80_FD_SOCKET);
             connect_promises[fd] = promise;
         }
         return promise;
@@ -89,6 +89,13 @@ namespace s90 {
 
     void context::on_init(init_params params) {
         elfd = params.elfd;
+        if(init_callback) init_callback(this);
+        
+        if(handler) handler->on_load();
+    }
+
+    void context::set_init_callback(std::function<void(context*)> init_callback) {
+        this->init_callback = init_callback;
     }
     
 }

@@ -27,6 +27,7 @@ namespace s90 {
         std::map<fd_t, std::shared_ptr<afd>> fds;
         std::map<fd_t, aiopromise<std::shared_ptr<iafd>>> connect_promises;
         std::shared_ptr<connection_handler> handler;
+        std::function<void(context*)> init_callback;
 
     public:
         context(node_id *id);
@@ -37,6 +38,8 @@ namespace s90 {
         void on_load();
         void on_pre_refresh();
         void on_refresh();
+
+        void set_init_callback(std::function<void(context*)> init_callback);
 
         std::shared_ptr<afd> on_receive(read_params params);
         std::shared_ptr<afd> on_close(close_params params);

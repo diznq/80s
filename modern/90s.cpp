@@ -7,7 +7,9 @@ using s90::context;
 
 void *create_context(fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
     context* ctx = new context(id);
-    ctx->set_handler(static_pointer_cast<s90::connection_handler>(std::make_shared<s90::httpd::server>(ctx)));
+    ctx->set_init_callback([](context *ctx){
+        ctx->set_handler(static_pointer_cast<s90::connection_handler>(std::make_shared<s90::httpd::server>(ctx)));
+    });
     ctx->on_load();
     return ctx;
 }
