@@ -197,6 +197,7 @@ namespace s90 {
                     }
                     if(pivot == std::string::npos) break;
                     remaining = remaining.substr(pivot + 2);
+                    if(remaining.length() == 0) break;
                 }
 
                 // read body if applicable

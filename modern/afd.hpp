@@ -19,13 +19,13 @@ namespace s90 {
 
     class iafd {
     public:
-        virtual bool is_error() const;
-        virtual bool is_closed() const;
-        virtual aiopromise<read_arg> read_any();
-        virtual aiopromise<read_arg> read_n(size_t n_bytes);
-        virtual aiopromise<read_arg> read_until(std::string&& delim);
-        virtual aiopromise<bool> write(const std::string_view& data);
-        virtual void close();
+        virtual bool is_error() const = 0;
+        virtual bool is_closed() const = 0;
+        virtual aiopromise<read_arg> read_any() = 0;
+        virtual aiopromise<read_arg> read_n(size_t n_bytes) = 0;
+        virtual aiopromise<read_arg> read_until(std::string&& delim) = 0;
+        virtual aiopromise<bool> write(const std::string_view& data) = 0;
+        virtual void close() = 0;
     };
 
     class afd : public iafd {
