@@ -24,13 +24,6 @@
 namespace s90 {
     namespace httpd {
 
-        enum class http_state {
-            read_status_line,
-            read_header,
-            read_body,
-            generate_response
-        };
-
         std::map<std::string, server::loaded_lib> server::loaded_libs;
         std::mutex server::loaded_libs_lock;
 
@@ -60,14 +53,17 @@ namespace s90 {
         }
 
         void server::on_load() {
+            // load libs on initial load
             load_libs();
         }
 
         void server::on_pre_refresh() {
+            // this is called before refresh happens, basically on_unload
             unload_libs();
         }
 
         void server::on_refresh() {
+            // reload libs on refresh
             load_libs();
         }
 
@@ -102,7 +98,14 @@ namespace s90 {
                     pfninitialize initializer = (pfninitialize)DL_FIND(hLib, "initialize");
                     pfnrelease releaser = (pfnrelease)DL_FIND(hLib, "release");
                     page* webpage = nullptr;
-                    if(loader){
+
+                    // if there is no procedures, don't load it
+                    if(loader == NULL && unloader == NULL && initializer == NULL && releaser == NULL) {
+                        DL_CLOSE(hLib);
+                        return;
+                    }
+
+                    if(loader) {
                         webpage = (page*)loader();
                         pages[webpage->name()] = webpage;
                     }
@@ -146,7 +149,6 @@ namespace s90 {
         }
 
         aiopromise<nil> server::on_accept(std::shared_ptr<afd> fd) {
-            http_state state = http_state::read_status_line;
             std::map<std::string, page*>::iterator it;
             page *current_page = not_found;
             std::string_view script;
@@ -155,14 +157,19 @@ namespace s90 {
             size_t pivot = 0, body_length = 0, prev_pivot = 0;
             bool write_status = true;
             while(true) {
+                // implement basic HTTP loop by waiting until \r\n\r\n, parsing header and then
+                // optinally waiting for `n` bytes of the body
                 arg = co_await fd->read_until("\r\n\r\n");
                 if(arg.error) co_return {};
+
                 pivot = arg.data.find_first_of("\r\n");
                 std::string_view remaining(arg.data);
                 std::string_view status(arg.data);
                 if(pivot == std::string::npos) co_return {};
                 status = std::string_view(arg.data.begin(), arg.data.begin() + pivot);
                 pivot = status.find_first_of(' ');
+                
+                // parse the status line
                 if(pivot != std::string::npos) {
                     env.write_method(std::string(status.substr(0, pivot)));
                     status = status.substr(pivot + 1);
@@ -175,6 +182,8 @@ namespace s90 {
                 } else {
                     co_return {};
                 }
+                
+                // parse header kesy values
                 remaining = remaining.substr(pivot + 2);
                 while(true) {
                     pivot = remaining.find_first_of("\r\n");
@@ -189,6 +198,8 @@ namespace s90 {
                     if(pivot == std::string::npos) break;
                     remaining = remaining.substr(pivot + 2);
                 }
+
+                // read body if applicable
                 auto content_length = env.header("content-length");
                 if(content_length) {
                     auto len = atoll(content_length.value().c_str());
@@ -198,6 +209,8 @@ namespace s90 {
                         env.write_body(std::move(body.data));
                     }
                 }
+
+                // parse status line into script & query params
                 pivot = script.find('?');
                 if(pivot != std::string::npos) {
                     auto query_string = script.substr(pivot + 1);
@@ -210,6 +223,8 @@ namespace s90 {
                 } else {
                     current_page = it->second;
                 }
+
+                // generate the response
                 env.header("connection", "keep-alive");
                 env.write_context(global_context);
                 write_status = co_await fd->write(co_await env.render(current_page));
@@ -217,7 +232,6 @@ namespace s90 {
                     co_return {};
                 } else {
                     env = environment {};
-                    state = http_state::read_status_line;
                 }
             }
             co_return {};
