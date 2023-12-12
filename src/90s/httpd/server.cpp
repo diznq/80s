@@ -71,7 +71,7 @@ namespace s90 {
 
         void server::load_libs() {
             const char *web_root_env = getenv("WEB_ROOT");
-            std::string web_root = "modern/httpd/pages/";
+            std::string web_root = "src/90s/httpd/pages/";
             if(web_root_env != NULL) web_root = web_root_env;
             for(const auto& entry : std::filesystem::recursive_directory_iterator(web_root)) {
                 if(entry.path().extension() == ".so" || entry.path().extension() == ".dll") {

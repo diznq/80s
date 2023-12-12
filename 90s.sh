@@ -95,17 +95,17 @@ if [ ! -f "bin/lib80s.a" ]; then
       src/80s/serve.epoll.c src/80s/serve.kqueue.c src/80s/serve.iocp.c
 fi
 
-FLAGS="$FLAGS -std=c++23 -Isrc/ -fcoroutines -Imodern/"
+FLAGS="$FLAGS -std=c++23 -Isrc/ -fcoroutines"
 
 if [ ! -f "bin/template$EXE_EXT" ]; then
   echo "Compiling template compiler"
-  xmake "$CXX" "$FLAGS" "bin/lib80s.a" "bin/template$EXE_EXT" modern/httpd/template_compiler.cpp
+  xmake "$CXX" "$FLAGS" "bin/lib80s.a" "bin/template$EXE_EXT" src/90s/httpd/template_compiler.cpp
 fi
 
 if [ "$arg" = "pages" ]; then
   # Detect all .htmls in webroot and compile them into separate .so/.dlls
   echo "Compiling webpages"
-  WEB_ROOT="${WEB_ROOT:-modern/httpd/pages/}"
+  WEB_ROOT="${WEB_ROOT:-src/90s/httpd/pages/}"
   find "$WEB_ROOT" -name *.html -type f -exec sh -c "bin/template {} {} \$(echo "{}" | sed  s/\\.html$/.html.cpp/g)" \;
   to_compile=$(find "$WEB_ROOT" -name *.html.cpp -type f)
 
@@ -125,8 +125,8 @@ else
   echo "Compiling 90s web server"
   FLAGS="$FLAGS $LIBS $DEFINES"
   xmake "$CXX" "$FLAGS" "bin/lib80s.a" "$OUT" \
-    modern/90s.cpp modern/afd.cpp modern/context.cpp \
-    modern/httpd/environment.cpp modern/httpd/render_context.cpp modern/httpd/server.cpp \
-    modern/util/util.cpp \
-    modern/sql/mysql.cpp
+    src/90s/90s.cpp src/90s/afd.cpp src/90s/context.cpp \
+    src/90s/httpd/environment.cpp src/90s/httpd/render_context.cpp src/90s/httpd/server.cpp \
+    src/90s/util/util.cpp \
+    src/90s/sql/mysql.cpp
 fi

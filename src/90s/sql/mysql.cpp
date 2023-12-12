@@ -1,4 +1,5 @@
 #include "mysql.hpp"
+#include <80s/crypto.h>
 
 namespace s90 {
     namespace sql {
