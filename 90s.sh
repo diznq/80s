@@ -58,7 +58,7 @@ xmake() {
     rem_libs=""
   fi
 
-  for (( i=5; i <= "$#"; i++ )); do
+  for i in `seq 5 $#`; do
     file="${!i}"
     echo "> Compiling $file"
     dir=$(dirname "$file")
