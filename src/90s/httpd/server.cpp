@@ -13,12 +13,14 @@
 #define DL_CLOSE(lib) FreeLibrary(lib)
 #define DL_FIND(lib, name) GetProcAddress(lib, name)
 #define DL_INVALID INVALID_HANDLE_VALUE
+#define SO_EXT ".dll"
 #else
 #include <dlfcn.h>
 #define DL_OPEN(lib) dlopen(lib, RTLD_LAZY)
 #define DL_CLOSE(lib) dlclose(lib)
 #define DL_FIND(lib, name) dlsym(lib, name)
 #define DL_INVALID NULL
+#define SO_EXT ".so"
 #endif
 
 namespace s90 {
@@ -73,7 +75,7 @@ namespace s90 {
             std::string web_root = "src/90s/httpd/pages/";
             if(web_root_env != NULL) web_root = web_root_env;
             for(const auto& entry : std::filesystem::recursive_directory_iterator(web_root)) {
-                if(entry.path().extension() == ".so" || entry.path().extension() == ".dll") {
+                if(entry.path().extension() == SO_EXT) {
                     load_lib(entry.path().string());
                 }
             }

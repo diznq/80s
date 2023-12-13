@@ -41,14 +41,13 @@ namespace s90 {
                 return {}; 
             }
 
-            template<std::convertible_to<T> From>
-            std::suspend_always yield_value(From&& from) {
-                state->result.emplace(std::forward<From>(from));
+            std::suspend_always yield_value(T&& value) {
+                state->result.emplace(std::move(value));
                 return {};
             }
 
             void return_value(T&& value) {
-                state->result.emplace(std::forward<T>(value));
+                state->result.emplace(std::move(value));
                 if(state->coro_callback) state->coro_callback();
             }
 
@@ -68,20 +67,22 @@ namespace s90 {
 
         void resolve(T&& value) {
             if(state()->callback) {
-                state()->callback(std::forward<T>(state()->result.value()));
+                state()->callback(std::move(value));
             } else if(state()->coro_callback) {
-                state()->result.emplace(std::forward<T>(value));
+                state()->result.emplace(std::move(value));
                 state()->coro_callback();
             } else {
-                state()->result.emplace(std::forward<T>(value));
+                state()->result.emplace(std::move(value));
             }
         }
 
         void then(std::function<void(T&&)> cb) {
-            if(state()->result.has_value()) {
-                cb(std::forward<T>(state()->result.value()));
+            std::optional<T> result;
+            state()->result.swap(result);
+            if(result.has_value()) {
+                cb(std::move(*result));
             } else {
-                state()->callback = cb;
+                state()->callback = std::move(cb);
             }
         }
 
@@ -93,8 +94,10 @@ namespace s90 {
             state()->coro_callback = resume;
         }
 
-        T&& await_resume() const {
-            return std::forward<T>(state()->result.value());
+        T await_resume() const {
+            T value(std::move(*state()->result));
+            state()->result.reset();
+            return value;
         }
 
     };

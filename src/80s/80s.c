@@ -101,9 +101,7 @@ static int get_cpus() {
 }
 
 static void* run(void *params_) {
-#ifndef S80_DYNAMIC
-    return serve(params_);
-#elif defined(_WIN32)
+#if defined(_WIN32)
     // Windows support not required as it doesn't support live-reload
     // in first place as files that are loaded cannot be overwritten
     // during the run!
@@ -124,7 +122,7 @@ static void* run(void *params_) {
     reload_context *reload = params->reload;
     module_extension *module = reload->modules;
     void *result = NULL;
-    dynserve_t serve;
+    dynserve_t fn_serve;
     for(;;) {
         dbgf("run: worker %d acquiring lock\n", params->workerid);
         sem_wait(&reload->serve_lock);
@@ -148,11 +146,15 @@ static void* run(void *params_) {
                 }
                 module = module->next;
             }
+            #ifdef S80_DYNAMIC
             reload->dlcurrent = dlopen(S80_DYNAMIC_SO, RTLD_LAZY);
             if(reload->dlcurrent == NULL) {
                 error("run: failed to open dynamic library");
             }
             reload->serve = dlsym(reload->dlcurrent, "serve");
+            #else
+            reload->serve = serve;
+            #endif
             if(reload->serve == NULL) {
                 error("run: failed to locate serve procedure");
             }
@@ -174,8 +176,8 @@ static void* run(void *params_) {
             }
         }
 
-        serve = reload->serve;
-        result = serve(params_);
+        fn_serve = reload->serve;
+        result = fn_serve(params_);
         dbgf("run: worker %d stopped, quit: %d\n", params->workerid, params->quit);
         if(params->quit) return result;
     }
