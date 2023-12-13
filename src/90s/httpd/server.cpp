@@ -13,14 +13,12 @@
 #define DL_CLOSE(lib) FreeLibrary(lib)
 #define DL_FIND(lib, name) GetProcAddress(lib, name)
 #define DL_INVALID INVALID_HANDLE_VALUE
-#define SO_EXT ".dll"
 #else
 #include <dlfcn.h>
 #define DL_OPEN(lib) dlopen(lib, RTLD_LAZY)
 #define DL_CLOSE(lib) dlclose(lib)
 #define DL_FIND(lib, name) dlsym(lib, name)
 #define DL_INVALID NULL
-#define SO_EXT ".so"
 #endif
 
 namespace s90 {
@@ -75,7 +73,7 @@ namespace s90 {
             std::string web_root = "src/90s/httpd/pages/";
             if(web_root_env != NULL) web_root = web_root_env;
             for(const auto& entry : std::filesystem::recursive_directory_iterator(web_root)) {
-                if(entry.path().extension() == SO_EXT) {
+                if(entry.path().extension() == ".so" || entry.path().extension() == ".dll") {
                     load_lib(entry.path().string());
                 }
             }
@@ -90,7 +88,7 @@ namespace s90 {
                     pages[it->second.webpage->name()] = it->second.webpage;
                 }
                 if(it->second.initialize) {
-                    local_context = it->second.initialize(local_context);
+                    local_context = it->second.initialize(global_context, local_context);
                 }
             } else {
                 std::cout << "loading library " << name << std::endl;
@@ -113,7 +111,7 @@ namespace s90 {
                         pages[webpage->name()] = webpage;
                     }
                     if(initializer) {
-                        local_context = initializer(local_context);
+                        local_context = initializer(global_context, local_context);
                     }
                     loaded_libs[name] = {
                         hLib, webpage, 1,
@@ -132,7 +130,7 @@ namespace s90 {
                     pages.erase(page_it);
                 }
                 if(local_context && it->second.release) {
-                    local_context = it->second.release(local_context);
+                    local_context = it->second.release(global_context, local_context);
                 }
                 it->second.references--;
                 if(it->second.references == 0) {

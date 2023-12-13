@@ -1,4 +1,5 @@
 #include "context.hpp"
+#include "sql/mysql.hpp"
 
 namespace s90 {
 
@@ -75,9 +76,9 @@ namespace s90 {
         return fd;
     }
 
-    aiopromise<std::shared_ptr<iafd>> context::connect(const char *addr, int port, bool udp) {
+    aiopromise<std::shared_ptr<iafd>> context::connect(const std::string& addr, int port, bool udp) {
         aiopromise<std::shared_ptr<iafd>> promise;
-        fd_t fd = s80_connect(this, elfd, addr, port, udp ? 1 : 0);
+        fd_t fd = s80_connect(this, elfd, addr.c_str(), port, udp ? 1 : 0);
         if(fd == (fd_t)-1) {
             promise.resolve(static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, true)));
         } else {
@@ -85,6 +86,12 @@ namespace s90 {
             connect_promises[fd] = promise;
         }
         return promise;
+    }
+
+    
+    std::shared_ptr<sql::isql> context::new_sql_instance(const std::string& type) {
+        if(type != "mysql") return nullptr;
+        return static_pointer_cast<sql::isql>(std::make_shared<sql::mysql>(this));
     }
 
     void context::on_init(init_params params) {

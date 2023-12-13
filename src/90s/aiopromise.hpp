@@ -51,6 +51,11 @@ namespace s90 {
                 if(state->coro_callback) state->coro_callback();
             }
 
+            void return_value(const T& value) {
+                state->result.emplace(value);
+                if(state->coro_callback) state->coro_callback();
+            }
+
             void unhandled_exception() {
                 state->exception = std::current_exception();
             }
@@ -73,6 +78,17 @@ namespace s90 {
                 state()->coro_callback();
             } else {
                 state()->result.emplace(std::move(value));
+            }
+        }
+
+        void resolve(const T& value) {
+            if(state()->callback) {
+                state()->callback(value);
+            } else if(state()->coro_callback) {
+                state()->result.emplace(value);
+                state()->coro_callback();
+            } else {
+                state()->result.emplace(value);
             }
         }
 

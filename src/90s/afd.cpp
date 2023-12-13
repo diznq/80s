@@ -12,7 +12,9 @@ namespace s90 {
     }
 
     afd::~afd() {
-    
+        if(!closed) {
+            close();
+        }
     }
 
     void afd::on_accept() {
@@ -198,8 +200,6 @@ namespace s90 {
     void afd::close() {
         if(!closed) {
             s80_close(ctx, elfd, fd, fd_type);
-            on_close();
-            closed = true;
         }
     }
 

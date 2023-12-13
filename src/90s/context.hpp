@@ -2,6 +2,7 @@
 #include <80s/80s.h>
 #include "afd.hpp"
 #include "aiopromise.hpp"
+#include "sql/sql.hpp"
 #include <map>
 #include <memory>
 
@@ -18,7 +19,8 @@ namespace s90 {
 
     class icontext {
     public:
-        virtual aiopromise<std::shared_ptr<iafd>> connect(const char *addr, int port, bool udp) = 0;
+        virtual aiopromise<std::shared_ptr<iafd>> connect(const std::string& addr, int port, bool udp) = 0;
+        virtual std::shared_ptr<sql::isql> new_sql_instance(const std::string& type) = 0;
     };
 
     class context : public icontext {
@@ -47,7 +49,8 @@ namespace s90 {
         std::shared_ptr<afd> on_accept(accept_params params);
         void on_init(init_params params);
 
-        aiopromise<std::shared_ptr<iafd>> connect(const char *addr, int port, bool udp) override;
+        aiopromise<std::shared_ptr<iafd>> connect(const std::string& addr, int port, bool udp) override;
+        std::shared_ptr<sql::isql> new_sql_instance(const std::string& type) override;
     };
 
 }

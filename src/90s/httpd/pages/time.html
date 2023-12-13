@@ -28,6 +28,18 @@
     <hr>
     <?cpp
         | <p>This is coming from global context: #[[ ctx->get_message() ]]</p>
+        auto posts = co_await ctx->get_posts();
+        if(posts.size() == 0) {
+            | <h3>No posts found</h3>
+        } else {
+            for(auto& p : posts) {
+                | <div class="post">
+                |  <p>Author: #[[ p.author ]]</p>
+                |  <p>#[[p.text]]</p>
+                | </div>
+                | <hr>
+            }
+        }
     ?>
 </body>
 </html>

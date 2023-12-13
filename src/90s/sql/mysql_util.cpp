@@ -141,6 +141,25 @@ namespace s90 {
             };
         }
 
+        sql_result mysql_decoder::decode_status() {
+            sql_result status;
+            auto type = int1();
+            if(type == 255) {
+                status.error = true;
+                if(view.length() >= 10)
+                    status.error_message = view.substr(9); 
+                else status.error_message = "unknown error";
+            } else if(type == 254) {
+                status.eof = true;
+            } else {
+                status.affected_rows = lenint();
+                status.last_insert_id = lenint();
+                int4();
+                status.info_message = view.substr(pivot);
+            }
+            return status;
+        }
+
         std::string native_password_hash(const std::string& password, const std::string& scramble) {
             auto shPwd = sha1(password);
             auto dshPwd = sha1(shPwd);

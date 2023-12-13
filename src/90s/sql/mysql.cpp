@@ -28,12 +28,17 @@ namespace s90 {
             co_return {seq, data.data};
         }
 
+        bool mysql::is_connected() const {
+            return login_provided;
+        }
+
         aiopromise<sql_connect> mysql::connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) {
             user = username;;
             password = passphrase;
             host = hostname;
             sql_port = port;
             db_name = database;
+            login_provided = true;
             return reconnect();
         }
 
@@ -48,6 +53,7 @@ namespace s90 {
             } else {
                 // connect if not connected
                 is_connecting = true;
+                authenticated = false;
                 if(!connection || connection->is_closed() || connection->is_error()) {
                     connection = co_await ctx->connect(host.c_str(), sql_port, false);
                 }
@@ -118,65 +124,86 @@ namespace s90 {
             co_return {false};
         }
 
+        aiopromise<sql_result> mysql::exec(std::string_view query) {
+            auto subproc = [this](std::string_view query) -> aiopromise<sql_result> {
+                auto command_sent = co_await raw_exec(query);
+                if(command_sent.error) co_return std::move(command_sent);
+                auto response = co_await read_packet();
+                if(response.seq < 0 || response.data.length() < 1) co_return sql_result::with_error("failed to read response");
+                mysql_decoder decoder(response.data);
+                co_return decoder.decode_status();
+            };
+            co_await command_lock.lock();
+            auto result {co_await subproc(query)};
+            command_lock.unlock();
+            co_return std::move(result);
+        }
+
         aiopromise<sql_result> mysql::select(std::string_view query) {
-            auto command_sent = co_await raw_exec(query);
-            if(command_sent.error) co_return std::move(command_sent);
+            auto subproc = [this](std::string_view query) -> aiopromise<sql_result> {
+                auto command_sent = co_await raw_exec(query);
+                if(command_sent.error) co_return std::move(command_sent);
 
-            auto n_fields_desc = co_await read_packet();
+                auto n_fields_desc = co_await read_packet();
 
-            if(n_fields_desc.seq < 0 || n_fields_desc.data.length() < 1) {
-                co_return sql_result::with_error("failed to read initial response");
-            }
-            
-            // first check for SQL errors
-            bool is_error = n_fields_desc.data[0] == '\xFF';
-            if(is_error) {
-                co_return sql_result::with_error(std::string(n_fields_desc.data.substr(9)));
-            }
-            
-            std::vector<mysql_field> fields;
-            std::map<std::string, mysql_field> by_name;
-
-            // read initial packet that simply contains number of fields following
-            mysql_decoder decoder(n_fields_desc.data);
-            auto n_fields = decoder.lenint();
-            if(n_fields == -1) {
-                co_return sql_result::with_error("n fields has invalid value");
-            }
-
-            // read each field and decode it
-            for(size_t i = 0; i < n_fields; i++) {
-                auto field_spec = co_await read_packet();
-                if(field_spec.seq < 0) co_return sql_result::with_error("failed to fetch field spec");
-                decoder.reset(field_spec.data);
-                auto field = decoder.decode_field();
-                fields.push_back(field);
-                by_name[field.name] = field;
-            }
-
-            // after fields, we expect EOF
-            auto eof = co_await read_packet();
-            if(eof.seq < 0 || eof.data.size() < 1 || eof.data[0] != '\xFE') {
-                co_return sql_result::with_error("expected eof");
-            }
-
-            // in the end, finally read the rows
-            sql_result final_result;
-            while(true) {
-                auto row = co_await read_packet();
-                if(row.seq < 0 || row.data.size() < 1) {
-                    co_return sql_result::with_error("fetching rows failed");
+                if(n_fields_desc.seq < 0 || n_fields_desc.data.length() < 1) {
+                    co_return sql_result::with_error("failed to read initial response");
                 }
-                if(row.data[0] == '\xFE') break;
-                decoder.reset(row.data);
-                std::map<std::string, std::string> row_data;
-                for(size_t i = 0; i < fields.size(); i++) {
-                    row_data[fields[i].name] = decoder.var_string();
+                
+                // first check for SQL errors
+                bool is_error = n_fields_desc.data[0] == '\xFF';
+                if(is_error) {
+                    co_return sql_result::with_error(std::string(n_fields_desc.data.substr(9)));
                 }
-                final_result.rows.emplace_back(row_data);
-            }
-            final_result.error = false;
-            co_return std::move(final_result);
+                
+                std::vector<mysql_field> fields;
+                std::map<std::string, mysql_field> by_name;
+
+                // read initial packet that simply contains number of fields following
+                mysql_decoder decoder(n_fields_desc.data);
+                auto n_fields = decoder.lenint();
+                if(n_fields == -1) {
+                    co_return sql_result::with_error("n fields has invalid value");
+                }
+
+                // read each field and decode it
+                for(size_t i = 0; i < n_fields; i++) {
+                    auto field_spec = co_await read_packet();
+                    if(field_spec.seq < 0) co_return sql_result::with_error("failed to fetch field spec");
+                    decoder.reset(field_spec.data);
+                    auto field = decoder.decode_field();
+                    fields.push_back(field);
+                    by_name[field.name] = field;
+                }
+
+                // after fields, we expect EOF
+                auto eof = co_await read_packet();
+                if(eof.seq < 0 || eof.data.size() < 1 || eof.data[0] != '\xFE') {
+                    co_return sql_result::with_error("expected eof");
+                }
+
+                // in the end, finally read the rows
+                sql_result final_result;
+                while(true) {
+                    auto row = co_await read_packet();
+                    if(row.seq < 0 || row.data.size() < 1) {
+                        co_return sql_result::with_error("fetching rows failed");
+                    }
+                    if(row.data[0] == '\xFE') break;
+                    decoder.reset(row.data);
+                    std::map<std::string, std::string> row_data;
+                    for(size_t i = 0; i < fields.size(); i++) {
+                        row_data[fields[i].name] = decoder.var_string();
+                    }
+                    final_result.rows.emplace_back(row_data);
+                }
+                final_result.error = false;
+                co_return std::move(final_result);
+            };
+            co_await command_lock.lock();
+            auto result {co_await subproc(query)};
+            command_lock.unlock();
+            co_return std::move(result);
         }
     }
 }

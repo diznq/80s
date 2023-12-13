@@ -11,8 +11,8 @@ namespace s90 {
 
         typedef void*(*pfnloadpage)();
         typedef void(*pfnunloadwebpage)(void*);
-        typedef void*(*pfnrelease)(void*);
-        typedef void*(*pfninitialize)(void*);
+        typedef void*(*pfninitialize)(context*,void*);
+        typedef void*(*pfnrelease)(context*,void*);
 
         class server : public connection_handler {
 
