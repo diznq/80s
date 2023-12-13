@@ -5,23 +5,34 @@
 #include <initializer_list>
 #include <map>
 #include <concepts>
+#include <format>
 #include <stdint.h>
 
 namespace s90 {
     namespace orm {
 
+        template<size_t N>
+        class varstr : public std::string {
+        public:
+            using std::string::string;
+            constexpr size_t get_max_size() { return N; }
+        };
+
         class any {
             enum class reftype {
-                empty, str, cstr, i1, i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, f80
+                empty, vstr, str, cstr, i1, i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, f80
             };
             reftype type = reftype::empty;
+            size_t reserved = 0;
             void *ref = nullptr;
         public:
-            any() : type(reftype::empty), ref(nullptr) {}
-            any(const any& a) : type(a.type), ref(a.ref) {}
-            any& operator=(const any& a) { type = a.type; ref = a.ref; return *this; }
+            any() : type(reftype::empty), ref(nullptr), reserved(0) {}
+            any(const any& a) : type(a.type), ref(a.ref), reserved(a.reserved) {}
+            any& operator=(const any& a) { type = a.type; ref = a.ref; reserved = a.reserved; return *this; }
             any(std::string& value) : ref((void*)&value), type(reftype::str) {}
             any(const char*& value) : ref((void*)&value), type(reftype::cstr) {}
+            template<size_t N>
+            any(varstr<N> value) : ref((void*)&value), type(reftype::vstr), reserved(value.get_max_size()) {}
             any(int8_t& value) : ref((void*)&value), type(reftype::i8) {}
             any(int16_t& value) : ref((void*)&value), type(reftype::i16) {}
             any(int32_t& value) : ref((void*)&value), type(reftype::i32) {}
@@ -38,6 +49,7 @@ namespace s90 {
             void to_native(const std::string& value) const {
                 switch(type) {
                     case reftype::str:
+                    case reftype::vstr:
                         *(std::string*)ref = value;
                         break;
                     case reftype::cstr:
@@ -93,6 +105,13 @@ namespace s90 {
                         break;
                     case reftype::cstr:
                         return std::string(*(const char**)ref);
+                        break;
+                    case reftype::vstr:
+                        if(((std::string*)ref)->length() > reserved) {
+                            return ((std::string*)ref)->substr(0, reserved);
+                        } else {
+                            return *(std::string*)ref;
+                        }
                         break;
                     // signed
                     case reftype::i8:
@@ -203,3 +222,14 @@ namespace s90 {
         };
     }
 }
+
+template <size_t N>
+struct std::formatter<s90::orm::varstr<N>> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        return ctx.begin();
+    }
+
+    auto format(const s90::orm::varstr<N>& obj, std::format_context& ctx) const {
+        return std::format_to(ctx.out(), "{}", obj.length() > N ? (std::string)obj.substr(0, N) : (std::string)obj);
+    }
+};
