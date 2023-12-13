@@ -49,7 +49,7 @@ if [ "$1" = "clean" ]; then
 fi
 
 modtime() {
-  if [ $(uname) = "FreeBSD "]; then
+  if [ $(uname) = "FreeBSD" ]; then
     stat -f "%Sm" "$1"
   else
     stat -c %y "$1"
