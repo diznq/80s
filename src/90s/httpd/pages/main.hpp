@@ -3,11 +3,20 @@
 #include <90s/context.hpp>
 #include <90s/aiopromise.hpp>
 #include <90s/sql/sql.hpp>
+#include <90s/orm/orm.hpp>
 
-struct post {
+struct post : s90::orm::with_orm {
     int id;
     std::string author;
     std::string text;
+
+    s90::orm::mapper get_orm() {
+        return {
+            {"id", id},
+            {"author", author},
+            {"text", text}
+        };
+    }
 };
 
 class default_context {
