@@ -1,6 +1,7 @@
 #include "server.hpp"
 #include "environment.hpp"
 #include "../util/util.hpp"
+#include "../sql/mysql.hpp"
 #include <filesystem>
 #include <iostream>
 
