@@ -32,7 +32,7 @@ namespace s90 {
             any(std::string& value) : ref((void*)&value), type(reftype::str) {}
             any(const char*& value) : ref((void*)&value), type(reftype::cstr) {}
             template<size_t N>
-            any(varstr<N> value) : ref((void*)&value), type(reftype::vstr), reserved(value.get_max_size()) {}
+            any(varstr<N>& value) : ref((void*)&value), type(reftype::vstr), reserved(value.get_max_size()) {}
             any(int8_t& value) : ref((void*)&value), type(reftype::i8) {}
             any(int16_t& value) : ref((void*)&value), type(reftype::i16) {}
             any(int32_t& value) : ref((void*)&value), type(reftype::i32) {}
@@ -230,6 +230,6 @@ struct std::formatter<s90::orm::varstr<N>> {
     }
 
     auto format(const s90::orm::varstr<N>& obj, std::format_context& ctx) const {
-        return std::format_to(ctx.out(), "{}", obj.length() > N ? (std::string)obj.substr(0, N) : (std::string)obj);
+        return std::format_to(ctx.out(), "{}", obj.length() > N ? ((std::string_view)obj).substr(0, N) : (std::string_view)obj);
     }
 };
