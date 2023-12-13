@@ -1,5 +1,5 @@
 #include "afd.hpp"
-#include "../src/algo.h"
+#include <80s/algo.h>
 
 namespace s90 {
 
@@ -7,8 +7,14 @@ namespace s90 {
     
     }
 
+    afd::afd(context *ctx, fd_t elfd, bool has_error) : ctx(ctx), elfd(elfd), fd((fd_t)0), fd_type(S80_FD_OTHER), has_error(has_error), closed(true) {
+
+    }
+
     afd::~afd() {
-    
+        if(!closed) {
+            close();
+        }
     }
 
     void afd::on_accept() {
@@ -52,7 +58,7 @@ namespace s90 {
 
             // select a read_buffer window based on where we ended up last time
             std::string_view window(read_buffer.data() + read_offset, read_buffer.size() - read_offset);
-            std::string arg;
+            std::string_view arg;
             for(auto it = read_commands.begin(); iterate && !window.empty() && it != read_commands.end();) {
                 auto command_promise = it->promise;
                 auto command_n = it->n;
@@ -64,7 +70,7 @@ namespace s90 {
                         // any is fulfilled whenever any data comes in, no matter the size
                         read_offset += window.size();
                         it = read_commands.erase(it);
-                        arg = std::string(window);
+                        arg = window;
                         window = window.substr(window.size());
                         command_promise.resolve({false, std::move(arg)});
                         iterate = false;
@@ -77,7 +83,7 @@ namespace s90 {
                         } else {
                             read_offset += command_n;
                             it = read_commands.erase(it);
-                            arg = std::string(window.substr(0, command_n));
+                            arg = window.substr(0, command_n);
                             window = window.substr(command_n);
                             command_promise.resolve({false, std::move(arg)});
                         }
@@ -117,7 +123,6 @@ namespace s90 {
                 // if everything was executed, clear the read buffer
                 read_offset = 0;
                 read_buffer.clear();
-                read_buffer.shrink_to_fit();
                 break;
             }
 
@@ -171,7 +176,6 @@ namespace s90 {
 
         if(write_back_buffer_info.size() == 0) {
             write_back_buffer.clear();
-            write_back_buffer.shrink_to_fit(); 
             write_back_offset = 0;
         }
     }
@@ -189,21 +193,19 @@ namespace s90 {
         write_back_offset = 0;
         write_back_buffer.clear();
         write_back_buffer_info.clear();
-        write_back_buffer.shrink_to_fit();
         read_commands.clear();
         read_buffer.clear();
-        read_buffer.shrink_to_fit();
     }
 
     void afd::close() {
         if(!closed) {
             s80_close(ctx, elfd, fd, fd_type);
-            on_close();
-            closed = true;
         }
     }
 
     bool afd::is_closed() const { return closed; }
+
+    bool afd::is_error() const { return has_error; }
 
     void afd::set_on_empty_queue(std::function<void()> on_empty) {
         on_command_queue_empty = on_empty;

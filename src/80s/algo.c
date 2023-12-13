@@ -15,7 +15,7 @@ kmp_result kmp(const char* haystack, size_t len, const char* pattern, size_t pat
 
     // if pattern is single character, we can afford to just use memchr for this
     if (pattern_len == 1) {
-        pattern = (const char*)memchr((const void*)haystack, pattern[0], len);
+        pattern = (const char*)memchr((const void*)(haystack + offset), pattern[0], len - offset);
         if (pattern) {
             result.offset = (size_t)(pattern - haystack);
             result.length = 1;

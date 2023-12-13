@@ -23,6 +23,10 @@ void *create_context(fd_t elfd, node_id *id, const char *entrypoint, reload_cont
     return (void *)create_lua(elfd, id, entrypoint, reload);
 }
 
+void pre_refresh_context(void *ctx, fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
+
+}
+
 void refresh_context(void *ctx, fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
     refresh_lua((lua_State*)ctx, elfd, id, entrypoint, reload);
 }

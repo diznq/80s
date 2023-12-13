@@ -174,6 +174,7 @@ void *serve(void *vparams) {
                         switch(buf[i]) {
                             case S80_SIGNAL_STOP:
                                 running = 0;
+                                pre_refresh_context(ctx, elfd, &params->node, params->entrypoint, params->reload);
                                 break;
                             case S80_SIGNAL_QUIT:
                                 params->quit = 1;

@@ -1,5 +1,5 @@
 #pragma once
-#include "../src/80s.h"
+#include <80s/80s.h>
 #include "aiopromise.hpp"
 
 #include <list>
@@ -14,15 +14,27 @@ namespace s90 {
 
     struct read_arg {
         bool error;
-        std::string data;
+        std::string_view data;
     };
 
-    class afd {
+    class iafd {
+    public:
+        virtual bool is_error() const = 0;
+        virtual bool is_closed() const = 0;
+        virtual aiopromise<read_arg> read_any() = 0;
+        virtual aiopromise<read_arg> read_n(size_t n_bytes) = 0;
+        virtual aiopromise<read_arg> read_until(std::string&& delim) = 0;
+        virtual aiopromise<bool> write(const std::string_view& data) = 0;
+        virtual void close() = 0;
+    };
+
+    class afd : public iafd {
         context *ctx;
         fd_t elfd;
         fd_t fd;
         int fd_type;
         bool closed = false;
+        bool has_error = false;
         bool buffering = true;
 
         enum class read_command_type { any, n, until };
@@ -71,9 +83,8 @@ namespace s90 {
 
     public:
         afd(context *ctx, fd_t elfd, fd_t fd, int fdtype);
+        afd(context *ctx, fd_t elfd, bool has_error);
         ~afd();
-
-        bool is_closed() const;
 
         void on_accept();
         void on_data(std::string_view data, bool cycle = false);
@@ -81,12 +92,14 @@ namespace s90 {
         void on_close();
 
         void set_on_empty_queue(std::function<void()> on_empty);
-        aiopromise<read_arg> read_any();
-        aiopromise<read_arg> read_n(size_t n_bytes);
-        aiopromise<read_arg> read_until(std::string&& delim);
-        aiopromise<bool> write(const std::string_view& data);
 
-        void close();
+        bool is_error() const override;
+        bool is_closed() const override;
+        aiopromise<read_arg> read_any() override;
+        aiopromise<read_arg> read_n(size_t n_bytes) override;
+        aiopromise<read_arg> read_until(std::string&& delim) override;
+        aiopromise<bool> write(const std::string_view& data) override;
+        void close() override;
     };
 
 }
