@@ -81,7 +81,7 @@ xmake() {
     obj_files="$obj_files $obj_file"
   done
   # link it
-  if [ "${outname: -2}" == ".a" ]; then
+  if [ "${outname: -2}" = ".a" ]; then
     ar rcs "$outname" $obj_files
   else
     $cc -o "$outname" $obj_files $rem_libs $flags
