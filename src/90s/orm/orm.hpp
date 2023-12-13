@@ -185,6 +185,16 @@ namespace s90 {
                 }
                 return result;
             }
+            
+            template<class T>
+            requires WithOrm<T>
+            static std::vector<std::map<std::string,std::string>> transform(std::vector<T>&& items, bool bool_as_text = false) {
+                std::vector<std::map<std::string,std::string>> result;
+                for(auto& item : items) {
+                    result.emplace_back(item.get_orm().from_native(bool_as_text));
+                }
+                return result;
+            }
         };
 
         class with_orm {
