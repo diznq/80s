@@ -59,7 +59,7 @@ xmake() {
   fi
 
   for i in `seq 5 $#`; do
-    file="${!i}"
+    file=$(eval echo \${$i})
     echo "> Compiling $file"
     dir=$(dirname "$file")
     mkdir -p "bin/obj/$dir"
