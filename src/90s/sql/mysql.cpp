@@ -55,7 +55,7 @@ namespace s90 {
                 is_connecting = true;
                 authenticated = false;
                 if(!connection || connection->is_closed() || connection->is_error()) {
-                    connection = co_await ctx->connect(host.c_str(), sql_port, false);
+                    connection = co_await ctx->connect(host, sql_port, false);
                 }
                 if(connection && connection->is_error()) {
                     connection = nullptr;
