@@ -105,6 +105,7 @@ static void* run(void *params_) {
     // Windows support not required as it doesn't support live-reload
     // in first place as files that are loaded cannot be overwritten
     // during the run!
+    #ifdef S80_DYNAMIC
     serve_params *params = (serve_params*)params_;
     reload_context *reload = params->reload;
     dynserve_t serve;
@@ -117,6 +118,9 @@ static void* run(void *params_) {
         error("run: failed to locate serve procedure");
     }
     return reload->serve(params_);
+    #else
+    serve(params_);
+    #endif
 #else
     serve_params *params = (serve_params*)params_;
     reload_context *reload = params->reload;
