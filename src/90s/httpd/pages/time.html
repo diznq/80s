@@ -18,16 +18,10 @@
         } else {
             | <h1>Hello!</h1>
         }
-        std::time_t t = std::time(NULL);
-        std::tm *tm = std::localtime(&t);
-        const char *days[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-
-        | <h2>Today is: #[[ days[tm->tm_wday] ]]</h2>
     ?>
     <br>
     <hr>
     <?cpp
-        | <p>This is coming from global context: #[[ ctx->get_message() ]]</p>
         auto posts = co_await ctx->get_posts();
         if(posts.size() == 0) {
             | <h3>No posts found</h3>
