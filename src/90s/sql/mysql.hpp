@@ -34,11 +34,14 @@ namespace s90 {
             aiopromise<sql_connect> handshake();
 
         public:
+            using isql::escape;
             mysql(context *ctx);
             ~mysql();
             aiopromise<sql_connect> connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) override;
             aiopromise<sql_connect> reconnect() override;
             bool is_connected() const override;
+            
+            std::string escape(std::string_view view) const override;
 
             aiopromise<sql_result> raw_exec(std::string_view query);
             aiopromise<sql_result> exec(std::string_view query) override;
