@@ -34,7 +34,7 @@ function smtp:init(params)
             return true
         end,
         on_accept = function (fd, parentfd)
-            fd:write("220 " .. params.host .. " ESMTP 80s\r\n")
+            self:write(fd, "220 " .. params.host .. " ESMTP 80s\r\n")
         end,
         handle = function (fd)
             self:handle_as_smtp(fd)
@@ -53,6 +53,17 @@ function smtp:set_logging(state)
     self.logging = state
 end
 
+function smtp:read(data)
+    local data = coroutine.yield(data)
+    self:log("[smtp] <- " .. data)
+    return data
+end
+
+function smtp:write(fd, data)
+    self:log("[smtp] -> " .. data)
+    return fd:write(data)
+end
+
 function smtp:handle_as_smtp(fd)
     aio:buffered_cor(fd, function (_)
         local ok = true
@@ -64,32 +75,32 @@ function smtp:handle_as_smtp(fd)
         end
         while ok do
             --- @type string|nil
-            local line = coroutine.yield("\r\n")
+            local line = self:read("\r\n")
             if line == nil then return end
             --- @type string|nil
             local msg_type = line:match("^([A-Za-z]+)")
             local handled = false
             if msg_type ~= nil then msg_type = msg_type:upper() end
             if msg_type == nil then
-                fd:write("502 Invalid command\r\n")
+                self:write(fd, "502 Invalid command\r\n")
                 handled = true
             elseif msg_type == "HELO" then
                 hello = true
-                fd:write("250 HELO " .. line:sub(6) .. "\r\n")
+                self:write(fd, "250 HELO " .. line:sub(6) .. "\r\n")
                 handled = true
             elseif msg_type == "EHLO" then
                 hello = true
-                fd:write("250-".. self.host .. " is my domain name. Hello " .. line:sub(6) .. "!\r\n250-8BITMIME\r\n" .. tls_capability .. "250 SIZE 1000000\r\n")
+                self:write(fd, "250-".. self.host .. " is my domain name. Hello " .. line:sub(6) .. "!\r\n250-8BITMIME\r\n" .. tls_capability .. "250 SIZE 1000000\r\n")
                 handled = true
             elseif msg_type == "STARTTLS" then
                 if self.tls then
                     if hello then
-                        fd:write("220 Go ahead\r\n")
+                        self:write(fd, "220 Go ahead\r\n")
                         aio:wrap_tls(fd, self.tls)
                         handled = true
                         hello = false
                     else
-                        fd:write("503 HELO or EHLO was not sent previously!\r\n")
+                        self:write(fd, "503 HELO or EHLO was not sent previously!\r\n")
                         handled = true
                     end
                 end
@@ -98,18 +109,18 @@ function smtp:handle_as_smtp(fd)
                     local raw_from = line:sub(11)
                     local parsed_from = self:extract_email(raw_from)
                     if from ~= nil then
-                        fd:write("503 MAIL FROM was already sent previously\r\n")
+                        self:write(fd, "503 MAIL FROM was already sent previously\r\n")
                         handled = true
                     elseif parsed_from then
                         from = parsed_from
-                        fd:write("250 OK\r\n")
+                        self:write(fd, "250 OK\r\n")
                         handled = true
                     else
-                        fd:write("501 Invalid address\r\n")
+                        self:write(fd, "501 Invalid address\r\n")
                         handled = true
                     end
                 else
-                    fd:write("500 Invalid MAIL command\r\n")
+                    self:write(fd, "500 Invalid MAIL command\r\n")
                     handled = true
                 end
             elseif msg_type == "RCPT" then
@@ -119,24 +130,24 @@ function smtp:handle_as_smtp(fd)
                     if raw_to then
                         if to == nil then to = {} end
                         if #to >= 100 then
-                            fd:write("501 Limit for number of recipients is 100\r\n")
+                            self:write(fd, "501 Limit for number of recipients is 100\r\n")
                             handled = true
                         else
                             to[#to + 1] = parsed_to
-                            fd:write("250 OK\r\n")
+                            self:write(fd, "250 OK\r\n")
                             handled = true
                         end
                     else
-                        fd:write("501 Invalid address\r\n")
+                        self:write(fd, "501 Invalid address\r\n")
                         handled = true
                     end
                 else
-                    fd:write("500 Invalid RCPT command\r\n")
+                    self:write(fd, "500 Invalid RCPT command\r\n")
                 end
             elseif msg_type == "DATA" then
                 if from and to and #to > 0 and hello then
-                    fd:write("354 Send message content; end with <CR><LF>.<CR><LF>\r\n")
-                    message = coroutine.yield("\r\n.\r\n")
+                    self:write(fd, "354 Send message content; end with <CR><LF>.<CR><LF>\r\n")
+                    message = self:read("\r\n.\r\n")
                     if message ~= nil then
                         local email_subject = message:match("Subject: (.-)\r\n") or "No subject"
                         local messageId = self:generate_message_id()
@@ -157,13 +168,13 @@ function smtp:handle_as_smtp(fd)
                                 unread = true
                             }, {
                                 ok = function ()
-                                    fd:write("250 OK: queued as " .. messageId .. "\r\n")
+                                    self:write(fd, "250 OK: queued as " .. messageId .. "\r\n")
                                 end,
                                 error = function (message)
                                     if message ~= nil then
-                                        fd:write("451 Server failed to handle the message: " .. message .. ", try again later\r\n")
+                                        self:write(fd, "451 Server failed to handle the message: " .. message .. ", try again later\r\n")
                                     else
-                                        fd:write("451 Server failed to handle the message, try again later\r\n")
+                                        self:write(fd, "451 Server failed to handle the message, try again later\r\n")
                                     end
                                 end
                             })
@@ -179,14 +190,14 @@ function smtp:handle_as_smtp(fd)
                         to = {}
                         if write_response then
                             if handle_ok then
-                                fd:write("250 OK: queued as " .. messageId .. "\r\n")
+                                self:write(fd, "250 OK: queued as " .. messageId .. "\r\n")
                             else
-                                fd:write("451 Server failed to handle the message, try again later\r\n")
+                                self:write(fd, "451 Server failed to handle the message, try again later\r\n")
                             end
                         end
                         handled = true
                     else
-                        fd:write("500 Message was missing\r\n")
+                        self:write(fd, "500 Message was missing\r\n")
                         handled = true
                     end
                 else
@@ -196,15 +207,15 @@ function smtp:handle_as_smtp(fd)
                     if not to then errors[#errors+1] = "503- RCPT TO has been never sent" end
                     if to and #to == 0 then errors[#errors+1] = "503- There were zero recipients" end
                     errors[#errors+1] = "503 Please, fill the missing information"
-                    fd:write(table.concat(errors, "\r\n") .. "\r\n")
+                    self:write(fd, table.concat(errors, "\r\n") .. "\r\n")
                     handled = true
                 end
             elseif msg_type == "QUIT" then
-                fd:write("221 Bye\r\n", true)
+                self:write(fd, "221 Bye\r\n", true)
                 handled = true
             end
             if not handled then
-                fd:write("502 Command not implemented\r\n")
+                self:write(fd, "502 Command not implemented\r\n")
             end
         end
     end)
