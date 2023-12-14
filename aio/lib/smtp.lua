@@ -55,7 +55,9 @@ end
 
 function smtp:read(data)
     local data = coroutine.yield(data)
-    self:log("[smtp] <- " .. data)
+    if data ~= nil then
+        self:log("[smtp] <- " .. data)
+    end
     return data
 end
 
