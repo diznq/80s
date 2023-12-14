@@ -32,6 +32,40 @@ namespace s90 {
             return login_provided;
         }
 
+        std::string mysql::escape(std::string_view view) const {
+            std::string str;
+            str.reserve(view.length());
+            for(char c : view) {
+                switch (c) {
+                case '\r':
+                    str += "\\r";
+                    break;
+                case '\n':
+                    str += "\\n";
+                    break;
+                case '"':
+                    str += "\\\"";
+                    break;
+                case '\'':
+                    str += "\\'";
+                    break;
+                case '\b':
+                    str += "\\b";
+                    break;
+                case '\0':
+                    str += "\\0";
+                    break;
+                case '\1':
+                    str += "\\1";
+                    break;
+                default:
+                    str += c;
+                    break;
+                }
+            }
+            return str;
+        }
+
         aiopromise<sql_connect> mysql::connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) {
             user = username;;
             password = passphrase;
@@ -140,6 +174,7 @@ namespace s90 {
         }
 
         aiopromise<sql_result> mysql::select(std::string_view query) {
+            printf("q: %s\n", query.data());
             auto subproc = [this](std::string_view query) -> aiopromise<sql_result> {
                 auto command_sent = co_await raw_exec(query);
                 if(command_sent.error) co_return std::move(command_sent);

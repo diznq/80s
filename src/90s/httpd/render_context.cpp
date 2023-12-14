@@ -21,6 +21,34 @@ namespace s90 {
                 ctx->disable();
             return static_pointer_cast<irender_context>(ctx);
         }
+
+        std::string render_context::escape(std::string_view view) const {
+            std::string str;
+            str.reserve(view.length());
+            for(char c : view) {
+                switch (c) {
+                case '&':
+                    str += "&amp;";
+                    break;
+                case '"':
+                    str += "&quot;";
+                    break;
+                case '<':
+                    str += "&lt;";
+                    break;
+                case '>':
+                    str += "&gt;";
+                    break;
+                case '\'':
+                    str += "&#39;";
+                    break;
+                default:
+                    str += c;
+                    break;
+                }
+            }
+            return str;
+        }
         
         aiopromise<std::string> render_context::finalize() {
             std::string output;

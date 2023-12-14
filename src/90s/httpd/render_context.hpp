@@ -9,16 +9,22 @@ namespace s90 {
     namespace httpd {
         class irender_context {
         public:
-            virtual void write(std::string&& text) = 0;
             virtual void disable() = 0;
             virtual std::shared_ptr<irender_context> append_context() = 0;
             virtual aiopromise<std::string> finalize() = 0;
 
+            virtual std::string escape(std::string_view view) const = 0;
+
+            virtual void write(std::string&& text) = 0;
+
             template< class... Args >
-            void write_formatted( std::format_string<Args...> fmt, Args&&... args ) {
-                write(std::vformat(fmt.get(), std::make_format_args(args...)));
+            void write_formatted(std::string_view fmt, Args&&... args ) {
+                write(std::vformat(fmt, std::make_format_args(escape(args)...)));
             }
+
+            #include "../escape_mixin.hpp.inc"
         };
+
 
         class render_context : public irender_context {
             enum class output_type {
@@ -37,11 +43,15 @@ namespace s90 {
             bool disabled = false;
 
         public:
+            using irender_context::escape;
 
-            void write(std::string&& text) override;
             void disable() override;
             std::shared_ptr<irender_context> append_context() override;
             aiopromise<std::string> finalize() override;
+            
+            void write(std::string&& text) override;
+
+            std::string escape(std::string_view view) const override;
         };
     }
 }
