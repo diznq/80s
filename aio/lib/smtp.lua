@@ -59,9 +59,11 @@ function smtp:read(data)
     return data
 end
 
-function smtp:write(fd, data)
-    self:log("[smtp] -> " .. data)
-    return fd:write(data)
+function smtp:write(fd, data, close)
+    if data ~= nil then
+        self:log("[smtp] -> " .. data)
+    end
+    return fd:write(data, close)
 end
 
 function smtp:handle_as_smtp(fd)
