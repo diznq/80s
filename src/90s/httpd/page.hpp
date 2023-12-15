@@ -1,5 +1,6 @@
 #pragma once
 #include "environment.hpp"
+#include <expected>
 
 #ifndef LIBRARY_EXPORT
 #ifdef _WIN32
@@ -11,10 +12,16 @@
 
 namespace s90 {
     namespace httpd {
+
+        enum class status {
+            bad_request, unauthorized, forbidden, not_found,
+            internal_server_error
+        };
+
         class page {
         public:
             virtual const char* name() const = 0;
-            virtual aiopromise<nil> render(ienvironment& env) const = 0;
+            virtual aiopromise<std::expected<nil, status>> render(ienvironment& env) const = 0;
         };
     }
 }

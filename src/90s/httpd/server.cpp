@@ -27,21 +27,49 @@ namespace s90 {
         std::map<std::string, server::loaded_lib> server::loaded_libs;
         std::mutex server::loaded_libs_lock;
 
-        class page404 : public page {
+        class generic_error_page : public page {
         public:
             const char *name() const override {
                 return "GET /404";
             }
-            aiopromise<nil> render(ienvironment& env) const {
+            
+            aiopromise<std::expected<nil, status>> render(ienvironment& env) const {
                 env.status("404 Not found");
                 env.header("Content-type", "text/plain");
                 env.output()->write("Not found");
                 co_return {};
             }
+
+            aiopromise<std::expected<nil, status>> render_error(ienvironment& env, status error) const {
+                env.header("Content-type", "text/plain");
+                switch(error) {
+                    case status::not_found:
+                        env.status("404 Not found");
+                        env.output()->write("Not found");
+                        break;
+                    case status::bad_request:
+                        env.status("400 Bad request");
+                        env.output()->write("Bad request");
+                        break;
+                    case status::unauthorized:
+                        env.status("401 Unauthorized");
+                        env.output()->write("Unauthorized");
+                        break;
+                    case status::forbidden:
+                        env.status("403 Forbidden");
+                        env.output()->write("Forbidden");
+                        break;
+                    case status::internal_server_error:
+                        env.status("500 Internal server error");
+                        env.output()->write("Internal server error");
+                        break;
+                }
+                co_return {};
+            }
         };
 
         server::server(context *parent) {
-            not_found = new page404;
+            default_page = new generic_error_page;
             global_context = parent;
         }
 
@@ -49,8 +77,8 @@ namespace s90 {
             for(auto& [k, v] : pages) {
                 delete v;
             }
-            if(not_found) delete not_found;
-            not_found = 0;
+            if(default_page) delete default_page;
+            default_page = nullptr;
         }
 
         void server::on_load() {
@@ -150,7 +178,7 @@ namespace s90 {
 
         aiopromise<nil> server::on_accept(std::shared_ptr<afd> fd) {
             std::map<std::string, page*>::iterator it;
-            page *current_page = not_found;
+            page *current_page = default_page;
             std::string_view script;
             read_arg arg;
             environment env;
@@ -209,7 +237,7 @@ namespace s90 {
                 }
                 it = pages.find(env.method() + " " + s90::util::url_decode(script));
                 if(it == pages.end()) {
-                    current_page = not_found;
+                    current_page = default_page;
                 } else {
                     current_page = it->second;
                 }
@@ -229,7 +257,12 @@ namespace s90 {
                 env.header("connection", "keep-alive");
                 env.write_global_context(global_context);
                 env.write_local_context(local_context);
-                write_status = co_await fd->write(co_await env.render(current_page));
+                auto page_result = co_await current_page->render(env);
+                if(!page_result.has_value()) {
+                    env.clear();
+                    static_cast<generic_error_page*>(default_page)->render_error(env, page_result.error());
+                }
+                write_status = co_await fd->write(co_await env.http_response());
                 if(!write_status) {
                     co_return {};
                 } else {

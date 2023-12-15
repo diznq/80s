@@ -35,7 +35,7 @@ namespace s90 {
             static std::mutex loaded_libs_lock;
             void *local_context = nullptr;
             context *global_context = nullptr;
-            page *not_found;
+            page *default_page;
             
             void load_lib(const std::string& name);
             void load_libs();
