@@ -7,16 +7,10 @@
 #include <concepts>
 #include <format>
 #include <stdint.h>
+#include "../util/varstr.hpp"
 
 namespace s90 {
     namespace orm {
-
-        template<size_t N>
-        class varstr : public std::string {
-        public:
-            using std::string::string;
-            constexpr size_t get_max_size() { return N; }
-        };
 
         class any {
             enum class reftype {
@@ -32,7 +26,7 @@ namespace s90 {
             any(std::string& value) : ref((void*)&value), type(reftype::str) {}
             any(const char*& value) : ref((void*)&value), type(reftype::cstr) {}
             template<size_t N>
-            any(varstr<N>& value) : ref((void*)&value), type(reftype::vstr), reserved(value.get_max_size()) {}
+            any(util::varstr<N>& value) : ref((void*)&value), type(reftype::vstr), reserved(value.get_max_size()) {}
             any(int8_t& value) : ref((void*)&value), type(reftype::i8) {}
             any(int16_t& value) : ref((void*)&value), type(reftype::i16) {}
             any(int32_t& value) : ref((void*)&value), type(reftype::i32) {}
@@ -46,40 +40,44 @@ namespace s90 {
             any(long double& value) : ref((void*)&value), type(reftype::f80) {}
             any(bool& value) : ref((void*)&value), type(reftype::i1) {}
 
-            void to_native(const std::string& value) const {
+            void to_native(std::string_view value) const {
+                int32_t below_32 = 0;
+                uint32_t below_32u = 0;
                 switch(type) {
                     case reftype::str:
                     case reftype::vstr:
                         *(std::string*)ref = value;
                         break;
                     case reftype::cstr:
-                        *(const char**)ref = value.c_str();
+                        *(const char**)ref = value.data();
                         break;
                     // signed
                     case reftype::i8:
-                        *(int8_t*)ref = (int8_t)std::stoi(value);
+                        std::from_chars(value.begin(), value.end(), below_32, 10);
+                        *(int8_t*)ref = (int8_t)below_32;
                         break;
                     case reftype::i16:
-                        *(int16_t*)ref = (int16_t)std::stoi(value);
+                        std::from_chars(value.begin(), value.end(), *(int16_t*)ref, 10);
                         break;
                     case reftype::i32:
-                        *(int32_t*)ref = (int32_t)std::stol(value);
+                        std::from_chars(value.begin(), value.end(), *(int32_t*)ref, 10);
                         break;
                     case reftype::i64:
-                        *(int64_t*)ref = (int64_t)std::stoll(value);
+                        std::from_chars(value.begin(), value.end(), *(int64_t*)ref, 10);
                         break;
                     // unsigned
                     case reftype::u8:
-                        *(uint8_t*)ref = (uint8_t)std::stoul(value);
+                        std::from_chars(value.begin(), value.end(), below_32u, 10);
+                        *(uint8_t*)ref = (uint8_t)below_32u;
                         break;
                     case reftype::u16:
-                        *(uint16_t*)ref = (uint16_t)std::stoul(value);
+                        std::from_chars(value.begin(), value.end(), *(uint16_t*)ref, 10);
                         break;
                     case reftype::u32:
-                        *(uint32_t*)ref = (uint32_t)std::stoul(value);
+                        std::from_chars(value.begin(), value.end(), *(uint16_t*)ref, 10);
                         break;
                     case reftype::u64:
-                        *(uint64_t*)ref = (uint64_t)std::stoull(value);
+                        std::from_chars(value.begin(), value.end(), *(uint64_t*)ref, 10);
                         break;
                     // bool
                     case reftype::i1:
@@ -87,13 +85,13 @@ namespace s90 {
                         break;
                     // floats
                     case reftype::f32:
-                        *(float*)ref = (float)std::stof(value);
+                        std::from_chars(value.begin(), value.end(), *(float*)ref);
                         break;
                     case reftype::f64:
-                        *(double*)ref = (float)std::stod(value);
+                        std::from_chars(value.begin(), value.end(), *(double*)ref);
                         break;
                     case reftype::f80:
-                        *(long double*)ref = (float)std::stold(value);
+                        std::from_chars(value.begin(), value.end(), *(long double*)ref);
                         break;
                 }
             }
@@ -195,7 +193,19 @@ namespace s90 {
 
             template<class T>
             requires WithOrm<T>
-            static std::vector<T> transform(const std::vector<std::map<std::string, std::string>>& items) {
+            static std::vector<T> transform(std::span<std::map<std::string, std::string>> items) {
+                std::vector<T> result;
+                for(auto& item : items) {
+                    T new_item;
+                    new_item.get_orm().to_native(item);
+                    result.emplace_back(std::move(new_item));
+                }
+                return result;
+            }
+
+            template<class T>
+            requires WithOrm<T>
+            static std::vector<T> transform(std::vector<std::map<std::string, std::string>>&& items) {
                 std::vector<T> result;
                 for(auto& item : items) {
                     T new_item;
@@ -207,6 +217,16 @@ namespace s90 {
             
             template<class T>
             requires WithOrm<T>
+            static std::vector<std::map<std::string,std::string>> transform(std::span<T> items, bool bool_as_text = false) {
+                std::vector<std::map<std::string,std::string>> result;
+                for(auto& item : items) {
+                    result.emplace_back(item.get_orm().from_native(bool_as_text));
+                }
+                return result;
+            }
+
+            template<class T>
+            requires WithOrm<T>
             static std::vector<std::map<std::string,std::string>> transform(std::vector<T>&& items, bool bool_as_text = false) {
                 std::vector<std::map<std::string,std::string>> result;
                 for(auto& item : items) {
@@ -214,6 +234,7 @@ namespace s90 {
                 }
                 return result;
             }
+
         };
 
         class with_orm {
@@ -222,14 +243,3 @@ namespace s90 {
         };
     }
 }
-
-template <size_t N>
-struct std::formatter<s90::orm::varstr<N>> {
-    constexpr auto parse(std::format_parse_context& ctx) {
-        return ctx.begin();
-    }
-
-    auto format(const s90::orm::varstr<N>& obj, std::format_context& ctx) const {
-        return std::format_to(ctx.out(), "{}", obj.length() > N ? ((std::string_view)obj).substr(0, N) : (std::string_view)obj);
-    }
-};

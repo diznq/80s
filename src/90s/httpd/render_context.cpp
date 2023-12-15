@@ -22,7 +22,7 @@ namespace s90 {
             return static_pointer_cast<irender_context>(ctx);
         }
 
-        std::string render_context::escape(std::string_view view) const {
+        std::string render_context::escape_string(std::string_view view) const {
             std::string str;
             str.reserve(view.length());
             for(char c : view) {

@@ -14,7 +14,8 @@ namespace s90 {
 
     template<typename T>
     struct aiopromise_state {
-        std::optional<T> result;
+        bool has_result;
+        T result;
         std::function<void(T&&)> callback;
         std::coroutine_handle<> coro_callback;
         std::exception_ptr exception;
@@ -42,17 +43,20 @@ namespace s90 {
             }
 
             std::suspend_always yield_value(T&& value) {
-                state->result.emplace(std::move(value));
+                state->result = std::move(value);
+                state->has_result = true;
                 return {};
             }
 
             void return_value(T&& value) {
-                state->result.emplace(std::move(value));
+                state->result = std::move(value);
+                state->has_result = true;
                 if(state->coro_callback) state->coro_callback();
             }
 
             void return_value(const T& value) {
-                state->result.emplace(value);
+                state->result = value;
+                state->has_result = true;
                 if(state->coro_callback) state->coro_callback();
             }
 
@@ -71,49 +75,57 @@ namespace s90 {
         }
 
         void resolve(T&& value) {
-            if(state()->callback) {
-                state()->callback(std::move(value));
-            } else if(state()->coro_callback) {
-                state()->result.emplace(std::move(value));
-                state()->coro_callback();
+            auto s = state();
+            if(s->callback) {
+                s->has_result = false;
+                s->callback(std::move(value));
+            } else if(s->coro_callback) {
+                s->result = std::move(value);
+                s->has_result = true;
+                s->coro_callback();
             } else {
-                state()->result.emplace(std::move(value));
+                s->result = std::move(value);
+                s->has_result = true;
             }
         }
 
         void resolve(const T& value) {
-            if(state()->callback) {
-                state()->callback(value);
-            } else if(state()->coro_callback) {
-                state()->result.emplace(value);
-                state()->coro_callback();
+            auto s = state();
+            if(s->callback) {
+                s->has_result = false;
+                s->callback(value);
+            } else if(s->coro_callback) {
+                s->result = value;
+                s->has_result = true;
+                s->coro_callback();
             } else {
-                state()->result.emplace(value);
+                s->result = value;
+                s->has_result = true;
             }
         }
 
         void then(std::function<void(T&&)> cb) {
-            std::optional<T> result;
-            state()->result.swap(result);
-            if(result.has_value()) {
-                cb(std::move(*result));
+            auto s = state();
+            if(s->has_result) {
+                s->has_result = false;
+                cb(std::move(s->result));
             } else {
-                state()->callback = std::move(cb);
+                s->callback = std::move(cb);
             }
         }
 
         bool await_ready() const {
-            return state()->result.has_value();
+            return state()->has_result;
         }
 
         void await_suspend(std::coroutine_handle<> resume) {
             state()->coro_callback = resume;
         }
 
-        T await_resume() const {
-            T value(std::move(*state()->result));
-            state()->result.reset();
-            return value;
+        T&& await_resume() const {
+            auto s = state();
+            s->has_result = false;
+            return std::move(s->result);
         }
 
     };
