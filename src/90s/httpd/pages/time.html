@@ -28,7 +28,7 @@
         } else {
             for(auto& p : posts) {
                 | <div class="post">
-                |  <p>Author: #[[ p.author ]]</p>
+                |  <p><a href="##[[ p.id ]]">##[[ p.id ]]</a> Author: #[[ p.author ]]</p>
                 |  <p>#[[p.text]]</p>
                 | </div>
                 | <hr>
