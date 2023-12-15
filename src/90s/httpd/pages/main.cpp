@@ -25,7 +25,7 @@ s90::aiopromise<std::vector<post>> default_context::get_posts() {
         printf("failed to select posts: %s\n", result.error_message.c_str());
         co_return {};
     } else {
-        co_return s90::orm::mapper::transform<post>(result.rows);
+        co_return s90::orm::mapper::transform<post>(std::move(result.rows));
     }
 }
 

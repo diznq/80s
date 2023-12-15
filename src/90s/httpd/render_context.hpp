@@ -4,6 +4,7 @@
 #include <vector>
 #include <format>
 #include "../aiopromise.hpp"
+#include "../util/varstr.hpp"
 
 namespace s90 {
     namespace httpd {
@@ -13,7 +14,7 @@ namespace s90 {
             virtual std::shared_ptr<irender_context> append_context() = 0;
             virtual aiopromise<std::string> finalize() = 0;
 
-            virtual std::string escape(std::string_view view) const = 0;
+            virtual std::string escape_string(std::string_view view) const = 0;
 
             virtual void write(std::string&& text) = 0;
 
@@ -51,7 +52,7 @@ namespace s90 {
             
             void write(std::string&& text) override;
 
-            std::string escape(std::string_view view) const override;
+            std::string escape_string(std::string_view view) const override;
         };
     }
 }

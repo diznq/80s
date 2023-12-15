@@ -1,7 +1,7 @@
 #pragma once
 #include "../context.hpp"
 #include "../afd.hpp"
-#include "../util/util.hpp"
+#include "../util/aiolock.hpp"
 #include "sql.hpp"
 #include <tuple>
 #include <vector>
@@ -41,7 +41,7 @@ namespace s90 {
             aiopromise<sql_connect> reconnect() override;
             bool is_connected() const override;
             
-            std::string escape(std::string_view view) const override;
+            std::string escape_string(std::string_view view) const override;
 
             aiopromise<sql_result> raw_exec(std::string_view query);
             aiopromise<sql_result> exec(std::string_view query) override;

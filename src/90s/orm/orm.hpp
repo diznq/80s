@@ -7,16 +7,10 @@
 #include <concepts>
 #include <format>
 #include <stdint.h>
+#include "../util/varstr.hpp"
 
 namespace s90 {
     namespace orm {
-
-        template<size_t N>
-        class varstr : public std::string {
-        public:
-            using std::string::string;
-            constexpr size_t get_max_size() { return N; }
-        };
 
         class any {
             enum class reftype {
@@ -32,7 +26,7 @@ namespace s90 {
             any(std::string& value) : ref((void*)&value), type(reftype::str) {}
             any(const char*& value) : ref((void*)&value), type(reftype::cstr) {}
             template<size_t N>
-            any(varstr<N>& value) : ref((void*)&value), type(reftype::vstr), reserved(value.get_max_size()) {}
+            any(util::varstr<N>& value) : ref((void*)&value), type(reftype::vstr), reserved(value.get_max_size()) {}
             any(int8_t& value) : ref((void*)&value), type(reftype::i8) {}
             any(int16_t& value) : ref((void*)&value), type(reftype::i16) {}
             any(int32_t& value) : ref((void*)&value), type(reftype::i32) {}
@@ -195,7 +189,19 @@ namespace s90 {
 
             template<class T>
             requires WithOrm<T>
-            static std::vector<T> transform(const std::vector<std::map<std::string, std::string>>& items) {
+            static std::vector<T> transform(std::span<std::map<std::string, std::string>> items) {
+                std::vector<T> result;
+                for(auto& item : items) {
+                    T new_item;
+                    new_item.get_orm().to_native(item);
+                    result.emplace_back(std::move(new_item));
+                }
+                return result;
+            }
+
+            template<class T>
+            requires WithOrm<T>
+            static std::vector<T> transform(std::vector<std::map<std::string, std::string>>&& items) {
                 std::vector<T> result;
                 for(auto& item : items) {
                     T new_item;
@@ -207,6 +213,16 @@ namespace s90 {
             
             template<class T>
             requires WithOrm<T>
+            static std::vector<std::map<std::string,std::string>> transform(std::span<T> items, bool bool_as_text = false) {
+                std::vector<std::map<std::string,std::string>> result;
+                for(auto& item : items) {
+                    result.emplace_back(item.get_orm().from_native(bool_as_text));
+                }
+                return result;
+            }
+
+            template<class T>
+            requires WithOrm<T>
             static std::vector<std::map<std::string,std::string>> transform(std::vector<T>&& items, bool bool_as_text = false) {
                 std::vector<std::map<std::string,std::string>> result;
                 for(auto& item : items) {
@@ -214,6 +230,7 @@ namespace s90 {
                 }
                 return result;
             }
+
         };
 
         class with_orm {
@@ -222,14 +239,3 @@ namespace s90 {
         };
     }
 }
-
-template <size_t N>
-struct std::formatter<s90::orm::varstr<N>> {
-    constexpr auto parse(std::format_parse_context& ctx) {
-        return ctx.begin();
-    }
-
-    auto format(const s90::orm::varstr<N>& obj, std::format_context& ctx) const {
-        return std::format_to(ctx.out(), "{}", obj.length() > N ? ((std::string_view)obj).substr(0, N) : (std::string_view)obj);
-    }
-};

@@ -32,7 +32,7 @@ namespace s90 {
             return login_provided;
         }
 
-        std::string mysql::escape(std::string_view view) const {
+        std::string mysql::escape_string(std::string_view view) const {
             std::string str;
             str.reserve(view.length());
             for(char c : view) {
@@ -174,7 +174,6 @@ namespace s90 {
         }
 
         aiopromise<sql_result> mysql::select(std::string_view query) {
-            printf("q: %s\n", query.data());
             auto subproc = [this](std::string_view query) -> aiopromise<sql_result> {
                 auto command_sent = co_await raw_exec(query);
                 if(command_sent.error) co_return std::move(command_sent);

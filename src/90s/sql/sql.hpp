@@ -3,6 +3,7 @@
 #include <vector>
 #include "../aiopromise.hpp"
 #include "../orm/orm.hpp"
+#include "../util/varstr.hpp"
 
 namespace s90 {
     namespace sql {
@@ -35,7 +36,7 @@ namespace s90 {
             virtual aiopromise<sql_connect> reconnect() = 0;
             virtual bool is_connected() const = 0;
 
-            virtual std::string escape(std::string_view view) const = 0;
+            virtual std::string escape_string(std::string_view view) const = 0;
             
             virtual aiopromise<sql_result> exec(std::string_view query) = 0;
             virtual aiopromise<sql_result> select(std::string_view query) = 0;
