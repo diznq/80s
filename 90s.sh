@@ -12,7 +12,7 @@ if ! [ -x "$(command -v $DEFAULT_C_COMPILER)" ]; then
   DEFAULT_COMPILER="clang"
 fi
 
-FLAGS="-s -O3 -fno-exceptions"
+FLAGS="-s -O3"
 OUT="${OUT:-bin/90s}"
 CXX="${CXX:-$DEFAULT_COMPILER}"
 CC="${CC:-$DEFAULT_C_COMPILER}"

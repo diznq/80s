@@ -34,10 +34,11 @@ namespace s90 {
             }
             
             aiopromise<std::expected<nil, status>> render(ienvironment& env) const {
-                env.status("404 Not found");
-                env.header("Content-type", "text/plain");
-                env.output()->write("Not found");
-                co_return {};
+                return render_error(env, status::not_found);
+            }
+
+            aiopromise<std::expected<nil, status>> render_exception(ienvironment& env, std::exception_ptr ptr) const {
+                return render_error(env, status::internal_server_error);
             }
 
             aiopromise<std::expected<nil, status>> render_error(ienvironment& env, status error) const {
@@ -257,8 +258,12 @@ namespace s90 {
                 env.header("connection", "keep-alive");
                 env.write_global_context(global_context);
                 env.write_local_context(local_context);
-                auto page_result = co_await current_page->render(env);
-                if(!page_result.has_value()) {
+                auto page_coro = current_page->render(env);
+                auto page_result = co_await page_coro;
+                if(page_coro.has_exception()) {
+                    env.clear();
+                    static_cast<generic_error_page*>(default_page)->render_exception(env, page_coro.exception());
+                } else if(!page_result.has_value()) {
                     env.clear();
                     static_cast<generic_error_page*>(default_page)->render_error(env, page_result.error());
                 }

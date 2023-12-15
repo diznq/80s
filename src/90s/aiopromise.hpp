@@ -18,7 +18,7 @@ namespace s90 {
         T result;
         std::function<void(T&&)> callback;
         std::coroutine_handle<> coro_callback;
-        std::exception_ptr exception;
+        std::exception_ptr exception = nullptr;
     };
 
     template<typename T>
@@ -60,8 +60,9 @@ namespace s90 {
                 if(state->coro_callback) state->coro_callback();
             }
 
-            void unhandled_exception() {
+            void unhandled_exception() const noexcept {
                 state->exception = std::current_exception();
+                if(state->coro_callback) state->coro_callback();
             }
         };
 
@@ -112,6 +113,14 @@ namespace s90 {
             } else {
                 s->callback = std::move(cb);
             }
+        }
+
+        bool has_exception() const {
+            return state()->exception != nullptr;
+        }
+
+        std::exception_ptr&& exception() const {
+            return std::move(state()->exception);
         }
 
         bool await_ready() const {
