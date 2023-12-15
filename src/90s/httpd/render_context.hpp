@@ -11,6 +11,7 @@ namespace s90 {
         class irender_context {
         public:
             virtual void disable() = 0;
+            virtual void clear() = 0;
             virtual std::shared_ptr<irender_context> append_context() = 0;
             virtual aiopromise<std::string> finalize() = 0;
 
@@ -47,6 +48,7 @@ namespace s90 {
             using irender_context::escape;
 
             void disable() override;
+            void clear() override;
             std::shared_ptr<irender_context> append_context() override;
             aiopromise<std::string> finalize() override;
             

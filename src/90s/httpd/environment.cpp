@@ -5,8 +5,7 @@
 
 namespace s90 {
     namespace httpd {
-        aiopromise<std::string> environment::render(const page *page) {
-            co_await page->render(static_cast<ienvironment&>(*this));
+        aiopromise<std::string> environment::http_response() {
             auto rendered = std::move(co_await output_context->finalize());
             std::string response = "HTTP/1.1 " + status_line + "\r\n";
             output_headers["content-length"] = std::to_string(rendered.length());
@@ -17,7 +16,13 @@ namespace s90 {
             response += rendered;
             co_return std::move(response);
         }
-        
+
+        void environment::clear() {
+            status_line = "200 OK";
+            output_headers.clear();
+            output_context->clear();
+        }
+
         void environment::disable() const {
             output_context->disable();
         }

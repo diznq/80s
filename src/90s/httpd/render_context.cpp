@@ -6,6 +6,12 @@ namespace s90 {
             disabled = true;
         }
 
+        void render_context::clear() {
+            disabled = false;
+            est_length = 0;
+            blocks.clear();
+        }
+
         void render_context::write(std::string&& text) {
             if(disabled) return;
             est_length += text.length();

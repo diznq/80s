@@ -13,6 +13,7 @@ namespace s90 {
         class ienvironment {
         public:
             virtual void disable() const = 0;
+            virtual void clear() = 0;
             virtual const std::string& method() const = 0;
             virtual std::optional<std::string> header(std::string&& key) const = 0;
             virtual void header(const std::string& key, const std::string& value) = 0;
@@ -25,7 +26,6 @@ namespace s90 {
             
             virtual void status(std::string&& status_code) = 0;
             virtual std::shared_ptr<irender_context> output() const = 0;
-            virtual aiopromise<std::string> render(const page *rendered_page) = 0;
 
             virtual void *const local_context() const = 0;
             virtual icontext *const global_context() const = 0;
@@ -49,6 +49,7 @@ namespace s90 {
             std::string http_body;
         public:
             void disable() const override;
+            void clear() override;
             const std::string& method() const override;
 
             std::optional<std::string> header(std::string&& key) const override;
@@ -63,7 +64,6 @@ namespace s90 {
             std::shared_ptr<irender_context> output() const override;
             void *const local_context() const override;
             icontext *const global_context() const override;
-            aiopromise<std::string> render(const page *rendered_page) override;
 
         private:
             friend class s90::httpd::server;
@@ -73,6 +73,7 @@ namespace s90 {
             void write_body(std::string&& data);
             void write_local_context(void *ctx);
             void write_global_context(icontext *ctx);
+            aiopromise<std::string> http_response();
         };
     }
 }
