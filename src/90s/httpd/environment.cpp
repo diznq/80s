@@ -1,5 +1,6 @@
 #include "environment.hpp"
 #include "page.hpp"
+#include "../util/util.hpp"
 #include <algorithm>
 #include <cctype>
 
@@ -58,6 +59,32 @@ namespace s90 {
             if(it == query_params.end()) return {};
             return it->second;
         }
+        
+        std::optional<std::string> environment::signed_query(std::string&& key) const {
+            auto it = signed_params.find(std::move(key));
+            if(it == signed_params.end()) return {};
+            return it->second;
+        }
+
+        std::string environment::url(std::string_view endpoint, std::map<std::string, std::string>&& params, encryption encrypt) const {
+            if(params.size() == 0) return std::string(endpoint);
+            std::string query_string = "";
+            size_t i = 0, j = params.size();
+            for(auto& [k, v] : params) {
+                query_string += util::url_encode(k) + "=" + util::url_encode(v);
+                if(i != j - 1) query_string += "&";
+                i++;
+            }
+            if(encrypt != encryption::none) {
+                auto result = util::cipher(query_string, enc_base + std::string(endpoint), true, encrypt == encryption::full);
+                if(result.has_value()) {
+                    query_string = std::string("e=") + util::url_encode(util::to_b64(*result));
+                } else {
+                    query_string = std::string("er=") + util::url_encode(result.error());
+                }
+            }
+            return std::string(endpoint) + "?" + query_string;
+        }
 
         const std::string& environment::body() const {
             return http_body;
@@ -99,6 +126,10 @@ namespace s90 {
             query_params = std::move(qs);
         }
 
+        void environment::write_signed_query(std::map<std::string, std::string>&& qs) {
+            signed_params = std::move(qs);
+        }
+
         void environment::write_local_context(void *ctx) {
             local_context_ptr = ctx;
         }
@@ -107,8 +138,13 @@ namespace s90 {
             global_context_ptr = ctx;
         }
 
-        void environment::write_endpoint(std::string&& endpoint_val) {
-            endpoint_path = std::move(endpoint_val);
+        void environment::write_endpoint(std::string_view endpoint_val) {
+            endpoint_path = endpoint_val;
         }
+
+        void environment::write_enc_base(std::string_view base) {
+            enc_base = base;
+        }
+
     }
 }

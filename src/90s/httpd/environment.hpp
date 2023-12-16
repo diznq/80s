@@ -10,6 +10,12 @@ namespace s90 {
         class page;
         class server;
 
+        enum class encryption {
+            none,
+            full,
+            lean,
+        };
+
         class ienvironment {
         public:
             virtual void disable() const = 0;
@@ -22,6 +28,10 @@ namespace s90 {
             virtual const std::string& endpoint() const = 0;
 
             virtual std::optional<std::string> query(std::string&& key) const = 0;
+            virtual std::optional<std::string> signed_query(std::string&& key) const = 0;
+
+            virtual std::string url(std::string_view endpoint, std::map<std::string, std::string>&& params, encryption encrypt = encryption::full) const = 0;
+
             virtual const std::string& body() const = 0;
 
             virtual void content_type(std::string&& value) = 0;
@@ -47,6 +57,8 @@ namespace s90 {
             icontext *global_context_ptr = nullptr;
             std::string http_method = "GET";
             std::string endpoint_path = "/";
+            std::string enc_base = "";
+            std::map<std::string, std::string> signed_params;
             std::map<std::string, std::string> query_params;
             std::map<std::string, std::string> headers;
             std::string http_body;
@@ -60,6 +72,8 @@ namespace s90 {
             void header(std::string&& key, std::string&& value) override;
 
             const std::string& endpoint() const override;
+            std::optional<std::string> signed_query(std::string&& key) const override;
+            std::string url(std::string_view endpoint, std::map<std::string, std::string>&& params, encryption encrypt = encryption::lean) const override;
 
             std::optional<std::string> query(std::string&& key) const override;
             const std::string& body() const override;
@@ -75,10 +89,12 @@ namespace s90 {
             void write_method(std::string&& method);
             void write_header(std::string&& key, std::string&& value);
             void write_query(std::map<std::string, std::string>&& qs);
+            void write_signed_query(std::map<std::string, std::string>&& qs);
             void write_body(std::string&& data);
             void write_local_context(void *ctx);
             void write_global_context(icontext *ctx);
-            void write_endpoint(std::string&& endpoint);
+            void write_endpoint(std::string_view endpoint);
+            void write_enc_base(std::string_view enc_base);
             aiopromise<std::string> http_response();
         };
     }

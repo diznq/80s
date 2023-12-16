@@ -1,5 +1,5 @@
 #include "mysql_util.hpp"
-#include <80s/crypto.h>
+#include "../util/util.hpp"
 
 namespace s90 {
     namespace sql {
@@ -27,12 +27,6 @@ namespace s90 {
 
         std::string encode_varstr(const std::string& str) {
             return ((char)str.length()) + str;
-        }
-
-        std::string sha1(const std::string& text) {
-            unsigned char buff[20];
-            crypto_sha1(text.c_str(), text.length(), buff, sizeof(buff));
-            return std::string((char*)buff, (char*)buff + 20);
         }
 
         mysql_decoder::mysql_decoder(std::string_view view) : view(view), pivot(0) {}
@@ -161,9 +155,9 @@ namespace s90 {
         }
 
         std::string native_password_hash(const std::string& password, const std::string& scramble) {
-            auto shPwd = sha1(password);
-            auto dshPwd = sha1(shPwd);
-            auto shJoin = sha1(scramble + dshPwd);
+            auto shPwd = util::sha1(password);
+            auto dshPwd = util::sha1(shPwd);
+            auto shJoin = util::sha1(scramble + dshPwd);
             for(size_t i = 0; i < 20; i++) {
                 shPwd[i] = shPwd[i] ^ shJoin[i];
             }

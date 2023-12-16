@@ -38,6 +38,7 @@ namespace s90 {
             page *default_page;
 
             std::string static_path;
+            std::string enc_base;
             
             void load_lib(const std::string& name);
             void load_libs();

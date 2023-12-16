@@ -15,12 +15,14 @@
 #define DL_CLOSE(lib) FreeLibrary(lib)
 #define DL_FIND(lib, name) GetProcAddress(lib, name)
 #define DL_INVALID INVALID_HANDLE_VALUE
+#define SO_EXT ".dll"
 #else
 #include <dlfcn.h>
 #define DL_OPEN(lib) dlopen(lib, RTLD_LAZY)
 #define DL_CLOSE(lib) dlclose(lib)
 #define DL_FIND(lib, name) dlsym(lib, name)
 #define DL_INVALID NULL
+#define SO_EXT ".so"
 #endif
 
 namespace s90 {
@@ -138,12 +140,15 @@ namespace s90 {
         void server::load_libs() {
             const char *web_root_env = getenv("WEB_ROOT");
             const char *web_static_env = getenv("WEB_STATIC");
+            const char *master_key = getenv("MASTER_KEY");
             std::string web_root = "src/90s/httpd/pages/";
             if(web_static_env) static_path = web_static_env;
             if(web_root_env != NULL) web_root = web_root_env;
+            if(master_key != NULL) enc_base = master_key;
+            if(enc_base.length() > 0 && enc_base.length() < 16) enc_base = util::sha256(enc_base);
             ((generic_error_page*)default_page)->set_static_path(static_path);
             for(const auto& entry : std::filesystem::recursive_directory_iterator(web_root)) {
-                if(entry.path().extension() == ".so" || entry.path().extension() == ".dll") {
+                if(entry.path().extension() == SO_EXT) {
                     load_lib(entry.path().string());
                 }
             }
@@ -222,6 +227,7 @@ namespace s90 {
             std::map<std::string, page*>::iterator it;
             page *current_page = default_page;
             std::string_view script;
+            std::string endpoint;
             read_arg arg;
             environment env;
             size_t pivot = 0, body_length = 0, prev_pivot = 0;
@@ -275,9 +281,26 @@ namespace s90 {
                 if(pivot != std::string::npos) {
                     auto query_string = script.substr(pivot + 1);
                     script = script.substr(0, pivot);
-                    env.write_query(std::move(s90::util::parse_query_string(query_string)));
+                    endpoint = s90::util::url_decode(script);
+                    auto query = s90::util::parse_query_string(query_string);
+                    // if there is encrypted query, try to decrypt it using (enc_base + endpoint) as a key
+                    if(enc_base.length() >= 16) {
+                        auto e_it = query.find("e");
+                        if(e_it != query.end()) {
+                            auto decoded = util::from_b64(e_it->second);
+                            if(decoded.has_value()) {
+                                auto decrypted = util::cipher(*decoded, enc_base + endpoint, false, false);
+                                if(decrypted.has_value()) {
+                                    env.write_signed_query(std::move(util::parse_query_string(*decrypted)));
+                                }
+                            }
+                        }
+                    }
+                    env.write_query(std::move(query));
+                } else {
+                    endpoint = s90::util::url_decode(script);
                 }
-                it = pages.find(env.method() + " " + s90::util::url_decode(script));
+                it = pages.find(env.method() + " " + endpoint);
                 if(it == pages.end()) {
                     current_page = default_page;
                 } else {
@@ -299,7 +322,8 @@ namespace s90 {
                 env.header("connection", "keep-alive");
                 env.write_global_context(global_context);
                 env.write_local_context(local_context);
-                env.write_endpoint(std::string(script));
+                env.write_endpoint(endpoint);
+                env.write_enc_base(enc_base);
 
                 auto page_coro = current_page->render(env);
                 auto page_result = co_await page_coro;

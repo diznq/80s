@@ -33,7 +33,7 @@ namespace s90 {
             ltrim(s);
         }
 
-        std::string template_compiler::cppize(const std::string& ctx_name, std::string&& source_code, bool has_vars) {
+        std::string template_compiler::cppize(const std::string& ctx_name, const std::string& source_code, bool has_vars) {
             std::string result = "";
             std::string vars = "";
             std::string internal_source;
@@ -140,6 +140,45 @@ namespace s90 {
             return out;
         }
 
+        std::string template_compiler::replace_between(
+            const std::string& data, 
+            const std::string& start, 
+            const std::string& end, 
+            std::function<std::string(const std::string&)> match_cb,
+            std::function<std::string(const std::string&)> outside
+        ) {
+            size_t offset = 0;
+            std::string out = "";
+            // printf("begin replace between %s - %s (%zu)\n", start.c_str(), end.c_str(), data.length());
+            while(true) {
+                // printf("| replace between %s - %s\n", start.c_str(), end.c_str());
+                auto match = kmp(data.c_str(), data.length(), start.data(), start.length(), offset);
+                if(match.length != start.length()) {
+                    auto new_outside_content =  outside(data.substr(offset, data.length() - offset));
+                    // printf("> outside (%zu -> %zu)\n", data.length() - offset, new_outside_content.length());
+                    out += new_outside_content;
+                    break;
+                }
+                auto new_outside_content = outside(data.substr(offset, match.offset - offset));
+                // printf("> outside/2 (%zu -> %zu)\n", match.offset - offset, new_outside_content.length());
+                out += new_outside_content;
+                auto end_match = kmp(data.c_str(), data.length(), end.data(), end.length(), match.offset + start.length());
+
+                match.offset += start.length();
+                auto content = data.substr(match.offset, end_match.length != end.length() ? data.length() - match.offset : end_match.offset - match.offset);
+                auto new_content = match_cb(content);
+                // printf("> inside (%zu -> %zu)\n", content.length(), new_content.length());
+                out += new_content;
+
+                if(end_match.length != end.length()) {
+                    break;
+                }
+                offset = end_match.offset + end.length();
+            }
+            // printf("end replace between %s - %s (%zu)\n", start.c_str(), end.c_str(), data.length());
+            return out;
+        }
+
         std::string template_compiler::compile(const std::string& file_name, const std::filesystem::path& path, const std::string& output_context, const std::string& input_data) {
             size_t offset = 0;
             size_t block_counter = 0;
@@ -202,113 +241,61 @@ namespace s90 {
             trim(data);
 
             // resolve all the includes
-            while(true) {
-                offset = 0;
-                auto match = kmp(data.c_str(), data.length(), "<?include ", 10, offset);
-                if(match.length != 10) {
-                    break;
-                } else {
-                    auto end_match = kmp(data.c_str(), data.length(), "?>", 2, match.offset + 10);
-                    if(end_match.length != 2) {
-                        break;
-                    } else {
-                        auto file_to_be_included = data.substr(match.offset + 10, end_match.offset - match.offset - 10);
-                        std::string included_file = "";
-                        auto actual_path = path / ".." / file_to_be_included;
-                        std::ifstream is(actual_path);
-                        std::stringstream ss;
-                        if(is.is_open()) {
-                            ss << is.rdbuf();
-                            included_file = ss.str();
-                            // if we include file, make sure we strip the #! from there!
-                            if(included_file.starts_with("#!")) {
-                                included_file = included_file.substr(included_file.find("\n") + 1);
-                            }
-                        } else {
-                            included_file = "\"Failed to include file " + file_to_be_included + "\"";
-                        }
-                        data = data.substr(0, match.offset) + included_file + data.substr(end_match.offset + 2);
+            data = replace_between(data, "<?include ", "?>", [path](const std::string& text) -> auto {
+                auto file_to_be_included = text;
+                trim(file_to_be_included);
+                std::string included_file = "";
+                auto actual_path = path / ".." / file_to_be_included;
+                std::ifstream is(actual_path);
+                std::stringstream ss;
+                if(is.is_open()) {
+                    ss << is.rdbuf();
+                    included_file = ss.str();
+                    // if we include file, make sure we strip the #! from there!
+                    if(included_file.starts_with("#!")) {
+                        included_file = included_file.substr(included_file.find("\n") + 1);
                     }
+                } else {
+                    included_file = "\"Failed to include file " + file_to_be_included + "\"";
                 }
-            }
-
-            offset = 0;
+                return included_file;
+            }, [this](const std::string& text) -> auto {
+                return text;
+            });
 
             // extract all <?hpp ... ?> into `include` variable that goes at the beginning of the script
-            while(true) {
-                auto match = kmp(data.c_str(), data.length(), "<?hpp", 5, offset);
-                if(match.length != 5) {
-                    break;
-                } else {
-                    auto end_match = kmp(data.c_str(), data.length(), "?>", 2, match.offset + 5);
-                    if(end_match.length != 2) {
-                        break;
-                    } else {
-                        includes += data.substr(match.offset + 5, end_match.offset - match.offset - 5);
-                        data = data.substr(0, match.offset) + data.substr(end_match.offset + 2);
-                    }
-                }
-            }
-
-            trim(data);
-
-            offset = 0;
-
-            // match all ```...``` blocks first
-            while(true) {
-                auto match = kmp(data.c_str(), data.length(), "```", 3, offset);
-                if(match.length != 3) {
-                    break;
-                } else {
-                    auto end_match = kmp(data.c_str(), data.length(), "```", 3, match.offset + 3);
-                    if(end_match.length != 3) {
-                        break;
-                    } else {
-                        auto body = data.substr(match.offset + 3, end_match.offset - match.offset - 3);
-                        trim(body);
-                        data = data.substr(0, match.offset) + cppize(output_context, std::move(body), true) + data.substr(end_match.offset + 3);
-                    }
-                }
-            }
+            data = replace_between(data, "<?hpp", "?>", [&includes](const std::string& text) -> auto {
+                includes += text;
+                return "";
+            }, [this](const std::string& text) -> auto {
+                return text;
+            });
 
             // extract all the <?cpp ... ?> segments and treat segments inbetween as string constants
-            while(true) {
-                auto match = kmp(data.c_str(), data.length(), "<?cpp", 5, offset);
-                if(match.length != 5) {
-                    out += cppize(output_context, data.substr(offset, data.length() - offset));
-                    break;
-                }
-                out += cppize(output_context, data.substr(offset, match.offset - offset));
-                auto end_match = kmp(data.c_str(), data.length(), "?>", 2, match.offset + 5);
+            data = replace_between(data, "<?cpp", "?>", [this, output_context](const std::string& text) -> auto {
+                return compile_cpp(output_context, replace_between(
+                    text, "```", "```", 
+                    [this, output_context](const std::string& m) -> auto {
+                        return cppize(output_context, m, true);
+                    }, [](const std::string& m) -> auto { return m; }));
+            }, [this, output_context](const std::string& text) -> auto {
+                return cppize(output_context, text);
+            });
 
-                match.offset += 5;
-                auto content = data.substr(match.offset, end_match.length != 2 ? data.length() - match.offset : end_match.offset - match.offset);
-                
-                //out += "\t\tauto block_output_content_" + std::to_string(block_counter) + " = " + output_context + "->append_context();\n";
-                out += compile_cpp(
-                    /* std::string("block_output_content_") + std::to_string(block_counter), */
-                    output_context,
-                    content
-                );
-                block_counter++;
+            out = data;
 
-                if(end_match.length != 2) {
-                    break;
-                }
-                offset = end_match.offset + 2;
-            }
             // produce the final .hpp file
             return  "// autogenerated by template_compiler\n"
                     "#include <90s/httpd/page.hpp>\n"
                     + includes + 
                     "\n"
-                    "using s90::httpd::status;\n\n"
-                    "class renderable : public s90::httpd::page {\n"
+                    "using namespace s90::httpd;\n\n"
+                    "class renderable : public ::page {\n"
                     "public:\n"
                     "    const char *name() const override {\n"
                     "        return \"" + script_name + "\";\n"
                     "    }\n\n"
-                    "    s90::aiopromise<std::expected<s90::nil, s90::httpd::status>> render(s90::httpd::ienvironment& env) const override {\n"
+                    "    s90::aiopromise<std::expected<s90::nil, ::status>> render(::ienvironment& env) const override {\n"
                     "        env.content_type(\"" + mime_type + "\");\n"
                     + out + "\n"
                     "        co_return s90::nil {};\n"

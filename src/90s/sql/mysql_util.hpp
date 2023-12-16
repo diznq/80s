@@ -8,7 +8,6 @@ namespace s90 {
         std::string encode_le32(uint32_t num);
         std::string encode_le24(uint32_t num);
         std::string encode_varstr(const std::string& str);
-        std::string sha1(const std::string& text);
 
         class mysql_decoder {
             std::string_view view;

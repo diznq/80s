@@ -1,7 +1,20 @@
 #include "util.hpp"
+#include <array>
+#include <80s/crypto.h>
 
 namespace s90 {
     namespace util {
+
+        constexpr std::array<unsigned int, 256> create_url_lut() {
+            std::array<unsigned int, 256> values;
+            for(unsigned int i = 0; i < 256; i++) {
+                values[i] = (i >= 'A' && i <= 'Z') || (i >= 'a' && i <= 'z') || (i >= '0' && i <= '9') || i == '~' || i == '-' || i == '.' || i == '_' ? i : 0;
+            }
+            return values;
+        }
+
+        constexpr auto url_lut = create_url_lut();
+
         std::string url_decode(std::string_view data) {
             char lut[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 
                 // A   B   C   D   E   F  G  H  I  J  K  L  M  N  O  P  Q  R  S  T  U  V  W  X  Y  Z
@@ -37,6 +50,82 @@ namespace s90 {
                 }
             }
             return output;
+        }
+
+        std::string url_encode(std::string_view data) {
+            std::string result = "";
+            result.reserve(data.length() * 2);
+            char chars[] = "0123456789ABCDEF";
+            for (char c_ : data) {
+                unsigned c = ((unsigned)c_)&255;
+                if (url_lut[c]) {
+                    result += c_;
+                } else {
+                    result += '%';
+                    result += chars[(c >> 4) & 15];
+                    result += chars[c & 15];
+                }
+            }
+            return result;
+        }
+
+        std::string sha1(std::string_view text) {
+            unsigned char buff[20];
+            crypto_sha1(text.data(), text.length(), buff, sizeof(buff));
+            return std::string((char*)buff, (char*)buff + 20);
+        }
+
+        std::string sha256(std::string_view text) {
+            unsigned char buff[32];
+            crypto_sha256(text.data(), text.length(), buff, sizeof(buff));
+            return std::string((char*)buff, (char*)buff + 32);
+        }
+
+        std::string hmac_sha256(std::string_view text, std::string_view key) {
+            unsigned char buff[32];
+            crypto_hmac_sha256(text.data(), text.length(), key.data(), key.length(), buff, sizeof(buff));
+            return std::string((char*)buff, (char*)buff + 32);
+        }
+
+        std::expected<std::string, std::string> from_b64(std::string_view text) {
+            char data[200];
+            const char *error = NULL;
+            dynstr dstr;
+            dynstr_init(&dstr, data, sizeof(data));
+            int ok = crypto_from64(text.data(), text.length(), &dstr, &error);
+            if(ok < 0) {
+                dynstr_release(&dstr);
+                return std::unexpected(error);
+            }
+            std::string result(dstr.ptr, dstr.ptr + dstr.length);
+            dynstr_release(&dstr);
+            return result;
+        }
+
+        std::string to_b64(std::string_view text) {
+            char data[200];
+            dynstr dstr;
+            dynstr_init(&dstr, data, sizeof(data));
+            int ok = crypto_to64(text.data(), text.length(), &dstr, NULL);
+            if(ok < 0) return "";
+            std::string result(dstr.ptr, dstr.ptr + dstr.length);
+            dynstr_release(&dstr);
+            return result;
+        }
+
+        std::expected<std::string, std::string> cipher(std::string_view text, std::string_view key, bool encrypt, bool use_iv) {
+            const char *error = NULL;
+            char buf[200];
+            dynstr dstr;
+            dynstr_init(&dstr, buf, sizeof(buf));
+            int ok = crypto_cipher(text.data(), text.length(), key.data(), key.length(), use_iv, encrypt, &dstr, &error);
+            if(ok < 0) {
+                dynstr_release(&dstr);
+                return std::unexpected(error);
+            }
+            std::string result(dstr.ptr, dstr.ptr + dstr.length);
+            dynstr_release(&dstr);
+            return result;
         }
 
         std::map<std::string, std::string> parse_query_string(std::string_view query_string) {

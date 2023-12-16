@@ -66,6 +66,10 @@ namespace s90 {
             return str;
         }
 
+        void mysql::set_caching_policy(bool enabled) {
+            cache_enabled = enabled;
+        }
+
         aiopromise<sql_connect> mysql::connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) {
             user = username;;
             password = passphrase;

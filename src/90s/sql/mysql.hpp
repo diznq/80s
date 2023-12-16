@@ -23,6 +23,7 @@ namespace s90 {
             context* ctx;
             std::string user, password, host, db_name;
             int sql_port;
+            bool cache_enabled = true;
             bool authenticated = false;
             bool is_connecting = false;
             bool login_provided = false;
@@ -40,6 +41,7 @@ namespace s90 {
             aiopromise<sql_connect> connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) override;
             aiopromise<sql_connect> reconnect() override;
             bool is_connected() const override;
+            void set_caching_policy(bool enabled) override;
             
             std::string escape_string(std::string_view view) const override;
 
