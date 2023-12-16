@@ -31,6 +31,21 @@ namespace s90 {
         std::map<std::string, server::loaded_lib> server::loaded_libs;
         std::mutex server::loaded_libs_lock;
 
+        struct quit_page : public page {
+        public:
+            const char *name() const override {
+                return "GET /quit";
+            }
+            
+            aiopromise<std::expected<nil, status>> render(ienvironment& env) const {
+                aiopromise<std::expected<nil, status>> prom;
+                env.global_context()->quit();
+                env.output()->write("ok");
+                prom.resolve(nil {});
+                return prom;
+            }
+        };
+
         struct debug_page : public page {
         public:
             const char *name() const override {
@@ -140,6 +155,7 @@ namespace s90 {
         server::server(context *parent) {
             default_page = new generic_error_page;
             pages["GET /debug"] = new debug_page;
+            pages["GET /quit"] = new quit_page;
             global_context = parent;
         }
 

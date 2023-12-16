@@ -3,7 +3,7 @@
 
 namespace s90 {
 
-    context::context(node_id *id) : id(id) {}
+    context::context(node_id *id, reload_context *rctx) : id(id), rld(rctx) {}
 
     fd_t context::event_loop() const { return elfd; }
 
@@ -107,6 +107,14 @@ namespace s90 {
 
     const std::map<fd_t, std::shared_ptr<afd>>& context::get_fds() const {
         return fds;
+    }
+
+    void context::quit() const {
+        s80_quit(rld);
+    }
+
+    void context::reload() const {
+        s80_reload(rld);
     }
     
 }
