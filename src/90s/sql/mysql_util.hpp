@@ -8,7 +8,6 @@ namespace s90 {
         std::string encode_le32(uint32_t num);
         std::string encode_le24(uint32_t num);
         std::string encode_varstr(const std::string& str);
-        std::string sha1(const std::string& text);
 
         class mysql_decoder {
             std::string_view view;
@@ -27,7 +26,7 @@ namespace s90 {
             uint64_t int8();
             uint64_t lenint();
             mysql_field decode_field();
-            sql_result decode_status();
+            sql_result<sql_row> decode_status();
         };
 
         std::string native_password_hash(const std::string& password, const std::string& scramble);

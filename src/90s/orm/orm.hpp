@@ -2,15 +2,17 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <set>
 #include <initializer_list>
 #include <map>
 #include <concepts>
 #include <format>
 #include <stdint.h>
-#include "../util/varstr.hpp"
+#include "../util/orm_types.hpp"
 
 namespace s90 {
     namespace orm {
+        using datetime = std::string;
 
         class any {
             enum class reftype {
@@ -234,7 +236,6 @@ namespace s90 {
                 }
                 return result;
             }
-
         };
 
         class with_orm {

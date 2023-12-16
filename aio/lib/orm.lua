@@ -27,6 +27,9 @@ local ormtype = {
     format = function()
         return "%s"
     end,
+    name = function()
+        return "text"
+    end,
     fromstring = function(text)
         return text
     end,
@@ -39,21 +42,25 @@ local ormtype = {
 local ormtypes = {
     text = {
         format = function() return "%s" end,
+        name = function() return "text" end,
         fromstring = function(text) return text end,
         toformat = function(value) return tostring(value) end
     },
     int = {
         format = function() return "%d" end,
+        name = function() return "int" end,
         fromstring = function(text) return tointeger(text) end,
         toformat = function(value) return tointeger(value) end
     },
     double = {
         format = function() return "%f" end,
+        name = function() return "decimal" end,
         fromstring = function(text) return tonumber(text) end,
         toformat = function(value) return tonumber(value) end
     },
     bit = {
         format = function() return "%c" end,
+        name = function() return "bool" end,
         fromstring = function(text) return text:byte(1, 1) ~= 0 end,
         toformat = function(value) return value and 1 or 0 end
     },
@@ -61,6 +68,7 @@ local ormtypes = {
     varchar = function(size)
         return {
             format = function() return "%s" end,
+            name = function() return "varchar(" .. tostring(size) .. ")" end,
             fromstring = function(text) return text end,
             toformat = function(text)
                 if #text > size then return text:sub(1, size) end
@@ -70,6 +78,7 @@ local ormtypes = {
     end,
     datetime = {
         format = function() return "%s" end,
+        name = function() return "datetime" end,
         fromstring = function(text)
             local Y,M,D,H,I,s = text:match("^(%d-)%-(%d-)%-(%d-) (%d-):(%d-):(%d+)")
             if Y and M and D and H and I and s then

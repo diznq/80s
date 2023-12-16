@@ -3,10 +3,13 @@
 #include <vector>
 #include "../aiopromise.hpp"
 #include "../orm/orm.hpp"
-#include "../util/varstr.hpp"
+#include "../util/orm_types.hpp"
 
 namespace s90 {
     namespace sql {
+        using sql_row = std::map<std::string, std::string>;
+
+        template<class T>
         struct sql_result {
             bool error = false;
             bool eof = false;
@@ -15,12 +18,24 @@ namespace s90 {
 
             std::string info_message;
             std::string error_message;
-            std::vector<std::map<std::string, std::string>> rows;
+            std::vector<T> rows;
 
             static sql_result with_error(const std::string& err) {
                 sql_result result;
                 result.error_message = err;
                 result.error = true;
+                return result;
+            }
+
+            static sql_result with_rows(std::vector<T>&& rows) {
+                sql_result result;
+                result.rows = std::move(rows);
+                return result;
+            }
+
+            static sql_result with_rows(const std::vector<T>& rows) {
+                sql_result result;
+                result.rows = rows;
                 return result;
             }
         };
@@ -35,15 +50,38 @@ namespace s90 {
             virtual aiopromise<sql_connect> connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) = 0;
             virtual aiopromise<sql_connect> reconnect() = 0;
             virtual bool is_connected() const = 0;
+            virtual void set_caching_policy(bool enabled) = 0;
 
             virtual std::string escape_string(std::string_view view) const = 0;
             
-            virtual aiopromise<sql_result> exec(std::string_view query) = 0;
-            virtual aiopromise<sql_result> select(std::string_view query) = 0;
+            virtual aiopromise<sql_result<sql_row>> exec(std::string_view query) = 0;
+            virtual aiopromise<sql_result<sql_row>> select(std::string_view query) = 0;
 
             template<class ... Args>
-            aiopromise<sql_result> select(std::string_view fmt, Args&& ... args) {
-                return select(std::vformat(fmt,  std::make_format_args(escape(args)...)));
+            aiopromise<sql_result<sql_row>> select(std::string_view fmt, Args&& ... args) {
+                return select(std::vformat(fmt, std::make_format_args(escape(args)...)));
+            }
+
+            template<class T>
+            requires orm::WithOrm<T>
+            aiopromise<sql_result<T>> select(std::string_view query) {
+                auto result = co_await select(query);
+                if(result.error) {
+                    co_return sql_result<T>::with_error(result.error_message);
+                } else {
+                    co_return sql_result<T>::with_rows(std::move(orm::mapper::transform<T>(result.rows)));
+                }
+            }
+
+            template<class T, class ... Args>
+            requires orm::WithOrm<T>
+            aiopromise<sql_result<T>> select(std::string_view fmt, Args&& ... args) {
+                auto result = co_await select(std::vformat(fmt, std::make_format_args(escape(args)...)));
+                if(result.error) {
+                    co_return sql_result<T>::with_error(result.error_message);
+                } else {
+                    co_return sql_result<T>::with_rows(std::move(orm::mapper::transform<T>(result.rows)));
+                }
             }
 
             #include "../escape_mixin.hpp.inc"

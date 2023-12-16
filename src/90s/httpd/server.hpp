@@ -36,6 +36,9 @@ namespace s90 {
             void *local_context = nullptr;
             context *global_context = nullptr;
             page *default_page;
+
+            std::string static_path;
+            std::string enc_base;
             
             void load_lib(const std::string& name);
             void load_libs();
