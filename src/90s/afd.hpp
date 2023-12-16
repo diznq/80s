@@ -17,6 +17,19 @@ namespace s90 {
         std::string_view data;
     };
 
+    struct fd_buffinfo {
+        size_t size;
+        size_t capacity;
+        size_t offset;
+    };
+
+    struct fd_meminfo {
+        fd_buffinfo read_buffer;
+        fd_buffinfo read_commands;
+        fd_buffinfo write_buffer;
+        fd_buffinfo write_commands;
+    };
+
     class iafd {
     public:
         virtual bool is_error() const = 0;
@@ -24,7 +37,10 @@ namespace s90 {
         virtual aiopromise<read_arg> read_any() = 0;
         virtual aiopromise<read_arg> read_n(size_t n_bytes) = 0;
         virtual aiopromise<read_arg> read_until(std::string&& delim) = 0;
-        virtual aiopromise<bool> write(const std::string_view& data) = 0;
+        virtual aiopromise<bool> write(std::string_view data) = 0;
+        virtual fd_meminfo usage() const = 0;
+        virtual std::string name() const = 0;
+        virtual void set_name(std::string_view name) = 0;
         virtual void close() = 0;
     };
 
@@ -36,6 +52,7 @@ namespace s90 {
         bool closed = false;
         bool has_error = false;
         bool buffering = true;
+        std::string fd_name = "fd#" + std::to_string((uintptr_t)fd);
 
         enum class read_command_type { any, n, until };
 
@@ -98,7 +115,10 @@ namespace s90 {
         aiopromise<read_arg> read_any() override;
         aiopromise<read_arg> read_n(size_t n_bytes) override;
         aiopromise<read_arg> read_until(std::string&& delim) override;
-        aiopromise<bool> write(const std::string_view& data) override;
+        aiopromise<bool> write(std::string_view data) override;
+        fd_meminfo usage() const override;
+        std::string name() const override;
+        void set_name(std::string_view name);
         void close() override;
     };
 

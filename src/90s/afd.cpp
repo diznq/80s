@@ -259,7 +259,7 @@ namespace s90 {
         }
     }
 
-    aiopromise<bool> afd::write(const std::string_view& data) {
+    aiopromise<bool> afd::write(std::string_view data) {
         aiopromise<bool> promise = aiopromise<bool>();
 
         if(closed) {
@@ -283,6 +283,23 @@ namespace s90 {
         } else {
             return promise;
         }
+    }
+
+    fd_meminfo afd::usage() const {
+        return {
+            {read_buffer.size(), read_buffer.capacity(), read_offset},
+            {read_commands.size(), read_commands.size(), 0},
+            {write_back_buffer.size(), write_back_buffer.capacity(), write_back_offset},
+            {write_back_buffer_info.size(), write_back_buffer_info.size(), 0}
+        };
+    }
+
+    std::string afd::name() const {
+        return fd_name;
+    }
+
+    void afd::set_name(std::string_view name) {
+        fd_name = name;
     }
 
 }

@@ -31,6 +31,34 @@ namespace s90 {
         std::map<std::string, server::loaded_lib> server::loaded_libs;
         std::mutex server::loaded_libs_lock;
 
+        struct debug_page : public page {
+        public:
+            const char *name() const override {
+                return "GET /debug";
+            }
+
+            aiopromise<std::expected<nil, status>> render(ienvironment& env) const {
+                aiopromise<std::expected<nil, status>> prom;
+                auto ctx = env.global_context();
+                std::string response;
+                auto& refs = ctx->get_fds();
+                for(auto& [k, v] : refs) {
+                    response += "name: " + v->name() + "\n";
+                    auto usage = v->usage();
+                    response += "  read buffer   : " + std::to_string(usage.read_buffer.size) + " / " + std::to_string(usage.read_buffer.capacity) + " / " + std::to_string(usage.read_buffer.offset) + "\n";
+                    response += "  read commands : " + std::to_string(usage.read_commands.size) + " / " + std::to_string(usage.read_commands.capacity) + " / " + std::to_string(usage.read_commands.offset) + "\n";
+                    response += "  write buffer  : " + std::to_string(usage.write_buffer.size) + " / " + std::to_string(usage.write_buffer.capacity) + " / " + std::to_string(usage.write_buffer.offset) + "\n";
+                    response += "  write commands: " + std::to_string(usage.write_commands.size) + " / " + std::to_string(usage.write_commands.capacity) + " / " + std::to_string(usage.write_commands.offset) + "\n";
+                    response += "\n";
+                }
+                env.status("200 OK");
+                env.content_type("text/plain");
+                env.output()->write(std::move(response));
+                prom.resolve(nil {});
+                return prom;
+            }
+        };
+
         class generic_error_page : public page {
             std::string static_path = "";
         public:
@@ -111,6 +139,7 @@ namespace s90 {
 
         server::server(context *parent) {
             default_page = new generic_error_page;
+            pages["GET /debug"] = new debug_page;
             global_context = parent;
         }
 

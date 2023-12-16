@@ -104,5 +104,9 @@ namespace s90 {
     void context::set_init_callback(std::function<void(context*)> init_callback) {
         this->init_callback = init_callback;
     }
+
+    const std::map<fd_t, std::shared_ptr<afd>>& context::get_fds() const {
+        return fds;
+    }
     
 }

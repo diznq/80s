@@ -33,9 +33,9 @@ fi
 if [ "$DEBUG" = "true" ]; then
     DEFINES="$DEFINES -DS80_DEBUG=1"
     FLAGS="-O0 -g"
+else
+    FLAGS="$FLAGS -march=native"
 fi
-
-FLAGS="$FLAGS -march=native"
 
 echo "Defines: $DEFINES"
 echo "Libraries: $LIBS"

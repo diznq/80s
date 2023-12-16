@@ -101,6 +101,7 @@ namespace s90 {
                     for(auto prom : connecting) prom.resolve({true, "failed to establish connection"});
                     co_return {true, "failed to establish connection"};
                 }
+                connection->set_name("mysql");
                 auto result = co_await handshake();
                 is_connecting = false;
                 authenticated = !result.error;
@@ -205,7 +206,6 @@ namespace s90 {
             auto command_sent = co_await raw_exec(query);
             if(command_sent.error) co_return std::move(command_sent);
             auto subproc = [this](std::string_view query) -> aiopromise<sql_result<sql_row>> {
-
                 auto n_fields_desc = co_await read_packet();
 
                 if(n_fields_desc.seq < 0 || n_fields_desc.data.length() < 1) {

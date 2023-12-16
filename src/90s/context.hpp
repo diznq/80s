@@ -21,6 +21,7 @@ namespace s90 {
     public:
         virtual aiopromise<std::shared_ptr<iafd>> connect(const std::string& addr, int port, bool udp) = 0;
         virtual std::shared_ptr<sql::isql> new_sql_instance(const std::string& type) = 0;
+        virtual const std::map<fd_t, std::shared_ptr<afd>>& get_fds() const = 0;
     };
 
     class context : public icontext {
@@ -51,6 +52,8 @@ namespace s90 {
 
         aiopromise<std::shared_ptr<iafd>> connect(const std::string& addr, int port, bool udp) override;
         std::shared_ptr<sql::isql> new_sql_instance(const std::string& type) override;
+
+        const std::map<fd_t, std::shared_ptr<afd>>& get_fds() const override;
     };
 
 }
