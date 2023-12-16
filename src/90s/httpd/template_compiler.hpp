@@ -12,8 +12,15 @@ namespace s90 {
                 code_hit
             };
 
-            std::string cppize(const std::string& ctx_name, const std::string& source_code, bool has_vars = false);
-            std::string compile_cpp(const std::string& ctx_name, const std::string& in);
+            std::string cppize(
+                const std::string& ctx_name,
+                const std::string& source_code,
+                bool has_vars = false,
+                bool simplify = false);
+            std::string compile_cpp(
+                const std::string& ctx_name,
+                const std::string& in,
+                bool simplify);
             std::string replace_between(
                 const std::string& data, 
                 const std::string& start, 

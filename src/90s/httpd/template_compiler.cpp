@@ -33,7 +33,7 @@ namespace s90 {
             ltrim(s);
         }
 
-        std::string template_compiler::cppize(const std::string& ctx_name, const std::string& source_code, bool has_vars) {
+        std::string template_compiler::cppize(const std::string& ctx_name, const std::string& source_code, bool has_vars, bool simplify) {
             std::string result = "";
             std::string vars = "";
             std::string internal_source;
@@ -41,27 +41,45 @@ namespace s90 {
 
             if(has_vars) {
                 size_t offset = 0;
-                while(true) {
-                    auto match = kmp(source_code.c_str(), source_code.length(), "#[[", 3, offset);
-                    if(match.length == 3) {
-                        auto end_match = kmp(source_code.c_str(), source_code.length(), "]]", 2, match.offset + 3);
-                        if(end_match.length != 2) {
-                            internal_source += source_code.substr(offset, source_code.length() - offset);
-                            break;
-                        } else {
-                            auto var = source_code.substr(match.offset + 3, end_match.offset - match.offset - 3);
-                            vars += ", " + var;
-                            internal_source += source_code.substr(offset, match.offset - offset);
-                            internal_source += "{}";
-                            offset = end_match.offset + 2;
-                        }
-                    } else {
-                        internal_source += source_code.substr(offset, source_code.length() - offset);
+                internal_source = replace_between(source_code, "#[[", "]]", [&vars](auto& m) -> auto {
+                    vars += ", " + m;
+                    return "{}";
+                }, [](auto& m) -> auto {
+                    return m;
+                });
+            } else {
+                internal_source = std::move(source_code);
+            }
+
+            if(simplify) {
+                std::string clean = "";
+                int cleaning = 1;
+                for(char c : internal_source) {
+                    switch(c) {
+                    case '>':
+                        cleaning = 2;
+                        clean += c;
+                        break;
+                    case '<':
+                        cleaning = 0;
+                        clean += c;
+                        break;
+                    case ' ':
+                    case '\t':
+                    case '\r':
+                    case '\n':
+                        if(cleaning == 0)
+                            clean += c;
+                        else if(cleaning == 2)
+                            clean += c, cleaning=1;
+                        break;
+                    default:
+                        cleaning = 0;
+                        clean += c;
                         break;
                     }
                 }
-            } else {
-                internal_source = std::move(source_code);
+                internal_source = clean;
             }
 
             for(char c : internal_source) {
@@ -92,7 +110,7 @@ namespace s90 {
             return result;
         }
 
-        std::string template_compiler::compile_cpp(const std::string& ctx_name, const std::string& in) {
+        std::string template_compiler::compile_cpp(const std::string& ctx_name, const std::string& in, bool simplify) {
             std::string out;
             std::string outline;
             size_t i = 0;
@@ -101,7 +119,7 @@ namespace s90 {
                 switch(c) {
                     case '\n':
                         if(state == code_hit) {
-                            out += cppize(ctx_name, std::move(outline), true);
+                            out += cppize(ctx_name, std::move(outline), true, simplify);
                             outline = "";
                         } else {
                             out += c;
@@ -135,7 +153,8 @@ namespace s90 {
                 }
             }
             if(outline.length() > 0) {
-                out += cppize(ctx_name, std::move(outline), true);
+                trim(outline);
+                out += cppize(ctx_name, std::move(outline), true, simplify);
             }
             return out;
         }
@@ -188,15 +207,16 @@ namespace s90 {
             std::string out = "";
             std::string includes = "";
             std::string mime_type = "text/plain";
+            bool simplify = false;
 
             // resolve the likely mime type
             if(file_name.ends_with(".txt")) mime_type = "text/plain";
             else if(file_name.ends_with(".js")) mime_type = "application/javascript";
             else if(file_name.ends_with(".json")) mime_type = "applicaton/json";
-            else if(file_name.ends_with(".xml")) mime_type = "text/xml";
+            else if(file_name.ends_with(".xml")) mime_type = "text/xml", simplify = true;
             else if(file_name.ends_with(".md")) mime_type = "text/markdown";
-            else if(file_name.ends_with(".html")) mime_type = "text/html";
-            else if(file_name.ends_with(".xhtml")) mime_type = "application/xhtml+xml";
+            else if(file_name.ends_with(".html")) mime_type = "text/html", simplify = true;
+            else if(file_name.ends_with(".xhtml")) mime_type = "application/xhtml+xml", simplify = true;
 
             trim(data);
 
@@ -272,14 +292,16 @@ namespace s90 {
             });
 
             // extract all the <?cpp ... ?> segments and treat segments inbetween as string constants
-            data = replace_between(data, "<?cpp", "?>", [this, output_context](const std::string& text) -> auto {
+            data = replace_between(data, "<?cpp", "?>", [this, output_context, simplify](const std::string& text) -> auto {
                 return compile_cpp(output_context, replace_between(
                     text, "```", "```", 
-                    [this, output_context](const std::string& m) -> auto {
-                        return cppize(output_context, m, true);
-                    }, [](const std::string& m) -> auto { return m; }));
-            }, [this, output_context](const std::string& text) -> auto {
-                return cppize(output_context, text);
+                    [this, output_context, simplify](const std::string& m) -> auto {
+                        return cppize(output_context, m, true, simplify);
+                    }, [](const std::string& m) -> auto { return m; }),
+                    simplify
+                );
+            }, [this, output_context, simplify](const std::string& text) -> auto {
+                return cppize(output_context, text, simplify);
             });
 
             out = data;
