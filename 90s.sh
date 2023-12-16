@@ -119,17 +119,22 @@ if [ "$arg" = "pages" ]; then
   # Detect all .htmls in webroot and compile them into separate .so/.dlls
   echo "Compiling webpages"
   WEB_ROOT="${WEB_ROOT:-src/90s/httpd/pages/}"
-  find "$WEB_ROOT" -name *.html -type f -exec sh -c "bin/template {} {} \$(echo "{}" | sed  s/\\.html$/.html.cpp/g)" \;
-  to_compile=$(find "$WEB_ROOT" -name *.html.cpp -type f)
-
   FLAGS="$FLAGS $DEFINES -fPIC -shared"
+
+  to_translate=$(find "$WEB_ROOT" -name *.html -type f | grep -v .priv.html)
+  for file in $to_translate; do
+    echo "> Translating $file"
+    bin/template "$file" "$file" $(echo "$file" | sed  s/\\.html$/.html.cpp/g)
+  done
+
+  to_compile=$(find "$WEB_ROOT" -name "*.html.cpp" -type f)
   for file in $to_compile; do
     outname=$(echo "$file" | sed s/\\.cpp$/.$SO_EXT/g)
     xmake "$CXX" "$FLAGS" "$LIBS" "-" "$outname" "$file"
   done
 
   # Detect all .cpps that aren't generated from .htmls and compile main lib
-  to_compile=$(find "$WEB_ROOT" -name *.cpp -type f | grep -v .html.cpp)
+  to_compile=$(find "$WEB_ROOT" -name "*.cpp" -type f | grep -v ".html.cpp")
   if [ ! -z "$to_compile" ]; then
     echo "Compiling main.$SO_EXT"
     xmake "$CXX" "$FLAGS" "$LIBS" "bin/lib80s.a" "${WEB_ROOT}main.$SO_EXT" $to_compile

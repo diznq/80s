@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 #include <format>
+#include <set>
 #include "../aiopromise.hpp"
 #include "../util/varstr.hpp"
 

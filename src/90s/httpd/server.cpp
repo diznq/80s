@@ -2,6 +2,8 @@
 #include "environment.hpp"
 #include "../util/util.hpp"
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <iostream>
 
 #ifdef _WIN32
@@ -28,13 +30,49 @@ namespace s90 {
         std::mutex server::loaded_libs_lock;
 
         class generic_error_page : public page {
+            std::string static_path = "";
         public:
             const char *name() const override {
                 return "GET /404";
             }
+
+            void set_static_path(const std::string& path) {
+                static_path = path;
+            }
             
             aiopromise<std::expected<nil, status>> render(ienvironment& env) const {
-                return render_error(env, status::not_found);
+                auto& ep = env.endpoint();
+                if(static_path.length() > 0 && ep.find("/static/") == 0) {
+                    std::filesystem::path root(static_path);
+                    root = root.lexically_normal();
+                    auto dest = root.concat(ep).lexically_normal();
+                    auto[rootEnd, nothing] = std::mismatch(root.begin(), root.end(), dest.begin());
+
+                    if(rootEnd != root.end())
+                        return render_error(env, status::forbidden);
+
+                    std::string mime = "text/plain";
+                    if(ep.ends_with(".js")) mime = "application/javascript";
+                    else if(ep.ends_with(".html")) mime = "text/html";
+                    else if(ep.ends_with(".css")) mime = "text/css";
+                    else if(ep.ends_with(".jpg")) mime = "image/jpeg";
+                    else if(ep.ends_with(".png")) mime = "image/png";
+                    if(std::filesystem::exists(dest)) {
+                        env.status("200 OK");
+                        env.header("content-type", mime);
+                        std::ifstream is(dest, std::ios_base::binary);
+                        if(!is.is_open()) return render_error(env, status::internal_server_error);
+                        std::stringstream contents; contents << is.rdbuf();
+                        env.output()->write(contents.str());
+                        aiopromise<std::expected<nil, status>> prom;
+                        prom.resolve({});
+                        return prom;
+                    } else {
+                        return render_error(env, status::not_found);
+                    }
+                } else {
+                    return render_error(env, status::not_found);
+                }
             }
 
             aiopromise<std::expected<nil, status>> render_exception(ienvironment& env, std::exception_ptr ptr) const {
@@ -99,8 +137,11 @@ namespace s90 {
 
         void server::load_libs() {
             const char *web_root_env = getenv("WEB_ROOT");
+            const char *web_static_env = getenv("WEB_STATIC");
             std::string web_root = "src/90s/httpd/pages/";
+            if(web_static_env) static_path = web_static_env;
             if(web_root_env != NULL) web_root = web_root_env;
+            ((generic_error_page*)default_page)->set_static_path(static_path);
             for(const auto& entry : std::filesystem::recursive_directory_iterator(web_root)) {
                 if(entry.path().extension() == ".so" || entry.path().extension() == ".dll") {
                     load_lib(entry.path().string());
@@ -258,6 +299,8 @@ namespace s90 {
                 env.header("connection", "keep-alive");
                 env.write_global_context(global_context);
                 env.write_local_context(local_context);
+                env.write_endpoint(std::string(script));
+
                 auto page_coro = current_page->render(env);
                 auto page_result = co_await page_coro;
                 if(page_coro.has_exception()) {

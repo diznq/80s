@@ -49,6 +49,10 @@ namespace s90 {
             output_headers[std::move(key)] = std::move(value);
         }
 
+        const std::string& environment::endpoint() const {
+            return endpoint_path;
+        }
+
         std::optional<std::string> environment::query(std::string&& key) const {
             auto it = query_params.find(std::move(key));
             if(it == query_params.end()) return {};
@@ -101,6 +105,10 @@ namespace s90 {
 
         void environment::write_global_context(icontext *ctx) {
             global_context_ptr = ctx;
+        }
+
+        void environment::write_endpoint(std::string&& endpoint_val) {
+            endpoint_path = std::move(endpoint_val);
         }
     }
 }

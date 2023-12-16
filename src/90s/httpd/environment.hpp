@@ -19,6 +19,8 @@ namespace s90 {
             virtual void header(const std::string& key, const std::string& value) = 0;
             virtual void header(std::string&& key, std::string&& value) = 0;
 
+            virtual const std::string& endpoint() const = 0;
+
             virtual std::optional<std::string> query(std::string&& key) const = 0;
             virtual const std::string& body() const = 0;
 
@@ -44,6 +46,7 @@ namespace s90 {
             void *local_context_ptr = nullptr;
             icontext *global_context_ptr = nullptr;
             std::string http_method = "GET";
+            std::string endpoint_path = "/";
             std::map<std::string, std::string> query_params;
             std::map<std::string, std::string> headers;
             std::string http_body;
@@ -55,6 +58,8 @@ namespace s90 {
             std::optional<std::string> header(std::string&& key) const override;
             void header(const std::string& key, const std::string& value) override;
             void header(std::string&& key, std::string&& value) override;
+
+            const std::string& endpoint() const override;
 
             std::optional<std::string> query(std::string&& key) const override;
             const std::string& body() const override;
@@ -73,6 +78,7 @@ namespace s90 {
             void write_body(std::string&& data);
             void write_local_context(void *ctx);
             void write_global_context(icontext *ctx);
+            void write_endpoint(std::string&& endpoint);
             aiopromise<std::string> http_response();
         };
     }
