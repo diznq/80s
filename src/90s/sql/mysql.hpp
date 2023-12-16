@@ -22,7 +22,7 @@ namespace s90 {
 
         struct cache_entry {
             std::chrono::steady_clock::time_point expire;
-            std::vector<sql_row> rows;
+            std::shared_ptr<std::vector<sql_row>> rows;
         };
 
         class mysql : public isql {

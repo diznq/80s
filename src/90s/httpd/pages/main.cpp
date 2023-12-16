@@ -18,15 +18,13 @@ s90::aiopromise<std::shared_ptr<s90::sql::isql>> default_context::get_db() {
     co_return db;
 }
 
-s90::aiopromise<std::vector<post>> default_context::get_posts() {
+s90::aiopromise<s90::sql::sql_result<post>> default_context::get_posts() {
     auto conn = co_await get_db();
     auto result = co_await conn->select<post>("SELECT * FROM posts");
     if(result.error) {
         printf("failed to select posts: %s\n", result.error_message.c_str());
-        co_return {};
-    } else {
-        co_return std::move(result.rows);
     }
+    co_return std::move(result);
 }
 
 extern "C" {

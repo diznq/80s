@@ -202,9 +202,9 @@ namespace s90 {
                     cache_time = -1;
                 }
             }
+            auto command_sent = co_await raw_exec(query);
+            if(command_sent.error) co_return std::move(command_sent);
             auto subproc = [this](std::string_view query) -> aiopromise<sql_result<sql_row>> {
-                auto command_sent = co_await raw_exec(query);
-                if(command_sent.error) co_return std::move(command_sent);
 
                 auto n_fields_desc = co_await read_packet();
 
@@ -246,6 +246,7 @@ namespace s90 {
 
                 // in the end, finally read the rows
                 sql_result<sql_row> final_result;
+                final_result.rows = std::make_shared<std::vector<sql_row>>();
                 while(true) {
                     auto row = co_await read_packet();
                     if(row.seq < 0 || row.data.size() < 1) {
@@ -257,7 +258,7 @@ namespace s90 {
                     for(size_t i = 0; i < fields.size(); i++) {
                         row_data[fields[i].name] = decoder.var_string();
                     }
-                    final_result.rows.emplace_back(row_data);
+                    final_result.rows->emplace_back(row_data);
                 }
                 final_result.error = false;
                 co_return std::move(final_result);

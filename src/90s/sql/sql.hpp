@@ -18,7 +18,7 @@ namespace s90 {
 
             std::string info_message;
             std::string error_message;
-            std::vector<T> rows;
+            std::shared_ptr<std::vector<T>> rows;
 
             static inline sql_result with_error(const std::string& err) {
                 sql_result result;
@@ -27,17 +27,17 @@ namespace s90 {
                 return result;
             }
 
-            static inline sql_result with_rows(std::vector<T>&& rows) {
-                sql_result result;
-                result.rows = std::move(rows);
-                return result;
-            }
-
-            static inline sql_result with_rows(const std::vector<T>& rows) {
+            static inline sql_result with_rows(std::shared_ptr<std::vector<T>> rows) {
                 sql_result result;
                 result.rows = rows;
                 return result;
             }
+
+            auto begin() const { return rows->begin(); }
+            auto end() const { return rows->end(); }
+            auto size() const { return error || !rows ? 0 : rows->size(); }
+
+            operator bool() const { return !error && rows; }
         };
 
         struct sql_connect {
@@ -69,7 +69,7 @@ namespace s90 {
                 if(result.error) {
                     co_return sql_result<T>::with_error(result.error_message);
                 } else {
-                    co_return sql_result<T>::with_rows(std::move(orm::mapper::transform<T>(result.rows)));
+                    co_return sql_result<T>::with_rows(orm::mapper::transform<T>(result.rows));
                 }
             }
 
@@ -80,7 +80,7 @@ namespace s90 {
                 if(result.error) {
                     co_return sql_result<T>::with_error(result.error_message);
                 } else {
-                    co_return sql_result<T>::with_rows(std::move(orm::mapper::transform<T>(result.rows)));
+                    co_return sql_result<T>::with_rows(orm::mapper::transform<T>(result.rows));
                 }
             }
 

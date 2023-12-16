@@ -26,5 +26,5 @@ public:
     default_context(s90::icontext *ctx);
     virtual std::string get_message();
     virtual s90::aiopromise<std::shared_ptr<s90::sql::isql>> get_db();
-    virtual s90::aiopromise<std::vector<post>> get_posts();
+    virtual s90::aiopromise<s90::sql::sql_result<post>> get_posts();
 };

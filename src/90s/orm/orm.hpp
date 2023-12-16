@@ -193,6 +193,7 @@ namespace s90 {
                 return obj;
             }
 
+            // sql_row -> T
             template<class T>
             requires WithOrm<T>
             static std::vector<T> transform(std::span<std::map<std::string, std::string>> items) {
@@ -217,6 +218,7 @@ namespace s90 {
                 return result;
             }
             
+            // T -> sql_row
             template<class T>
             requires WithOrm<T>
             static std::vector<std::map<std::string,std::string>> transform(std::span<T> items, bool bool_as_text = false) {
@@ -233,6 +235,20 @@ namespace s90 {
                 std::vector<std::map<std::string,std::string>> result;
                 for(auto& item : items) {
                     result.emplace_back(item.get_orm().from_native(bool_as_text));
+                }
+                return result;
+            }
+
+            // ptr<sql_row> -> ptr<T>
+            template<class T>
+            requires WithOrm<T>
+            static std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<std::map<std::string, std::string>>> items) {
+                auto result = std::make_shared<std::vector<T>>();
+                result->reserve(items->size());
+                for(auto& item : *items) {
+                    T new_item;
+                    new_item.get_orm().to_native(item);
+                    result->emplace_back(std::move(new_item));
                 }
                 return result;
             }
