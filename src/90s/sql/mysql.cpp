@@ -180,7 +180,7 @@ namespace s90 {
         aiopromise<sql_result<sql_row>> mysql::select(std::string_view query) {
             int cache_time = -1;
             std::chrono::steady_clock::time_point cache_expire;
-            if(cache_enabled && query.find("@CACHE ") == 0) {
+            if(query.find("@CACHE ") == 0) {
                 auto cache_time_str = query.substr(7);
                 auto pivot = cache_time_str.find(";");
                 if(pivot == std::string::npos) {
@@ -192,10 +192,14 @@ namespace s90 {
                     co_return sql_result<sql_row>::with_error("cache time must be an integer");
                 }
                 query = query.substr(pivot + 8);
-                auto it = cache.find(std::string(query));
-                if(it != cache.end()) {
-                    if(std::chrono::steady_clock::now() <= it->second.expire)
-                        co_return sql_result<sql_row>::with_rows(it->second.rows);
+                if(cache_enabled) {
+                    auto it = cache.find(std::string(query));
+                    if(it != cache.end()) {
+                        if(std::chrono::steady_clock::now() <= it->second.expire)
+                            co_return std::move(sql_result<sql_row>::with_rows(it->second.rows));
+                    }
+                } else {
+                    cache_time = -1;
                 }
             }
             auto subproc = [this](std::string_view query) -> aiopromise<sql_result<sql_row>> {

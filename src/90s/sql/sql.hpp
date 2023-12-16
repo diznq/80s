@@ -20,20 +20,20 @@ namespace s90 {
             std::string error_message;
             std::vector<T> rows;
 
-            static sql_result with_error(const std::string& err) {
+            static inline sql_result with_error(const std::string& err) {
                 sql_result result;
                 result.error_message = err;
                 result.error = true;
                 return result;
             }
 
-            static sql_result with_rows(std::vector<T>&& rows) {
+            static inline sql_result with_rows(std::vector<T>&& rows) {
                 sql_result result;
                 result.rows = std::move(rows);
                 return result;
             }
 
-            static sql_result with_rows(const std::vector<T>& rows) {
+            static inline sql_result with_rows(std::vector<T> rows) {
                 sql_result result;
                 result.rows = rows;
                 return result;
