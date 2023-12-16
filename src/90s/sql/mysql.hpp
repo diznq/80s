@@ -5,6 +5,7 @@
 #include "sql.hpp"
 #include <tuple>
 #include <vector>
+#include <chrono>
 
 namespace s90 {
     namespace sql {
@@ -19,6 +20,11 @@ namespace s90 {
             uint64_t character_set, column_length, type, flags, decimals;
         };
 
+        struct cache_entry {
+            std::chrono::steady_clock::time_point expire;
+            std::vector<sql_row> rows;
+        };
+
         class mysql : public isql {
             context* ctx;
             std::string user, password, host, db_name;
@@ -30,6 +36,7 @@ namespace s90 {
             util::aiolock command_lock;
             std::shared_ptr<iafd> connection;
             std::vector<aiopromise<sql_connect>> connecting;
+            std::map<std::string, cache_entry> cache;
 
             aiopromise<mysql_packet> read_packet();
             aiopromise<sql_connect> handshake();

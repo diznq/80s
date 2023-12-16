@@ -32,6 +32,12 @@ namespace s90 {
                 result.rows = std::move(rows);
                 return result;
             }
+
+            static sql_result with_rows(const std::vector<T>& rows) {
+                sql_result result;
+                result.rows = rows;
+                return result;
+            }
         };
 
         struct sql_connect {
