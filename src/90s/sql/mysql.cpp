@@ -180,7 +180,7 @@ namespace s90 {
         aiopromise<sql_result<sql_row>> mysql::select(std::string_view query) {
             int cache_time = -1;
             std::chrono::steady_clock::time_point cache_expire;
-            if(query.find("@CACHE ") == 0) {
+            if(query.size() > 0 && query[0] == '@' && query.find("@CACHE ") == 0) {
                 auto cache_time_str = query.substr(7);
                 auto pivot = cache_time_str.find(";");
                 if(pivot == std::string::npos) {

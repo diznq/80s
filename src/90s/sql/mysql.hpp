@@ -29,7 +29,7 @@ namespace s90 {
             context* ctx;
             std::string user, password, host, db_name;
             int sql_port;
-            bool cache_enabled = true;
+            bool cache_enabled = false;
             bool authenticated = false;
             bool is_connecting = false;
             bool login_provided = false;

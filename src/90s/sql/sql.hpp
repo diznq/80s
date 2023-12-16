@@ -33,7 +33,7 @@ namespace s90 {
                 return result;
             }
 
-            static inline sql_result with_rows(std::vector<T> rows) {
+            static inline sql_result with_rows(const std::vector<T>& rows) {
                 sql_result result;
                 result.rows = rows;
                 return result;
