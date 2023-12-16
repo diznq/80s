@@ -12,6 +12,8 @@
 namespace s90 {
     namespace orm {
 
+        using datetime = std::string;
+
         class any {
             enum class reftype {
                 empty, vstr, str, cstr, i1, i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, f80
@@ -234,7 +236,6 @@ namespace s90 {
                 }
                 return result;
             }
-
         };
 
         class with_orm {

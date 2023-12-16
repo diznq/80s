@@ -141,8 +141,8 @@ namespace s90 {
             };
         }
 
-        sql_result mysql_decoder::decode_status() {
-            sql_result status;
+        sql_result<sql_row> mysql_decoder::decode_status() {
+            sql_result<sql_row> status;
             auto type = int1();
             if(type == 255) {
                 status.error = true;

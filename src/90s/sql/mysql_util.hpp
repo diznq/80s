@@ -27,7 +27,7 @@ namespace s90 {
             uint64_t int8();
             uint64_t lenint();
             mysql_field decode_field();
-            sql_result decode_status();
+            sql_result<sql_row> decode_status();
         };
 
         std::string native_password_hash(const std::string& password, const std::string& scramble);

@@ -145,25 +145,25 @@ namespace s90 {
             }
         }
 
-        aiopromise<sql_result> mysql::raw_exec(std::string_view query) {
+        aiopromise<sql_result<sql_row>> mysql::raw_exec(std::string_view query) {
             auto connected = co_await reconnect();
             if(connected.error) {
-                co_return sql_result::with_error(connected.error_message);
+                co_return sql_result<sql_row>::with_error(connected.error_message);
             }
             auto command = encode_le24(query.length() + 1) + '\0' + '\3' + std::string(query);
             auto write_ok = co_await connection->write(command);
             if(!write_ok) {
-                co_return sql_result::with_error("failed to write to the connection");
+                co_return sql_result<sql_row>::with_error("failed to write to the connection");
             }
             co_return {false};
         }
 
-        aiopromise<sql_result> mysql::exec(std::string_view query) {
-            auto subproc = [this](std::string_view query) -> aiopromise<sql_result> {
+        aiopromise<sql_result<sql_row>> mysql::exec(std::string_view query) {
+            auto subproc = [this](std::string_view query) -> aiopromise<sql_result<sql_row>> {
                 auto command_sent = co_await raw_exec(query);
                 if(command_sent.error) co_return std::move(command_sent);
                 auto response = co_await read_packet();
-                if(response.seq < 0 || response.data.length() < 1) co_return sql_result::with_error("failed to read response");
+                if(response.seq < 0 || response.data.length() < 1) co_return sql_result<sql_row>::with_error("failed to read response");
                 mysql_decoder decoder(response.data);
                 co_return decoder.decode_status();
             };
@@ -173,21 +173,21 @@ namespace s90 {
             co_return std::move(result);
         }
 
-        aiopromise<sql_result> mysql::select(std::string_view query) {
-            auto subproc = [this](std::string_view query) -> aiopromise<sql_result> {
+        aiopromise<sql_result<sql_row>> mysql::select(std::string_view query) {
+            auto subproc = [this](std::string_view query) -> aiopromise<sql_result<sql_row>> {
                 auto command_sent = co_await raw_exec(query);
                 if(command_sent.error) co_return std::move(command_sent);
 
                 auto n_fields_desc = co_await read_packet();
 
                 if(n_fields_desc.seq < 0 || n_fields_desc.data.length() < 1) {
-                    co_return sql_result::with_error("failed to read initial response");
+                    co_return sql_result<sql_row>::with_error("failed to read initial response");
                 }
                 
                 // first check for SQL errors
                 bool is_error = n_fields_desc.data[0] == '\xFF';
                 if(is_error) {
-                    co_return sql_result::with_error(std::string(n_fields_desc.data.substr(9)));
+                    co_return sql_result<sql_row>::with_error(std::string(n_fields_desc.data.substr(9)));
                 }
                 
                 std::vector<mysql_field> fields;
@@ -197,13 +197,13 @@ namespace s90 {
                 mysql_decoder decoder(n_fields_desc.data);
                 auto n_fields = decoder.lenint();
                 if(n_fields == -1) {
-                    co_return sql_result::with_error("n fields has invalid value");
+                    co_return sql_result<sql_row>::with_error("n fields has invalid value");
                 }
 
                 // read each field and decode it
                 for(size_t i = 0; i < n_fields; i++) {
                     auto field_spec = co_await read_packet();
-                    if(field_spec.seq < 0) co_return sql_result::with_error("failed to fetch field spec");
+                    if(field_spec.seq < 0) co_return sql_result<sql_row>::with_error("failed to fetch field spec");
                     decoder.reset(field_spec.data);
                     auto field = decoder.decode_field();
                     fields.push_back(field);
@@ -213,19 +213,19 @@ namespace s90 {
                 // after fields, we expect EOF
                 auto eof = co_await read_packet();
                 if(eof.seq < 0 || eof.data.size() < 1 || eof.data[0] != '\xFE') {
-                    co_return sql_result::with_error("expected eof");
+                    co_return sql_result<sql_row>::with_error("expected eof");
                 }
 
                 // in the end, finally read the rows
-                sql_result final_result;
+                sql_result<sql_row> final_result;
                 while(true) {
                     auto row = co_await read_packet();
                     if(row.seq < 0 || row.data.size() < 1) {
-                        co_return sql_result::with_error("fetching rows failed");
+                        co_return sql_result<sql_row>::with_error("fetching rows failed");
                     }
                     if(row.data[0] == '\xFE') break;
                     decoder.reset(row.data);
-                    std::map<std::string, std::string> row_data;
+                    sql_row row_data;
                     for(size_t i = 0; i < fields.size(); i++) {
                         row_data[fields[i].name] = decoder.var_string();
                     }

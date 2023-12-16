@@ -3,6 +3,7 @@
 bin/
 private/
 crymp/
+cppmp/
 gsemu/
 *.env.sh
 /i.*

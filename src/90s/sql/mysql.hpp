@@ -43,9 +43,9 @@ namespace s90 {
             
             std::string escape_string(std::string_view view) const override;
 
-            aiopromise<sql_result> raw_exec(std::string_view query);
-            aiopromise<sql_result> exec(std::string_view query) override;
-            aiopromise<sql_result> select(std::string_view query) override;
+            aiopromise<sql_result<sql_row>> raw_exec(std::string_view query);
+            aiopromise<sql_result<sql_row>> exec(std::string_view query) override;
+            aiopromise<sql_result<sql_row>> select(std::string_view query) override;
         };
     }
 }
