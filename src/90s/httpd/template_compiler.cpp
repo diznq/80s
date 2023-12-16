@@ -245,7 +245,7 @@ namespace s90 {
                 auto file_to_be_included = text;
                 trim(file_to_be_included);
                 std::string included_file = "";
-                auto actual_path = path / ".." / file_to_be_included;
+                auto actual_path = path.parent_path() / file_to_be_included;
                 std::ifstream is(actual_path);
                 std::stringstream ss;
                 if(is.is_open()) {
@@ -256,7 +256,7 @@ namespace s90 {
                         included_file = included_file.substr(included_file.find("\n") + 1);
                     }
                 } else {
-                    included_file = "\"Failed to include file " + file_to_be_included + "\"";
+                    included_file = "\"Failed to include file " + actual_path.lexically_normal().string() + "\"";
                 }
                 return included_file;
             }, [this](const std::string& text) -> auto {
@@ -290,12 +290,12 @@ namespace s90 {
                     + includes + 
                     "\n"
                     "using namespace s90::httpd;\n\n"
-                    "class renderable : public ::page {\n"
+                    "class renderable : public page {\n"
                     "public:\n"
                     "    const char *name() const override {\n"
                     "        return \"" + script_name + "\";\n"
                     "    }\n\n"
-                    "    s90::aiopromise<std::expected<s90::nil, ::status>> render(::ienvironment& env) const override {\n"
+                    "    s90::aiopromise<std::expected<s90::nil, status>> render(ienvironment& env) const override {\n"
                     "        env.content_type(\"" + mime_type + "\");\n"
                     + out + "\n"
                     "        co_return s90::nil {};\n"
