@@ -8,17 +8,11 @@
 #include <concepts>
 #include <format>
 #include <stdint.h>
-#include "../util/varstr.hpp"
+#include "../util/orm_types.hpp"
 
 namespace s90 {
     namespace orm {
-
         using datetime = std::string;
-
-        class int_in : public std::set<int> {
-        public:
-            using std::set<int>::set;
-        };
 
         class any {
             enum class reftype {
@@ -250,26 +244,3 @@ namespace s90 {
         };
     }
 }
-
-template<std::integral T>
-struct std::formatter<std::set<T>> : public std::formatter<std::string_view> {
-    constexpr auto parse(std::format_parse_context& ctx) {
-        return ctx.begin();
-    }
-
-    auto format(const std::set<T>& obj, std::format_context& ctx) const {
-        std::string temp;
-        size_t i = 0;
-        for (auto elem : obj) {
-            if(i != obj.size() - 1)
-                std::format_to(std::back_inserter(temp), "'{}',", elem);
-            else 
-                std::format_to(std::back_inserter(temp), "'{}'", elem);
-            i++;
-        }
-
-        if(i == 0) std::format_to(std::back_inserter(temp), "''");
-
-        return std::formatter<std::string_view>::format(temp, ctx);
-    }
-};

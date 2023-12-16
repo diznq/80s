@@ -265,6 +265,7 @@ namespace s90 {
                         break;
                     } else {
                         auto body = data.substr(match.offset + 3, end_match.offset - match.offset - 3);
+                        trim(body);
                         data = data.substr(0, match.offset) + cppize(output_context, std::move(body), true) + data.substr(end_match.offset + 3);
                     }
                 }
