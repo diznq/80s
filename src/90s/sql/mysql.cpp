@@ -311,8 +311,8 @@ namespace s90 {
                 it->second.emplace(prom.weak());
                 co_return co_await prom;
             } else {
+                races[std::string(query)] = std::queue<aiopromise<sql_result<sql_row>>::weak_type>();   
                 if(co_await command_lock.lock()) {
-                    races[std::string(query)] = std::queue<aiopromise<sql_result<sql_row>>::weak_type>();
                     auto result {co_await subproc(query)};
                     if(cache_time > 0 && !result.error) {
                         cache[std::string(query)] = cache_entry {
@@ -333,6 +333,16 @@ namespace s90 {
                     }
                     co_return std::move(result);
                 } else {
+                    it = races.find(query);
+                    if(it != races.end()) {
+                        while(!it->second.empty()) {
+                            auto c = it->second.front();
+                            it->second.pop();
+                            if(auto ptr = c.lock())
+                                aiopromise(ptr).resolve(sql_result<sql_row>::with_error("lock failed"));
+                        }
+                        races.erase(it);
+                    }
                     co_return sql_result<sql_row>::with_error("lock failed");
                 }
             }
