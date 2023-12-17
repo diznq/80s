@@ -79,10 +79,6 @@ namespace s90 {
             return str;
         }
 
-        void mysql::set_caching_policy(bool enabled) {
-            cache_enabled = enabled;
-        }
-
         aiopromise<sql_connect> mysql::connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) {
             user = username;;
             password = passphrase;
@@ -232,30 +228,6 @@ namespace s90 {
         }
 
         aiopromise<sql_result<sql_row>> mysql::select(std::string_view query) {
-            int cache_time = -1;
-            std::chrono::steady_clock::time_point cache_expire;
-            if(query.size() > 0 && query[0] == '@' && query.find("@CACHE ") == 0) {
-                auto cache_time_str = query.substr(7);
-                auto pivot = cache_time_str.find(";");
-                if(pivot == std::string::npos) {
-                    co_return sql_result<sql_row>::with_error("invalid cache query");
-                }
-                cache_time_str = cache_time_str.substr(pivot - 1);
-                auto ok = std::from_chars(cache_time_str.begin(), cache_time_str.end(), cache_time, 10);
-                if(ok.ec != std::errc()) {
-                    co_return sql_result<sql_row>::with_error("cache time must be an integer");
-                }
-                query = query.substr(pivot + 8);
-                if(cache_enabled) {
-                    auto it = cache.find(query);
-                    if(it != cache.end()) {
-                        if(std::chrono::steady_clock::now() <= it->second.expire)
-                            co_return std::move(sql_result<sql_row>::with_rows(it->second.rows));
-                    }
-                } else {
-                    cache_time = -1;
-                }
-            }
             auto subproc = [this](std::string_view query) -> aiopromise<sql_result<sql_row>> {
                 auto [command_sent, connection] = co_await raw_exec(query);
                 if(command_sent.error) co_return std::move(command_sent);
@@ -316,46 +288,12 @@ namespace s90 {
                 final_result.error = false;
                 co_return std::move(final_result);
             };
-            auto it = races.find(query);
-            if(it != races.end()) {
-                aiopromise<sql_result<sql_row>> prom;
-                it->second.emplace(prom.weak());
-                co_return std::move(co_await prom);
+            if(co_await command_lock.lock()) {
+                auto result {co_await subproc(query)};
+                command_lock.unlock();
+                co_return std::move(result);
             } else {
-                races[std::string(query)] = std::queue<aiopromise<sql_result<sql_row>>::weak_type>();   
-                if(co_await command_lock.lock()) {
-                    auto result {co_await subproc(query)};
-                    if(cache_time > 0 && !result.error) {
-                        cache[std::string(query)] = cache_entry {
-                            std::chrono::steady_clock::now() + std::chrono::seconds(cache_time),
-                            result.rows
-                        };
-                    }
-                    command_lock.unlock();
-                    it = races.find(query);
-                    if(it != races.end()) {
-                        while(!it->second.empty()) {
-                            auto c = it->second.front();
-                            it->second.pop();
-                            if(auto ptr = c.lock())
-                                aiopromise(ptr).resolve(result);
-                        }
-                        races.erase(it);
-                    }
-                    co_return std::move(result);
-                } else {
-                    it = races.find(query);
-                    if(it != races.end()) {
-                        while(!it->second.empty()) {
-                            auto c = it->second.front();
-                            it->second.pop();
-                            if(auto ptr = c.lock())
-                                aiopromise(ptr).resolve(sql_result<sql_row>::with_error("lock failed"));
-                        }
-                        races.erase(it);
-                    }
-                    co_return sql_result<sql_row>::with_error("lock failed");
-                }
+                co_return sql_result<sql_row>::with_error("lock failed");
             }
         }
     }

@@ -117,4 +117,15 @@ namespace s90 {
         s80_reload(rld);
     }
     
+    void context::store(std::string_view name, std::shared_ptr<storable> entity) {
+        stores[std::string(name)] = entity;
+    }
+
+    std::shared_ptr<storable> context::store(std::string_view name) {
+        auto it = stores.find(name);
+        if(it != stores.end())
+            return it->second;
+        return nullptr;
+    }
+    
 }

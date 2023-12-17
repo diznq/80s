@@ -36,8 +36,6 @@ namespace s90 {
             util::aiolock command_lock;
             std::weak_ptr<iafd> connection_ref;
             std::queue<aiopromise<std::tuple<sql_connect, std::shared_ptr<iafd>>>::weak_type> connecting;
-            std::map<std::string, std::queue<aiopromise<sql_result<sql_row>>::weak_type>, std::less<>> races;
-            std::map<std::string, cache_entry, std::less<>> cache;
 
             aiopromise<mysql_packet> read_packet(std::shared_ptr<iafd> connection);
             aiopromise<sql_connect> handshake(std::shared_ptr<iafd> connection);
@@ -51,7 +49,6 @@ namespace s90 {
             aiopromise<sql_connect> connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) override;
             aiopromise<sql_connect> reconnect() override;
             bool is_connected() const override;
-            void set_caching_policy(bool enabled) override;
             
             std::string escape_string(std::string_view view) const override;
 

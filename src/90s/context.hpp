@@ -8,6 +8,11 @@
 
 namespace s90 {
 
+    class storable {
+    public:
+        virtual ~storable() = default;
+    };
+
     class connection_handler {
     public:
         virtual ~connection_handler() = default;
@@ -26,6 +31,9 @@ namespace s90 {
         virtual const std::map<fd_t, std::shared_ptr<afd>>& get_fds() const = 0;
         virtual void quit() const = 0;
         virtual void reload() const = 0;
+
+        virtual void store(std::string_view name, std::shared_ptr<storable> entity) = 0;
+        virtual std::shared_ptr<storable> store(std::string_view name) = 0;
     };
 
     class context : public icontext {
@@ -34,6 +42,7 @@ namespace s90 {
         fd_t elfd;
         std::map<fd_t, std::shared_ptr<afd>> fds;
         std::map<fd_t, aiopromise<std::weak_ptr<iafd>>> connect_promises;
+        std::map<std::string, std::shared_ptr<storable>, std::less<>> stores;
         std::shared_ptr<connection_handler> handler;
         std::function<void(context*)> init_callback;
 
@@ -61,6 +70,9 @@ namespace s90 {
         const std::map<fd_t, std::shared_ptr<afd>>& get_fds() const override;
         void quit() const override;
         void reload() const override;
+
+        void store(std::string_view name, std::shared_ptr<storable> entity) override;
+        std::shared_ptr<storable> store(std::string_view name) override;
     };
 
 }

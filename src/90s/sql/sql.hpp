@@ -51,7 +51,6 @@ namespace s90 {
             virtual aiopromise<sql_connect> connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) = 0;
             virtual aiopromise<sql_connect> reconnect() = 0;
             virtual bool is_connected() const = 0;
-            virtual void set_caching_policy(bool enabled) = 0;
 
             virtual std::string escape_string(std::string_view view) const = 0;
             
