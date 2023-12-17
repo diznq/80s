@@ -76,8 +76,8 @@ namespace s90 {
         return fd;
     }
 
-    aiopromise<std::shared_ptr<iafd>> context::connect(const std::string& addr, int port, bool udp) {
-        aiopromise<std::shared_ptr<iafd>> promise;
+    aiopromise<std::weak_ptr<iafd>> context::connect(const std::string& addr, int port, bool udp) {
+        aiopromise<std::weak_ptr<iafd>> promise;
         fd_t fd = s80_connect(this, elfd, addr.c_str(), port, udp ? 1 : 0);
         if(fd == (fd_t)-1) {
             promise.resolve(static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, true)));
