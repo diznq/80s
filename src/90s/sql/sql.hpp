@@ -27,7 +27,7 @@ namespace s90 {
                 return result;
             }
 
-            static inline sql_result with_rows(std::shared_ptr<std::vector<T>> rows) {
+            static inline sql_result with_rows(const std::shared_ptr<std::vector<T>>& rows) {
                 sql_result result;
                 result.rows = rows;
                 return result;
@@ -70,7 +70,7 @@ namespace s90 {
                 if(result.error) {
                     co_return sql_result<T>::with_error(result.error_message);
                 } else {
-                    co_return sql_result<T>::with_rows(orm::mapper::transform<T>(result.rows));
+                    co_return sql_result<T>::with_rows(orm::mapper::transform<T>(std::move(result.rows)));
                 }
             }
 
@@ -81,7 +81,7 @@ namespace s90 {
                 if(result.error) {
                     co_return sql_result<T>::with_error(result.error_message);
                 } else {
-                    co_return sql_result<T>::with_rows(orm::mapper::transform<T>(result.rows));
+                    co_return sql_result<T>::with_rows(orm::mapper::transform<T>(std::move(result.rows)));
                 }
             }
 

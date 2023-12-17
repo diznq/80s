@@ -242,7 +242,7 @@ namespace s90 {
             // ptr<sql_row> -> ptr<T>
             template<class T>
             requires WithOrm<T>
-            static std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<std::map<std::string, std::string>>> items) {
+            static std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<std::map<std::string, std::string>>>&& items) {
                 auto result = std::make_shared<std::vector<T>>();
                 result->reserve(items->size());
                 for(auto& item : *items) {
