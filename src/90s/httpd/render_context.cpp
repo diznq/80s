@@ -15,8 +15,12 @@ namespace s90 {
         void render_context::write(std::string&& text) {
             if(disabled) return;
             est_length += text.length();
-            output_block blk { output_type::text, std::move(text) };
-            blocks.emplace_back(std::move(blk));
+            if(blocks.size() > 0 && blocks.back().type == output_type::text) {
+                blocks.back().text += text;
+            } else {
+                output_block blk { output_type::text, std::move(text) };
+                blocks.emplace_back(std::move(blk));
+            }
         }
 
         std::shared_ptr<irender_context> render_context::append_context() {
@@ -30,6 +34,7 @@ namespace s90 {
 
         std::string render_context::escape_string(std::string_view view) const {
             std::string str;
+            str.reserve(view.size());
             for(char c : view) {
                 switch (c) {
                 case '&':
@@ -57,11 +62,15 @@ namespace s90 {
         
         aiopromise<std::string> render_context::finalize() {
             std::string output;
-            for(auto& it : blocks) {
-                if(it.type == output_type::text) {
-                    output += it.text;
-                } else {
-                    output += co_await it.block->finalize();
+            if(blocks.size() == 1 && blocks.back().type == output_type::text) {
+                output = std::move(blocks.back().text);
+            } else {
+                for(auto& it : blocks) {
+                    if(it.type == output_type::text) {
+                        output += it.text;
+                    } else {
+                        output += co_await it.block->finalize();
+                    }
                 }
             }
             est_length = 0;

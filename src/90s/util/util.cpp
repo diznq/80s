@@ -52,7 +52,8 @@ namespace s90 {
         }
 
         std::string url_encode(std::string_view data) {
-            std::string result = "";
+            std::string result;
+            result.reserve(data.size());
             char chars[] = "0123456789ABCDEF";
             for (char c_ : data) {
                 unsigned c = ((unsigned)c_)&255;
