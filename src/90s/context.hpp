@@ -24,6 +24,7 @@ namespace s90 {
         virtual aiopromise<std::shared_ptr<iafd>> connect(const std::string& addr, int port, bool udp) = 0;
         virtual std::shared_ptr<sql::isql> new_sql_instance(const std::string& type) = 0;
         virtual const std::map<fd_t, std::shared_ptr<afd>>& get_fds() const = 0;
+        virtual size_t get_fds_count() const = 0;
         virtual void quit() const = 0;
         virtual void reload() const = 0;
     };
@@ -36,6 +37,7 @@ namespace s90 {
         std::map<fd_t, aiopromise<std::shared_ptr<iafd>>> connect_promises;
         std::shared_ptr<connection_handler> handler;
         std::function<void(context*)> init_callback;
+        size_t fd_count = 0;
 
     public:
         context(node_id *id, reload_context *reload_ctx);
@@ -61,6 +63,11 @@ namespace s90 {
         const std::map<fd_t, std::shared_ptr<afd>>& get_fds() const override;
         void quit() const override;
         void reload() const override;
+
+        size_t get_fds_count() const override { return fd_count; }
+
+        void on_fd_new() { fd_count++; }
+        void on_fd_del() { fd_count--; }
     };
 
 }

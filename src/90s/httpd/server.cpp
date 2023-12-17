@@ -66,6 +66,8 @@ namespace s90 {
                     response += "  write commands: " + std::to_string(usage.write_commands.size) + " / " + std::to_string(usage.write_commands.capacity) + " / " + std::to_string(usage.write_commands.offset) + "\n";
                     response += "\n";
                 }
+                response += "-----\n";
+                response += "fds total: " + std::to_string(ctx->get_fds_count()) + "\n";
                 env.status("200 OK");
                 env.content_type("text/plain");
                 env.output()->write(std::move(response));
