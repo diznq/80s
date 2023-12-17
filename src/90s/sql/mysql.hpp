@@ -35,7 +35,7 @@ namespace s90 {
             bool login_provided = false;
             util::aiolock command_lock;
             std::shared_ptr<iafd> connection;
-            std::vector<aiopromise<sql_connect>> connecting;
+            std::queue<aiopromise<sql_connect>::weak_type> connecting;
             std::map<std::string, cache_entry> cache;
 
             aiopromise<mysql_packet> read_packet();

@@ -11,23 +11,27 @@ namespace s90 {
             if(connection && !connection->is_closed() && !connection->is_error()) {
                 connection->close();
             }
-            if(connecting.size() > 0) {
-                for(auto& c : connecting) {
-                    c.resolve(sql_connect {true, "mysql is gone"});
-                }
-                connecting.clear();
+            while(!connecting.empty()) {
+                auto c = connecting.front();
+                connecting.pop();
+                if(auto ptr = c.lock())
+                    aiopromise(ptr).resolve(sql_connect {true, "mysql is gone"});
             }
         }
 
         aiopromise<mysql_packet> mysql::read_packet() {
+            dbgf("Read packet header\n");
             auto data = co_await connection->read_n(4);
             if(data.error) {
+                dbgf("Read packet header - fail\n");
                 co_return {-1, ""};
             }
             unsigned char *bytes = (unsigned char*)data.data.data();
             unsigned length = (bytes[0]) | (bytes[1] << 8) | (bytes[2] << 16);
             int seq = (bytes[3] & 0xFF);
+            dbgf("Read packet body - %d\n", length);
             data = co_await connection->read_n(length);
+            dbgf("Packet body - %s\n", data.error ? "fail" : "ok");
             if(data.error) {
                 co_return {-1, ""};
             }
@@ -86,44 +90,69 @@ namespace s90 {
         }
 
         aiopromise<sql_connect> mysql::reconnect() {
+            dbgf("Reconnect\n");
             if(connection && !connection->is_closed() && !connection->is_error() && authenticated) {
                 co_return {false, ""};
             }
+            dbgf("Reconnect - do connect\n");
             if(is_connecting) {
+                dbgf("Reconnect - already connecting\n");
                 aiopromise<sql_connect> promise;
-                connecting.push_back(promise);
+                connecting.emplace(promise.weak());
                 co_return co_await promise;
             } else {
+                dbgf("Reconnect - first connect\n");
                 // connect if not connected
                 is_connecting = true;
                 authenticated = false;
                 if(!connection || connection->is_closed() || connection->is_error()) {
+                    dbgf("Reconnect - get connection\n");
                     connection = co_await ctx->connect(host, sql_port, false);
                 }
+                dbgf("Reconnect - connection obtained\n");
                 if(connection && connection->is_error()) {
+                    dbgf("Reconnect - obtained connection failure\n");
                     connection = nullptr;
                     is_connecting = false;
-                    for(auto prom : connecting) prom.resolve({true, "failed to establish connection"});
+                    while(!connecting.empty()) {
+                        dbgf("Reconnect - resolve waiting (failure)\n");
+                        auto c = connecting.front();
+                        connecting.pop();
+                        if(auto ptr = c.lock())
+                            aiopromise(ptr).resolve({true, "failed to establish connection"});
+                    }
                     co_return {true, "failed to establish connection"};
                 }
+                dbgf("Reconnect - obtained connection ok\n");
                 connection->set_name("mysql");
                 auto result = co_await handshake();
+                dbgf("Reconnect - handshake %s\n", result.error ? "fail" : "ok");
                 is_connecting = false;
                 authenticated = !result.error;
-                for(auto prom : connecting) prom.resolve(sql_connect(result));
+                while(!connecting.empty()) {
+                    dbgf("Reconnect - resolve waiters\n");
+                    auto c = connecting.front();
+                    connecting.pop();
+                    if(auto ptr = c.lock())
+                        aiopromise(ptr).resolve(sql_connect(result));
+                }
                 co_return std::move(result);
             }
         }
 
         aiopromise<sql_connect> mysql::handshake() {
             // read handshake packet with method & scramble
+            dbgf("Handshake - read first packet\n");
             auto result = co_await read_packet();
             if(result.seq < 0) {
+                dbgf("First packet - err\n");
                 co_return {true, "failed to read scramble packet"};
             }
+            dbgf("First packet - ok\n");
             // decode the method & scrabmle
             auto [method, scramble] = decode_handshake_packet(result.data);
             if(method != "mysql_native_password") {
+                dbgf("First packet - unsupported method\n");
                 co_return {true, "unsupported auth method: \"" + method + "\""};
             }
             // perform login
@@ -137,14 +166,19 @@ namespace s90 {
                 db_name + '\0' +
                 std::string(method) + '\0';
             login = encode_le24(login.length()) + '\1' + login;
+            dbgf("Handshake - write login\n");
             auto write_ok = co_await connection->write(login);
             if(!write_ok) {
+                dbgf("Handshake - login failed\n");
                 co_return {true, "sending login failed"};
             }
+            dbgf("Handshake - read second packet\n");
             auto response = co_await read_packet();
             if(response.seq < 0) {
+                dbgf("Second packet - fail\n");
                 co_return {true, "failed to read login response"};
             }
+            dbgf("Handshake - ok\n");
             unsigned response_type = ((unsigned)response.data[0]) & 255;
             if(response_type == 0) {
                 co_return {false, ""};
@@ -271,7 +305,9 @@ namespace s90 {
                 final_result.error = false;
                 co_return std::move(final_result);
             };
+            dbgf("acquiring lock\n");
             if(co_await command_lock.lock()) {
+                dbgf("lock acquired\n");
                 auto result {co_await subproc(query)};
                 if(cache_time > 0 && !result.error) {
                     cache[std::string(query)] = cache_entry {

@@ -5,14 +5,15 @@
 namespace s90 {
     namespace util {
         class aiolock {
-            std::queue<aiopromise<bool>> waiters;
+            std::queue<aiopromise<bool>::weak_type> waiters;
             int sem = 1;
         public:
             ~aiolock() {
                 while(waiters.size() > 0) {
                     auto w = waiters.front();
                     waiters.pop();
-                    w.resolve(false);
+                    if(auto ptr = w.lock())
+                        aiopromise(ptr).resolve(false);
                 }
             }
 
@@ -25,10 +26,11 @@ namespace s90 {
                     sem = 0;
                     auto first = waiters.front();
                     waiters.pop();
-                    waiters.push(result);
-                    first.resolve(true);
+                    waiters.push(result.weak());
+                    if(auto ptr = first.lock())
+                        aiopromise(ptr).resolve(true);
                 } else {
-                    waiters.push(result);
+                    waiters.push(result.weak());
                 }
                 return result;
             }
@@ -38,7 +40,8 @@ namespace s90 {
                     sem = 0;
                     auto first = waiters.front();
                     waiters.pop();
-                    first.resolve(true);
+                    if(auto ptr = first.lock())
+                        aiopromise(ptr).resolve(true);
                 } else {
                     sem = 1;
                 }

@@ -24,10 +24,14 @@ namespace s90 {
     template<typename T>
     class aiopromise {
     public:
+        using weak_type = std::weak_ptr<aiopromise_state<T>>;
+        using shared_type = std::shared_ptr<aiopromise_state<T>>;
+
         struct promise_type {
             std::shared_ptr<aiopromise_state<T>> state;
 
             promise_type() : state(std::make_shared<aiopromise_state<T>>()) {}
+            promise_type(const shared_type& c) : state(c) {}
 
             aiopromise<T> get_return_object() {
                 return aiopromise<T>(*this);
@@ -81,6 +85,8 @@ namespace s90 {
 
         aiopromise() { }
         aiopromise(const promise_type& p) : p(p) { }
+        aiopromise(const weak_type& w) : p(w.lock()) {}
+        aiopromise(const shared_type& w) : p(w) {}
         ~aiopromise() { 
             
         }
@@ -157,6 +163,10 @@ namespace s90 {
             auto s = state();
             s->has_result = false;
             return std::move(s->result);
+        }
+
+        std::weak_ptr<aiopromise_state<T>> weak() const {
+            return p.state;
         }
 
     };

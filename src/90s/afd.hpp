@@ -3,6 +3,7 @@
 #include "aiopromise.hpp"
 
 #include <list>
+#include <queue>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -58,22 +59,22 @@ namespace s90 {
         enum class read_command_type { any, n, until };
 
         struct back_buffer {
-            aiopromise<bool> promise;
+            aiopromise<bool>::weak_type promise;
             size_t length = 0;
             size_t sent = 0;
 
-            back_buffer(aiopromise<bool> promise, size_t length, size_t sent) 
+            back_buffer(aiopromise<bool>::weak_type promise, size_t length, size_t sent) 
             : promise(promise), length(length), sent(sent) {}
         };
 
         struct read_command {
-            aiopromise<read_arg> promise;
+            aiopromise<read_arg>::weak_type promise;
             read_command_type type;
             size_t n;
             std::string delimiter;
 
             read_command(
-                aiopromise<read_arg> promise,
+                aiopromise<read_arg>::weak_type promise,
                 read_command_type type,
                 size_t n,
                 std::string&& delimiter
@@ -88,12 +89,12 @@ namespace s90 {
 
         size_t write_back_offset = 0;
         std::vector<char> write_back_buffer;
-        std::list<back_buffer> write_back_buffer_info;
+        std::queue<back_buffer> write_back_buffer_info;
 
         size_t read_offset = 0;
         kmp_state delim_state;
         std::vector<char> read_buffer;
-        std::list<read_command> read_commands;
+        std::queue<read_command> read_commands;
         std::function<void()> on_command_queue_empty;
 
         void handle_failure();
