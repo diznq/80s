@@ -202,7 +202,7 @@ namespace s90 {
             auto& item = read_commands.front();
             if(auto ptr = item.promise.lock())
                 aiopromise(ptr).resolve({true, ""});
-            write_back_buffer_info.pop();
+            read_commands.pop();
         }
         write_back_offset = 0;
         write_back_buffer.clear();
