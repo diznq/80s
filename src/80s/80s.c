@@ -464,5 +464,10 @@ int main(int argc, const char **argv) {
         free(modules);
         modules = module_head;
     }
+
+    for(i = 0; i < workers; i++) {
+        if(mailboxes[i].messages)
+            free(mailboxes[i].messages);
+    }
     
 }
