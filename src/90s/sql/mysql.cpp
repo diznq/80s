@@ -236,7 +236,7 @@ namespace s90 {
                 }
                 query = query.substr(pivot + 8);
                 if(cache_enabled) {
-                    auto it = cache.find(std::string(query));
+                    auto it = cache.find(query);
                     if(it != cache.end()) {
                         if(std::chrono::steady_clock::now() <= it->second.expire)
                             co_return std::move(sql_result<sql_row>::with_rows(it->second.rows));
