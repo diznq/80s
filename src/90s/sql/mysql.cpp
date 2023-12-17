@@ -309,7 +309,7 @@ namespace s90 {
             if(it != races.end()) {
                 aiopromise<sql_result<sql_row>> prom;
                 it->second.emplace(prom.weak());
-                co_return co_await prom;
+                co_return std::move(co_await prom);
             } else {
                 races[std::string(query)] = std::queue<aiopromise<sql_result<sql_row>>::weak_type>();   
                 if(co_await command_lock.lock()) {
