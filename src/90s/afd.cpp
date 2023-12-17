@@ -1,19 +1,17 @@
 #include "afd.hpp"
-#include "context.hpp"
 #include <80s/algo.h>
 
 namespace s90 {
 
     afd::afd(context *ctx, fd_t elfd, fd_t fd, int fdtype) : ctx(ctx), elfd(elfd), fd(fd), fd_type(fdtype) {
-        ctx->on_fd_new();
+    
     }
 
     afd::afd(context *ctx, fd_t elfd, bool has_error) : ctx(ctx), elfd(elfd), fd((fd_t)0), fd_type(S80_FD_OTHER), has_error(has_error), closed(true) {
-        ctx->on_fd_new();
+
     }
 
     afd::~afd() {
-        ctx->on_fd_del();
         if(!closed) {
             close();
         }
