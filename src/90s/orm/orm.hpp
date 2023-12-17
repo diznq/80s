@@ -176,7 +176,7 @@ namespace s90 {
         public:
             mapper(std::initializer_list<mapping> rels) : relations(rels) {}
 
-            void to_native(const std::map<std::string, std::string> fields) const {
+            void to_native(const std::map<std::string, std::string>& fields) const {
                 for(auto& item : relations) {
                     auto it = fields.find(item.name);
                     if(it != fields.end()) {
@@ -198,11 +198,11 @@ namespace s90 {
             requires WithOrm<T>
             static std::vector<T> transform(std::span<std::map<std::string, std::string>> items) {
                 std::vector<T> result;
-                for(auto& item : items) {
+                std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [](const std::map<std::string, std::string>& item) -> auto {
                     T new_item;
                     new_item.get_orm().to_native(item);
-                    result.emplace_back(std::move(new_item));
-                }
+                    return new_item;
+                });
                 return result;
             }
 
@@ -210,11 +210,11 @@ namespace s90 {
             requires WithOrm<T>
             static std::vector<T> transform(std::vector<std::map<std::string, std::string>>&& items) {
                 std::vector<T> result;
-                for(auto& item : items) {
+                std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [](const std::map<std::string, std::string>& item) -> auto {
                     T new_item;
                     new_item.get_orm().to_native(item);
-                    result.emplace_back(std::move(new_item));
-                }
+                    return new_item;
+                });
                 return result;
             }
             
@@ -223,9 +223,9 @@ namespace s90 {
             requires WithOrm<T>
             static std::vector<std::map<std::string,std::string>> transform(std::span<T> items, bool bool_as_text = false) {
                 std::vector<std::map<std::string,std::string>> result;
-                for(auto& item : items) {
-                    result.emplace_back(item.get_orm().from_native(bool_as_text));
-                }
+                std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text](T& item) -> auto {
+                    return item.get_orm().from_native(bool_as_text);
+                });
                 return result;
             }
 
@@ -233,9 +233,9 @@ namespace s90 {
             requires WithOrm<T>
             static std::vector<std::map<std::string,std::string>> transform(std::vector<T>&& items, bool bool_as_text = false) {
                 std::vector<std::map<std::string,std::string>> result;
-                for(auto& item : items) {
-                    result.emplace_back(item.get_orm().from_native(bool_as_text));
-                }
+                std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text](T& item) -> auto {
+                    return item.get_orm().from_native(bool_as_text);
+                });
                 return result;
             }
 
@@ -244,11 +244,11 @@ namespace s90 {
             requires WithOrm<T>
             static std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<std::map<std::string, std::string>>>&& items) {
                 auto result = std::make_shared<std::vector<T>>();
-                for(auto& item : *items) {
+                std::transform(items->cbegin(), items->cend(), std::back_inserter(*result), [](const std::map<std::string, std::string>& item) -> auto {
                     T new_item;
                     new_item.get_orm().to_native(item);
-                    result->emplace_back(std::move(new_item));
-                }
+                    return new_item;
+                });
                 return result;
             }
         };
