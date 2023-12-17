@@ -47,6 +47,7 @@ namespace s90 {
 
         class isql {
         public:
+            virtual ~isql() = default;
             virtual aiopromise<sql_connect> connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) = 0;
             virtual aiopromise<sql_connect> reconnect() = 0;
             virtual bool is_connected() const = 0;

@@ -10,6 +10,7 @@ namespace s90 {
     namespace httpd {
         class irender_context {
         public:
+            virtual ~irender_context() = default;
             virtual void disable() = 0;
             virtual void clear() = 0;
             virtual std::shared_ptr<irender_context> append_context() = 0;

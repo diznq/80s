@@ -32,6 +32,7 @@ namespace s90 {
 
     class iafd {
     public:
+        virtual ~iafd() = default;
         virtual bool is_error() const = 0;
         virtual bool is_closed() const = 0;
         virtual aiopromise<read_arg> read_any() = 0;

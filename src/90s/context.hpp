@@ -10,6 +10,7 @@ namespace s90 {
 
     class connection_handler {
     public:
+        virtual ~connection_handler() = default;
         virtual aiopromise<nil> on_accept(std::shared_ptr<afd> fd) = 0;
         
         virtual void on_load() = 0;
@@ -19,6 +20,7 @@ namespace s90 {
 
     class icontext {
     public:
+        virtual ~icontext() = default;
         virtual aiopromise<std::shared_ptr<iafd>> connect(const std::string& addr, int port, bool udp) = 0;
         virtual std::shared_ptr<sql::isql> new_sql_instance(const std::string& type) = 0;
         virtual const std::map<fd_t, std::shared_ptr<afd>>& get_fds() const = 0;

@@ -11,6 +11,12 @@ namespace s90 {
             if(connection && !connection->is_closed() && !connection->is_error()) {
                 connection->close();
             }
+            if(connecting.size() > 0) {
+                for(auto& c : connecting) {
+                    c.resolve(sql_connect {true, "mysql is gone"});
+                }
+                connecting.clear();
+            }
         }
 
         aiopromise<mysql_packet> mysql::read_packet() {
@@ -172,10 +178,13 @@ namespace s90 {
                 mysql_decoder decoder(response.data);
                 co_return decoder.decode_status();
             };
-            co_await command_lock.lock();
-            auto result {co_await subproc(query)};
-            command_lock.unlock();
-            co_return std::move(result);
+            if(co_await command_lock.lock()){
+                auto result {co_await subproc(query)};
+                command_lock.unlock();
+                co_return std::move(result);
+            } else {
+                co_return sql_result<sql_row>::with_error("lock failed");
+            }
         }
 
         aiopromise<sql_result<sql_row>> mysql::select(std::string_view query) {
@@ -203,9 +212,9 @@ namespace s90 {
                     cache_time = -1;
                 }
             }
-            auto command_sent = co_await raw_exec(query);
-            if(command_sent.error) co_return std::move(command_sent);
             auto subproc = [this](std::string_view query) -> aiopromise<sql_result<sql_row>> {
+                auto command_sent = co_await raw_exec(query);
+                if(command_sent.error) co_return std::move(command_sent);
                 auto n_fields_desc = co_await read_packet();
 
                 if(n_fields_desc.seq < 0 || n_fields_desc.data.length() < 1) {
@@ -263,16 +272,19 @@ namespace s90 {
                 final_result.error = false;
                 co_return std::move(final_result);
             };
-            co_await command_lock.lock();
-            auto result {co_await subproc(query)};
-            if(cache_time > 0 && !result.error) {
-                cache[std::string(query)] = cache_entry {
-                    std::chrono::steady_clock::now() + std::chrono::seconds(cache_time),
-                    result.rows
-                };
+            if(co_await command_lock.lock()) {
+                auto result {co_await subproc(query)};
+                if(cache_time > 0 && !result.error) {
+                    cache[std::string(query)] = cache_entry {
+                        std::chrono::steady_clock::now() + std::chrono::seconds(cache_time),
+                        result.rows
+                    };
+                }
+                command_lock.unlock();
+                co_return std::move(result);
+            } else {
+                co_return sql_result<sql_row>::with_error("lock failed");
             }
-            command_lock.unlock();
-            co_return std::move(result);
         }
     }
 }

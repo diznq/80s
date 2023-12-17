@@ -15,6 +15,7 @@ namespace s90 {
         if(!closed) {
             close();
         }
+        handle_failure();
     }
 
     void afd::on_accept() {
@@ -66,7 +67,7 @@ namespace s90 {
                 // handle different read command types differently
                 switch(it->type) {
                     case read_command_type::any:
-                        dbgf("READ ANY\n");
+                        //dbgf("READ ANY\n");
                         // any is fulfilled whenever any data comes in, no matter the size
                         read_offset += window.size();
                         it = read_commands.erase(it);
@@ -76,7 +77,7 @@ namespace s90 {
                         iterate = false;
                         break;
                     case read_command_type::n:
-                        dbgf("READ %zu\n", command_n);
+                        //dbgf("READ %zu\n", command_n);
                         // n is fulfilled only when n bytes of data is read and receives only those n bytes
                         if(window.length() < command_n) {
                             iterate = false;
@@ -93,7 +94,7 @@ namespace s90 {
                         // search based on Knuth-Morris-Pratt algorithm, so it's O(n)
                         part = kmp(window.data(), window.length(), it->delimiter.c_str() + delim_state.match, command_delim_length - delim_state.match, delim_state.offset);
                         if(part.length == command_delim_length || (part.offset == delim_state.offset && part.length + delim_state.match == command_delim_length)) {
-                            dbgf("1/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
+                            //dbgf("1/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                             delim_state.match = 0;
                             delim_state.offset = part.offset + part.length;
                             read_offset += delim_state.offset;
@@ -104,12 +105,12 @@ namespace s90 {
                             it = read_commands.erase(it);
                             command_promise.resolve({false, std::move(arg)});
                         } else if(part.offset == delim_state.offset + delim_state.match && part.length > 0) {
-                            dbgf("2/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
+                            //dbgf("2/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                             delim_state.match += part.length;
                             delim_state.offset = part.offset + part.length;
                             iterate = false;
                         } else {
-                            dbgf("3/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
+                            //dbgf("3/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                         
                             delim_state.match = 0;
                             delim_state.offset = part.offset;
