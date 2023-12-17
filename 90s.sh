@@ -32,7 +32,7 @@ fi
 
 if [ "$DEBUG" = "true" ]; then
     DEFINES="$DEFINES -DS80_DEBUG=1"
-    FLAGS="-O0 -ggdb -mno-avx512f -fsanitize=undefined -fsanitize=leak"
+    FLAGS="-O2 -ggdb"
 else
     FLAGS="$FLAGS -march=native"
 fi
