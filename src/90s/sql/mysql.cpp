@@ -305,20 +305,36 @@ namespace s90 {
                 final_result.error = false;
                 co_return std::move(final_result);
             };
-            dbg_infof("acquiring lock\n");
-            if(co_await command_lock.lock()) {
-                dbg_infof("lock acquired\n");
-                auto result {co_await subproc(query)};
-                if(cache_time > 0 && !result.error) {
-                    cache[std::string(query)] = cache_entry {
-                        std::chrono::steady_clock::now() + std::chrono::seconds(cache_time),
-                        result.rows
-                    };
-                }
-                command_lock.unlock();
-                co_return std::move(result);
+            auto it = races.find(query);
+            if(it != races.end()) {
+                aiopromise<sql_result<sql_row>> prom;
+                it->second.emplace(prom.weak());
+                co_return co_await prom;
             } else {
-                co_return sql_result<sql_row>::with_error("lock failed");
+                if(co_await command_lock.lock()) {
+                    races[std::string(query)] = std::queue<aiopromise<sql_result<sql_row>>::weak_type>();
+                    auto result {co_await subproc(query)};
+                    if(cache_time > 0 && !result.error) {
+                        cache[std::string(query)] = cache_entry {
+                            std::chrono::steady_clock::now() + std::chrono::seconds(cache_time),
+                            result.rows
+                        };
+                    }
+                    command_lock.unlock();
+                    it = races.find(query);
+                    if(it != races.end()) {
+                        while(!it->second.empty()) {
+                            auto c = it->second.front();
+                            it->second.pop();
+                            if(auto ptr = c.lock())
+                                aiopromise(ptr).resolve(result);
+                        }
+                        races.erase(it);
+                    }
+                    co_return std::move(result);
+                } else {
+                    co_return sql_result<sql_row>::with_error("lock failed");
+                }
             }
         }
     }

@@ -36,7 +36,8 @@ namespace s90 {
             util::aiolock command_lock;
             std::shared_ptr<iafd> connection;
             std::queue<aiopromise<sql_connect>::weak_type> connecting;
-            std::map<std::string, cache_entry> cache;
+            std::map<std::string, std::queue<aiopromise<sql_result<sql_row>>::weak_type>, std::less<>> races;
+            std::map<std::string, cache_entry, std::less<>> cache;
 
             aiopromise<mysql_packet> read_packet();
             aiopromise<sql_connect> handshake();

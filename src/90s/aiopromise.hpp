@@ -120,7 +120,7 @@ namespace s90 {
                 s->has_result = false;
                 auto cb = std::move(s->callback);
                 s->callback = nullptr;
-                cb(value);
+                cb(T(value));
             } else if(s->coro_callback) {
                 s->result = value;
                 s->has_result = true;
