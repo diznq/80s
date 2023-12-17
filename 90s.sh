@@ -37,6 +37,10 @@ else
     FLAGS="$FLAGS -march=native"
 fi
 
+if [ "$INFO" = "true" ]; then
+    DEFINES="$DEFINES -S80_DEBUG_INFO=1"
+fi
+
 echo "Defines: $DEFINES"
 echo "Libraries: $LIBS"
 echo "Flags: $FLAGS"

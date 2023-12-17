@@ -24,6 +24,11 @@ namespace s90 {
 
     void afd::on_data(std::string_view data, bool cycle) {
         do {
+            if(!cycle) {
+                dbg_infof("%s; on_data(%zu -> %zu, current offset: %zu)\n", name().c_str(), data.length(), read_buffer.size() + data.length(), read_offset);
+            } else {
+                dbg_infof("%s; force cycle(current offset: %zu, size: %zu, new: %zu)\n", name().c_str(), read_offset, read_buffer.size(), data.length());
+            }
 
             if(closed) {
                 handle_failure();
@@ -43,7 +48,7 @@ namespace s90 {
                 return;
             }
             
-            //dbgf("on_data, read_commands: %zu, read_buffer: %zu, read_offset: %zu, data: %zu, cycle: %d\n", read_commands.size(), read_buffer.size(), read_offset, data.size(), cycle);
+            //dbg_infof("on_data, read_commands: %zu, read_buffer: %zu, read_offset: %zu, data: %zu, cycle: %d\n", read_commands.size(), read_buffer.size(), read_offset, data.size(), cycle);
 
             if((!buffering && read_commands.empty()) || (read_buffer.size() + data.size() - read_offset) == 0) {
                 // if read buffer + incoming data is empty, no point in resolving the promises
@@ -58,9 +63,10 @@ namespace s90 {
             }
 
             // select a read_buffer window based on where we ended up last time
-            std::string_view window(read_buffer.data() + read_offset, read_buffer.size() - read_offset);
             std::string_view arg;
-            while(iterate && !window.empty() && !read_commands.empty()) {
+            while(iterate && !read_commands.empty()) {
+                std::string_view window(read_buffer.data() + read_offset, read_buffer.size() - read_offset);
+                if(window.empty()) break;
                 auto it = read_commands.front();
                 auto command_promise = it.promise;
                 auto command_n = it.n;
@@ -68,18 +74,18 @@ namespace s90 {
                 // handle different read command types differently
                 switch(it.type) {
                     case read_command_type::any:
-                        //dbgf("READ ANY\n");
+                        //dbg_infof("READ ANY\n");
                         // any is fulfilled whenever any data comes in, no matter the size
                         read_offset += window.size();
                         arg = window;
                         window = window.substr(window.size());
+                        read_commands.pop();
                         if(auto ptr = command_promise.lock())
                             aiopromise(ptr).resolve({false, std::move(arg)});
-                        read_commands.pop();
                         iterate = false;
                         break;
                     case read_command_type::n:
-                        //dbgf("READ %zu\n", command_n);
+                        dbg_infof("%s; READ %zu bytes (current offset: %zu, wnd: %zu)\n", name().c_str(), command_n, read_offset, window.length());
                         // n is fulfilled only when n bytes of data is read and receives only those n bytes
                         if(window.length() < command_n) {
                             iterate = false;
@@ -87,9 +93,9 @@ namespace s90 {
                             read_offset += command_n;
                             arg = window.substr(0, command_n);
                             window = window.substr(command_n);
+                            read_commands.pop();
                             if(auto ptr = command_promise.lock())
                                 aiopromise(ptr).resolve({false, std::move(arg)});
-                            read_commands.pop();
                         }
                         break;
                     case read_command_type::until:
@@ -97,7 +103,7 @@ namespace s90 {
                         // search based on Knuth-Morris-Pratt algorithm, so it's O(n)
                         part = kmp(window.data(), window.length(), it.delimiter.c_str() + delim_state.match, command_delim_length - delim_state.match, delim_state.offset);
                         if(part.length == command_delim_length || (part.offset == delim_state.offset && part.length + delim_state.match == command_delim_length)) {
-                            //dbgf("1/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
+                            dbg_infof("%s; 1/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", name().c_str(), delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                             delim_state.match = 0;
                             delim_state.offset = part.offset + part.length;
                             read_offset += delim_state.offset;
@@ -105,16 +111,16 @@ namespace s90 {
                             arg = window.substr(0, delim_state.offset - command_delim_length);
                             window = window.substr(delim_state.offset);
                             delim_state.offset = 0;
+                            read_commands.pop();
                             if(auto ptr = command_promise.lock())
                                 aiopromise(ptr).resolve({false, std::move(arg)});
-                            read_commands.pop();
                         } else if(part.offset == delim_state.offset + delim_state.match && part.length > 0) {
-                            //dbgf("2/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
+                            dbg_infof("%s; 2/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", name().c_str(), delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                             delim_state.match += part.length;
                             delim_state.offset = part.offset + part.length;
                             iterate = false;
                         } else {
-                            //dbgf("3/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
+                            dbg_infof("%s; 3/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", name().c_str(), delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                         
                             delim_state.match = 0;
                             delim_state.offset = part.offset;
@@ -124,8 +130,9 @@ namespace s90 {
                 }
             }
 
-            if(window.empty() || (!buffering && read_commands.empty())) {
+            if(read_offset == read_buffer.size() || (!buffering && read_commands.empty())) {
                 // if everything was executed, clear the read buffer
+                dbg_infof("%s; reset read offset to 0\n", name().c_str());
                 read_offset = 0;
                 read_buffer.clear();
                 break;
@@ -151,9 +158,9 @@ namespace s90 {
                 if(promise.sent + written_bytes >= promise.length) {
                     written_bytes -= promise.length - promise.sent;
                     promise.sent = promise.length;
+                    write_back_buffer_info.pop();
                     if(auto ptr = promise.promise.lock())
                         aiopromise(ptr).resolve(true);
-                    write_back_buffer_info.pop();
                 } else if(written_bytes > 0) {
                     // there is no point iterating any further than this as this is the first
                     // only partially filled promise
@@ -193,16 +200,16 @@ namespace s90 {
 
     void afd::handle_failure() {
         while(!write_back_buffer_info.empty()) {
-            auto& item = write_back_buffer_info.front();
+            auto item = write_back_buffer_info.front();
+            write_back_buffer_info.pop();
             if(auto ptr = item.promise.lock())
                 aiopromise(ptr).resolve(false);
-            write_back_buffer_info.pop();
         }
         while(!read_commands.empty()) {
-            auto& item = read_commands.front();
+            auto item = read_commands.front();
+            read_commands.pop();
             if(auto ptr = item.promise.lock())
                 aiopromise(ptr).resolve({true, ""});
-            read_commands.pop();
         }
         write_back_offset = 0;
         write_back_buffer.clear();
@@ -240,6 +247,7 @@ namespace s90 {
         if(closed) {
             promise.resolve({true, ""});
         } else {
+            dbg_infof("%s; Insert READ %zu bytes command (%zu, %zu | %zu)\n", name().c_str(), n_bytes, read_buffer.size(), read_offset, read_commands.size());
             read_commands.emplace(read_command(promise.weak(), read_command_type::n, n_bytes, ""));
             if(read_buffer.size() > 0 && read_commands.size() == 1)
                 on_data("", true); // force the cycle if there is any previous remaining data to be read
