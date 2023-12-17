@@ -40,7 +40,6 @@ namespace s90 {
 
         std::string mysql::escape_string(std::string_view view) const {
             std::string str;
-            str.reserve(view.length());
             for(char c : view) {
                 switch (c) {
                 case '\r':

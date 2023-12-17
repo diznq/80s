@@ -22,7 +22,6 @@ namespace s90 {
                 // [  \  ]  ^  _  `   a   b   c   d   e   f
                    0, 0, 0, 0, 0, 0, 10, 11, 12, 13, 14, 15};
             std::string output;
-            output.reserve(data.length());
             size_t len = data.length();
             size_t i = 0;
             char c;
@@ -54,7 +53,6 @@ namespace s90 {
 
         std::string url_encode(std::string_view data) {
             std::string result = "";
-            result.reserve(data.length() * 2);
             char chars[] = "0123456789ABCDEF";
             for (char c_ : data) {
                 unsigned c = ((unsigned)c_)&255;

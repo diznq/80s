@@ -30,7 +30,6 @@ namespace s90 {
 
         std::string render_context::escape_string(std::string_view view) const {
             std::string str;
-            str.reserve(view.length());
             for(char c : view) {
                 switch (c) {
                 case '&':
@@ -58,7 +57,6 @@ namespace s90 {
         
         aiopromise<std::string> render_context::finalize() {
             std::string output;
-            output.reserve(est_length);
             for(auto& it : blocks) {
                 if(it.type == output_type::text) {
                     output += it.text;

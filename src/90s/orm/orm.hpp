@@ -244,7 +244,6 @@ namespace s90 {
             requires WithOrm<T>
             static std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<std::map<std::string, std::string>>>&& items) {
                 auto result = std::make_shared<std::vector<T>>();
-                result->reserve(items->size());
                 for(auto& item : *items) {
                     T new_item;
                     new_item.get_orm().to_native(item);
