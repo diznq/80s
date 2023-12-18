@@ -31,7 +31,7 @@ namespace s90 {
             };
 
             struct loaded_page {
-                page *page = nullptr;
+                page *webpage = nullptr;
                 bool shared = false;
             };
 

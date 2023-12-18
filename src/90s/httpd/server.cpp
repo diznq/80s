@@ -162,7 +162,7 @@ namespace s90 {
         server::~server() {
             for(auto& [k, v] : pages) {
                 if(!v.shared)
-                    delete v.page;
+                    delete v.webpage;
             }
             if(default_page) delete default_page;
             default_page = nullptr;
@@ -256,7 +256,7 @@ namespace s90 {
                 it->second.references--;
                 if(it->second.references == 0) {
                     std::cout << "unloading library " << it->first << std::endl;
-                    if(it->second.unload) it->second.unload((void*)page_it->second.page);
+                    if(it->second.unload) it->second.unload((void*)page_it->second.webpage);
                     DL_CLOSE(it->second.lib);
                     it = loaded_libs.erase(it);
                 } else {
@@ -350,7 +350,7 @@ namespace s90 {
                 if(page_it == pages.end()) {
                     current_page = default_page;
                 } else {
-                    current_page = page_it->second.page;
+                    current_page = page_it->second.webpage;
                 }
 
                 // read body if applicable
