@@ -8,20 +8,34 @@ namespace s90 {
         }
 
         mysql::~mysql() {
+            auto connection = connection_ref.lock();
             if(connection && !connection->is_closed() && !connection->is_error()) {
                 connection->close();
             }
+            while(!connecting.empty()) {
+                auto c = connecting.front();
+                connecting.pop();
+                if(auto ptr = c.lock()) {
+                    aiopromise(ptr).resolve(
+                        std::make_tuple<sql_connect, std::shared_ptr<iafd>>({true, "mysql is gone"}, nullptr)
+                    );
+                }
+            }
         }
 
-        aiopromise<mysql_packet> mysql::read_packet() {
+        aiopromise<mysql_packet> mysql::read_packet(std::shared_ptr<iafd> connection) {
+            dbg_infof("Read packet header\n");
             auto data = co_await connection->read_n(4);
             if(data.error) {
+                dbg_infof("Read packet header - fail\n");
                 co_return {-1, ""};
             }
             unsigned char *bytes = (unsigned char*)data.data.data();
             unsigned length = (bytes[0]) | (bytes[1] << 8) | (bytes[2] << 16);
             int seq = (bytes[3] & 0xFF);
+            dbg_infof("Read packet body - %d\n", length);
             data = co_await connection->read_n(length);
+            dbg_infof("Packet body - %s\n", data.error ? "fail" : "ok");
             if(data.error) {
                 co_return {-1, ""};
             }
@@ -34,7 +48,6 @@ namespace s90 {
 
         std::string mysql::escape_string(std::string_view view) const {
             std::string str;
-            str.reserve(view.length());
             for(char c : view) {
                 switch (c) {
                 case '\r':
@@ -66,10 +79,6 @@ namespace s90 {
             return str;
         }
 
-        void mysql::set_caching_policy(bool enabled) {
-            cache_enabled = enabled;
-        }
-
         aiopromise<sql_connect> mysql::connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) {
             user = username;;
             password = passphrase;
@@ -80,45 +89,77 @@ namespace s90 {
             return reconnect();
         }
 
-        aiopromise<sql_connect> mysql::reconnect() {
+        aiopromise<std::tuple<sql_connect, std::shared_ptr<iafd>>> mysql::obtain_connection() {
+            dbg_infof("Reconnect\n");
+            auto connection = connection_ref.lock();
             if(connection && !connection->is_closed() && !connection->is_error() && authenticated) {
-                co_return {false, ""};
+                co_return std::make_tuple(sql_connect {false, ""}, connection);
             }
+            dbg_infof("Reconnect - do connect\n");
             if(is_connecting) {
-                aiopromise<sql_connect> promise;
-                connecting.push_back(promise);
-                co_return co_await promise;
+                dbg_infof("Reconnect - already connecting\n");
+                aiopromise<std::tuple<sql_connect, std::shared_ptr<iafd>>> promise;
+                connecting.emplace(promise.weak());
+                co_return std::move(co_await promise);
             } else {
+                dbg_infof("Reconnect - first connect\n");
                 // connect if not connected
                 is_connecting = true;
                 authenticated = false;
                 if(!connection || connection->is_closed() || connection->is_error()) {
-                    connection = co_await ctx->connect(host, sql_port, false);
+                    dbg_infof("Reconnect - get connection\n");
+                    connection_ref = co_await ctx->connect(host, sql_port, false);
+                    connection = connection_ref.lock();
                 }
-                if(connection && connection->is_error()) {
+                dbg_infof("Reconnect - connection obtained\n");
+                if(!connection || (connection && connection->is_error())) {
+                    dbg_infof("Reconnect - obtained connection failure\n");
                     connection = nullptr;
                     is_connecting = false;
-                    for(auto prom : connecting) prom.resolve({true, "failed to establish connection"});
-                    co_return {true, "failed to establish connection"};
+                    while(!connecting.empty()) {
+                        dbg_infof("Reconnect - resolve waiting (failure)\n");
+                        auto c = connecting.front();
+                        connecting.pop();
+                        if(auto ptr = c.lock())
+                            aiopromise(ptr).resolve(std::make_tuple<sql_connect, std::shared_ptr<iafd>>({true, "failed to establish connection"}, nullptr));
+                    }
+                    co_return std::make_tuple<sql_connect, std::shared_ptr<iafd>>({true, "failed to establish connection"}, nullptr);
                 }
+                dbg_infof("Reconnect - obtained connection ok\n");
                 connection->set_name("mysql");
-                auto result = co_await handshake();
+                auto result = co_await handshake(connection);
+                dbg_infof("Reconnect - handshake %s\n", result.error ? "fail" : "ok");
                 is_connecting = false;
                 authenticated = !result.error;
-                for(auto prom : connecting) prom.resolve(sql_connect(result));
-                co_return std::move(result);
+                while(!connecting.empty()) {
+                    dbg_infof("Reconnect - resolve waiters\n");
+                    auto c = connecting.front();
+                    connecting.pop();
+                    if(auto ptr = c.lock())
+                        aiopromise(ptr).resolve(std::make_tuple(result, connection));
+                }
+                co_return std::make_tuple(result, connection);
             }
         }
 
-        aiopromise<sql_connect> mysql::handshake() {
+        aiopromise<sql_connect> mysql::reconnect() {
+            auto [result, conn] = co_await obtain_connection();
+            co_return std::move(result);
+        }
+
+        aiopromise<sql_connect> mysql::handshake(std::shared_ptr<iafd> connection) {
             // read handshake packet with method & scramble
-            auto result = co_await read_packet();
+            dbg_infof("Handshake - read first packet\n");
+            auto result = co_await read_packet(connection);
             if(result.seq < 0) {
+                dbg_infof("First packet - err\n");
                 co_return {true, "failed to read scramble packet"};
             }
+            dbg_infof("First packet - ok\n");
             // decode the method & scrabmle
             auto [method, scramble] = decode_handshake_packet(result.data);
             if(method != "mysql_native_password") {
+                dbg_infof("First packet - unsupported method\n");
                 co_return {true, "unsupported auth method: \"" + method + "\""};
             }
             // perform login
@@ -132,14 +173,19 @@ namespace s90 {
                 db_name + '\0' +
                 std::string(method) + '\0';
             login = encode_le24(login.length()) + '\1' + login;
+            dbg_infof("Handshake - write login\n");
             auto write_ok = co_await connection->write(login);
             if(!write_ok) {
+                dbg_infof("Handshake - login failed\n");
                 co_return {true, "sending login failed"};
             }
-            auto response = co_await read_packet();
+            dbg_infof("Handshake - read second packet\n");
+            auto response = co_await read_packet(connection);
             if(response.seq < 0) {
+                dbg_infof("Second packet - fail\n");
                 co_return {true, "failed to read login response"};
             }
+            dbg_infof("Handshake - ok\n");
             unsigned response_type = ((unsigned)response.data[0]) & 255;
             if(response_type == 0) {
                 co_return {false, ""};
@@ -150,63 +196,42 @@ namespace s90 {
             }
         }
 
-        aiopromise<sql_result<sql_row>> mysql::raw_exec(std::string_view query) {
-            auto connected = co_await reconnect();
+        aiopromise<std::tuple<sql_result<sql_row>, std::shared_ptr<iafd>>> mysql::raw_exec(const std::string&& query) {
+            auto [connected, connection] = co_await obtain_connection();
             if(connected.error) {
-                co_return sql_result<sql_row>::with_error(connected.error_message);
+                co_return std::make_tuple(sql_result<sql_row>::with_error(connected.error_message), connection);
             }
             auto command = encode_le24(query.length() + 1) + '\0' + '\3' + std::string(query);
             auto write_ok = co_await connection->write(command);
             if(!write_ok) {
-                co_return sql_result<sql_row>::with_error("failed to write to the connection");
+                co_return std::make_tuple(sql_result<sql_row>::with_error("failed to write to the connection"), connection);
             }
-            co_return {false};
+            co_return std::make_tuple(sql_result<sql_row>{false}, connection);
         }
 
-        aiopromise<sql_result<sql_row>> mysql::exec(std::string_view query) {
-            auto subproc = [this](std::string_view query) -> aiopromise<sql_result<sql_row>> {
-                auto command_sent = co_await raw_exec(query);
+        aiopromise<sql_result<sql_row>> mysql::exec(present<std::string> query) {
+            auto subproc = [this](const std::string&& query) -> aiopromise<sql_result<sql_row>> {
+                auto [command_sent, connection] = co_await raw_exec(std::move(query));
                 if(command_sent.error) co_return std::move(command_sent);
-                auto response = co_await read_packet();
+                auto response = co_await read_packet(connection);
                 if(response.seq < 0 || response.data.length() < 1) co_return sql_result<sql_row>::with_error("failed to read response");
                 mysql_decoder decoder(response.data);
                 co_return decoder.decode_status();
             };
-            co_await command_lock.lock();
-            auto result {co_await subproc(query)};
-            command_lock.unlock();
-            co_return std::move(result);
+            if(co_await command_lock.lock()){
+                auto result {co_await subproc(std::move(query))};
+                command_lock.unlock();
+                co_return std::move(result);
+            } else {
+                co_return sql_result<sql_row>::with_error("lock failed");
+            }
         }
 
-        aiopromise<sql_result<sql_row>> mysql::select(std::string_view query) {
-            int cache_time = -1;
-            std::chrono::steady_clock::time_point cache_expire;
-            if(query.size() > 0 && query[0] == '@' && query.find("@CACHE ") == 0) {
-                auto cache_time_str = query.substr(7);
-                auto pivot = cache_time_str.find(";");
-                if(pivot == std::string::npos) {
-                    co_return sql_result<sql_row>::with_error("invalid cache query");
-                }
-                cache_time_str = cache_time_str.substr(pivot - 1);
-                auto ok = std::from_chars(cache_time_str.begin(), cache_time_str.end(), cache_time, 10);
-                if(ok.ec != std::errc()) {
-                    co_return sql_result<sql_row>::with_error("cache time must be an integer");
-                }
-                query = query.substr(pivot + 8);
-                if(cache_enabled) {
-                    auto it = cache.find(std::string(query));
-                    if(it != cache.end()) {
-                        if(std::chrono::steady_clock::now() <= it->second.expire)
-                            co_return std::move(sql_result<sql_row>::with_rows(it->second.rows));
-                    }
-                } else {
-                    cache_time = -1;
-                }
-            }
-            auto command_sent = co_await raw_exec(query);
-            if(command_sent.error) co_return std::move(command_sent);
-            auto subproc = [this](std::string_view query) -> aiopromise<sql_result<sql_row>> {
-                auto n_fields_desc = co_await read_packet();
+        aiopromise<sql_result<sql_row>> mysql::select(present<std::string> query) {
+            auto subproc = [this](const std::string&& query) -> aiopromise<sql_result<sql_row>> {
+                auto [command_sent, connection] = co_await raw_exec(std::move(query));
+                if(command_sent.error) co_return std::move(command_sent);
+                auto n_fields_desc = co_await read_packet(connection);
 
                 if(n_fields_desc.seq < 0 || n_fields_desc.data.length() < 1) {
                     co_return sql_result<sql_row>::with_error("failed to read initial response");
@@ -230,7 +255,7 @@ namespace s90 {
 
                 // read each field and decode it
                 for(size_t i = 0; i < n_fields; i++) {
-                    auto field_spec = co_await read_packet();
+                    auto field_spec = co_await read_packet(connection);
                     if(field_spec.seq < 0) co_return sql_result<sql_row>::with_error("failed to fetch field spec");
                     decoder.reset(field_spec.data);
                     auto field = decoder.decode_field();
@@ -239,7 +264,7 @@ namespace s90 {
                 }
 
                 // after fields, we expect EOF
-                auto eof = co_await read_packet();
+                auto eof = co_await read_packet(connection);
                 if(eof.seq < 0 || eof.data.size() < 1 || eof.data[0] != '\xFE') {
                     co_return sql_result<sql_row>::with_error("expected eof");
                 }
@@ -248,7 +273,7 @@ namespace s90 {
                 sql_result<sql_row> final_result;
                 final_result.rows = std::make_shared<std::vector<sql_row>>();
                 while(true) {
-                    auto row = co_await read_packet();
+                    auto row = co_await read_packet(connection);
                     if(row.seq < 0 || row.data.size() < 1) {
                         co_return sql_result<sql_row>::with_error("fetching rows failed");
                     }
@@ -263,16 +288,13 @@ namespace s90 {
                 final_result.error = false;
                 co_return std::move(final_result);
             };
-            co_await command_lock.lock();
-            auto result {co_await subproc(query)};
-            if(cache_time > 0 && !result.error) {
-                cache[std::string(query)] = cache_entry {
-                    std::chrono::steady_clock::now() + std::chrono::seconds(cache_time),
-                    result.rows
-                };
+            if(co_await command_lock.lock()) {
+                auto result {co_await subproc(std::move(query))};
+                command_lock.unlock();
+                co_return std::move(result);
+            } else {
+                co_return sql_result<sql_row>::with_error("lock failed");
             }
-            command_lock.unlock();
-            co_return std::move(result);
         }
     }
 }

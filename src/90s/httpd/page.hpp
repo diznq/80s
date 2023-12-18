@@ -20,6 +20,7 @@ namespace s90 {
 
         class page {
         public:
+            virtual ~page() = default;
             virtual const char* name() const = 0;
             virtual aiopromise<std::expected<nil, status>> render(ienvironment& env) const = 0;
         };

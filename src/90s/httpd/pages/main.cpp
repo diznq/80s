@@ -1,4 +1,8 @@
 #include "main.hpp"
+#include <90s/cache/cache.hpp>
+
+using s90::aiopromise;
+using namespace s90::sql;
 
 default_context::default_context(s90::icontext *ctx) : ctx(ctx) {
     db = ctx->new_sql_instance("mysql");
@@ -8,7 +12,7 @@ std::string default_context::get_message() {
     return "Hello world!";
 }
 
-s90::aiopromise<std::shared_ptr<s90::sql::isql>> default_context::get_db() {
+aiopromise<std::shared_ptr<isql>> default_context::get_db() {
     if(!db->is_connected()) {
         auto connect_ok = co_await db->connect("localhost", 3306, "80s", "password", "db80");
         if(connect_ok.error) {
@@ -18,7 +22,7 @@ s90::aiopromise<std::shared_ptr<s90::sql::isql>> default_context::get_db() {
     co_return db;
 }
 
-s90::aiopromise<s90::sql::sql_result<post>> default_context::get_posts() {
+aiopromise<sql_result<post>> default_context::get_posts() {
     auto conn = co_await get_db();
     auto result = co_await conn->select<post>("SELECT * FROM posts");
     if(result.error) {

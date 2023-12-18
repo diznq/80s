@@ -18,6 +18,7 @@ namespace s90 {
 
         class ienvironment {
         public:
+            virtual ~ienvironment() = default;
             virtual void disable() const = 0;
             virtual void clear() = 0;
             virtual const std::string& method() const = 0;

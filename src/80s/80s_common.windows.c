@@ -200,7 +200,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
     }
 }
 
-int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
+int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback) {
     int status = 0;
     close_params params;
 
@@ -227,10 +227,12 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
         dbg("l_net_close: failed to close childfd");
     }
 
-    params.ctx = ctx;
-    params.elfd = elfd;
-    params.childfd = childfd;
-    on_close(params);
+    if(callback) {
+        params.ctx = ctx;
+        params.elfd = elfd;
+        params.childfd = childfd;
+        on_close(params);
+    }
 
     return status;
 }

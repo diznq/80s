@@ -255,7 +255,7 @@ void on_init(struct init_params_ params);
 
 fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int port, int is_udp);
 int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, size_t offset, size_t len);
-int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype);
+int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback);
 int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port);
 int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args);
 int s80_reload(reload_context *reload);
@@ -266,6 +266,12 @@ void s80_release_mailbox(mailbox *mailbox);
 void s80_enable_async(fd_t fd);
 
 void resolve_mail(serve_params *params, int id);
+
+#ifdef S80_DEBUG_INFO
+#define dbg_infof(...) printf(__VA_ARGS__)
+#else
+#define dbg_infof(...)
+#endif
 
 #ifdef S80_DEBUG
     #ifdef USE_IOCP

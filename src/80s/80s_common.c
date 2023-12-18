@@ -150,7 +150,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
     }
 }
 
-int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
+int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback) {
     struct event_t ev;
     struct close_params_ params;
     int status = 0;
@@ -173,7 +173,9 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype) {
     params.ctx = ctx;
     params.elfd = elfd;
     params.childfd = childfd;
-    on_close(params);
+    if(callback) {
+        on_close(params);
+    }
 
     return status;
 }

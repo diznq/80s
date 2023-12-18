@@ -29,18 +29,19 @@ namespace s90 {
             context* ctx;
             std::string user, password, host, db_name;
             int sql_port;
-            bool cache_enabled = false;
+            bool cache_enabled = true;
             bool authenticated = false;
             bool is_connecting = false;
             bool login_provided = false;
             util::aiolock command_lock;
-            std::shared_ptr<iafd> connection;
-            std::vector<aiopromise<sql_connect>> connecting;
-            std::map<std::string, cache_entry> cache;
+            std::weak_ptr<iafd> connection_ref;
+            std::queue<aiopromise<std::tuple<sql_connect, std::shared_ptr<iafd>>>::weak_type> connecting;
 
-            aiopromise<mysql_packet> read_packet();
-            aiopromise<sql_connect> handshake();
+            aiopromise<mysql_packet> read_packet(std::shared_ptr<iafd> connection);
+            aiopromise<sql_connect> handshake(std::shared_ptr<iafd> connection);
 
+            aiopromise<std::tuple<sql_connect, std::shared_ptr<iafd>>> obtain_connection();
+            aiopromise<std::tuple<sql_result<sql_row>, std::shared_ptr<iafd>>> raw_exec(const std::string&& query);
         public:
             using isql::escape;
             mysql(context *ctx);
@@ -48,13 +49,11 @@ namespace s90 {
             aiopromise<sql_connect> connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) override;
             aiopromise<sql_connect> reconnect() override;
             bool is_connected() const override;
-            void set_caching_policy(bool enabled) override;
             
             std::string escape_string(std::string_view view) const override;
 
-            aiopromise<sql_result<sql_row>> raw_exec(std::string_view query);
-            aiopromise<sql_result<sql_row>> exec(std::string_view query) override;
-            aiopromise<sql_result<sql_row>> select(std::string_view query) override;
+            aiopromise<sql_result<sql_row>> exec(present<std::string> query) override;
+            aiopromise<sql_result<sql_row>> select(present<std::string> query) override;
         };
     }
 }

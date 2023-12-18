@@ -76,8 +76,8 @@ namespace s90 {
         return fd;
     }
 
-    aiopromise<std::shared_ptr<iafd>> context::connect(const std::string& addr, int port, bool udp) {
-        aiopromise<std::shared_ptr<iafd>> promise;
+    aiopromise<std::weak_ptr<iafd>> context::connect(const std::string& addr, int port, bool udp) {
+        aiopromise<std::weak_ptr<iafd>> promise;
         fd_t fd = s80_connect(this, elfd, addr.c_str(), port, udp ? 1 : 0);
         if(fd == (fd_t)-1) {
             promise.resolve(static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, true)));
@@ -115,6 +115,17 @@ namespace s90 {
 
     void context::reload() const {
         s80_reload(rld);
+    }
+    
+    void context::store(std::string_view name, std::shared_ptr<storable> entity) {
+        stores[std::string(name)] = entity;
+    }
+
+    std::shared_ptr<storable> context::store(std::string_view name) {
+        auto it = stores.find(name);
+        if(it != stores.end())
+            return it->second;
+        return nullptr;
     }
     
 }

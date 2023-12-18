@@ -32,9 +32,13 @@ fi
 
 if [ "$DEBUG" = "true" ]; then
     DEFINES="$DEFINES -DS80_DEBUG=1"
-    FLAGS="-O0 -g"
+    FLAGS="-O2 -ggdb"
 else
     FLAGS="$FLAGS -march=native"
+fi
+
+if [ "$INFO" = "true" ]; then
+    DEFINES="$DEFINES -S80_DEBUG_INFO=1"
 fi
 
 echo "Defines: $DEFINES"
