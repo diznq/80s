@@ -13,6 +13,12 @@ namespace s90 {
 
     class context;
 
+    enum class close_state {
+        open,
+        closing,
+        closed
+    };
+
     struct read_arg {
         bool error;
         std::string_view data;
@@ -43,7 +49,7 @@ namespace s90 {
         virtual fd_meminfo usage() const = 0;
         virtual std::string name() const = 0;
         virtual void set_name(std::string_view name) = 0;
-        virtual void close() = 0;
+        virtual void close(bool immediate = true) = 0;
     };
 
     class afd : public iafd {
@@ -51,7 +57,7 @@ namespace s90 {
         fd_t elfd;
         fd_t fd;
         int fd_type;
-        bool closed = false;
+        close_state closed = close_state::open;
         bool has_error = false;
         bool buffering = true;
         std::string fd_name = "fd#" + std::to_string((uintptr_t)fd);
@@ -121,7 +127,7 @@ namespace s90 {
         fd_meminfo usage() const override;
         std::string name() const override;
         void set_name(std::string_view name);
-        void close() override;
+        void close(bool immediate) override;
     };
 
 }

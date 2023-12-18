@@ -44,7 +44,7 @@ static int l_net_close(lua_State *L) {
     fd_t elfd = void_to_fd(lua_touserdata(L, 1));
     fd_t childfd = void_to_fd(lua_touserdata(L, 2));
     int fdtype = void_to_int(lua_touserdata(L, 3));
-    int status = s80_close((void *)L, elfd, childfd, fdtype);
+    int status = s80_close((void *)L, elfd, childfd, fdtype, 1);
     lua_pushboolean(L, status >= 0);
     return 1;
 }

@@ -30,7 +30,12 @@ namespace s90 {
                 pfnrelease release = nullptr;
             };
 
-            std::map<std::string, page*> pages;
+            struct loaded_page {
+                page *page = nullptr;
+                bool shared = false;
+            };
+
+            std::map<std::string, loaded_page> pages;
             static std::map<std::string, loaded_lib> loaded_libs;
             static std::mutex loaded_libs_lock;
             void *local_context = nullptr;

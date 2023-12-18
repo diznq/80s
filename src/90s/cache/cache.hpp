@@ -1,3 +1,4 @@
+#pragma once
 #include "../context.hpp"
 #include <functional>
 #include <map>

@@ -7,15 +7,12 @@ namespace s90 {
     
     }
 
-    afd::afd(context *ctx, fd_t elfd, bool has_error) : ctx(ctx), elfd(elfd), fd((fd_t)0), fd_type(S80_FD_OTHER), has_error(has_error), closed(true) {
+    afd::afd(context *ctx, fd_t elfd, bool has_error) : ctx(ctx), elfd(elfd), fd((fd_t)0), fd_type(S80_FD_OTHER), has_error(has_error), closed(close_state::closed) {
 
     }
 
     afd::~afd() {
-        if(!closed) {
-            close();
-        }
-        handle_failure();
+        close(false);
     }
 
     void afd::on_accept() {
@@ -30,8 +27,7 @@ namespace s90 {
                 dbg_infof("%s; force cycle(current offset: %zu, size: %zu, new: %zu)\n", name().c_str(), read_offset, read_buffer.size(), data.length());
             }
 
-            if(closed) {
-                handle_failure();
+            if(is_closed()) {
                 break;
             }
             
@@ -146,7 +142,7 @@ namespace s90 {
     }
 
     void afd::on_write(size_t written_bytes) {
-        if(closed) return;
+        if(is_closed()) return;
         for(;;) {
 
             int do_write = written_bytes == 0;
@@ -192,37 +188,42 @@ namespace s90 {
     }
 
     void afd::on_close() {
-        if(!closed) {
-            closed = true;
+        if(closed != close_state::closed) {
+            closed = close_state::closed;
             handle_failure();
         }
     }
 
     void afd::handle_failure() {
-        while(!write_back_buffer_info.empty()) {
-            auto item = write_back_buffer_info.front();
-            write_back_buffer_info.pop();
-            if(auto ptr = item.promise.lock())
-                aiopromise(ptr).resolve(false);
-        }
         while(!read_commands.empty()) {
             auto item = read_commands.front();
             read_commands.pop();
             if(auto ptr = item.promise.lock())
                 aiopromise(ptr).resolve({true, ""});
         }
+        while(!write_back_buffer_info.empty()) {
+            auto item = write_back_buffer_info.front();
+            write_back_buffer_info.pop();
+            if(auto ptr = item.promise.lock())
+                aiopromise(ptr).resolve(false);
+        }
         write_back_offset = 0;
         write_back_buffer.clear();
         read_buffer.clear();
     }
 
-    void afd::close() {
-        if(!closed) {
-            s80_close(ctx, elfd, fd, fd_type);
+    void afd::close(bool immediate) {
+        if(closed == close_state::open) {
+            closed = close_state::closing;
+            s80_close(ctx, elfd, fd, fd_type, immediate ? 1 : 0);
+            if(!immediate) {
+                closed = close_state::closed;
+                handle_failure();
+            }
         }
     }
 
-    bool afd::is_closed() const { return closed; }
+    bool afd::is_closed() const { return closed != close_state::open; }
 
     bool afd::is_error() const { return has_error; }
 
@@ -232,7 +233,7 @@ namespace s90 {
 
     aiopromise<read_arg> afd::read_any() {
         auto promise = aiopromise<read_arg>();
-        if(closed) {
+        if(is_closed()) {
             promise.resolve({true, ""});
         } else {
             read_commands.emplace(read_command(promise.weak(), read_command_type::any, 0, ""));
@@ -244,7 +245,7 @@ namespace s90 {
 
     aiopromise<read_arg> afd::read_n(size_t n_bytes) {
         auto promise = aiopromise<read_arg>();
-        if(closed) {
+        if(is_closed()) {
             promise.resolve({true, ""});
         } else {
             dbg_infof("%s; Insert READ %zu bytes command (%zu, %zu | %zu)\n", name().c_str(), n_bytes, read_buffer.size(), read_offset, read_commands.size());
@@ -257,7 +258,7 @@ namespace s90 {
 
     aiopromise<read_arg> afd::read_until(std::string&& delim) {
         auto promise = aiopromise<read_arg>();
-        if(closed) {
+        if(is_closed()) {
             promise.resolve({true, ""});
         } else {
             read_commands.emplace(read_command(promise.weak(), read_command_type::until, 0, std::move(delim)));
@@ -272,7 +273,7 @@ namespace s90 {
         size_t to_write = buffer_size - write_back_offset;
         int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), write_back_offset, buffer_size);
         if(ok < 0) {
-            close();
+            close(true);
             return std::make_tuple(ok, false);
         } else {
             return std::make_tuple(ok, (size_t)ok == to_write);
@@ -282,7 +283,7 @@ namespace s90 {
     aiopromise<bool> afd::write(std::string_view data) {
         aiopromise<bool> promise = aiopromise<bool>();
 
-        if(closed) {
+        if(is_closed()) {
             promise.resolve(false);
             return promise;
         }
