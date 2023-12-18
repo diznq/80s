@@ -4,13 +4,19 @@
 #include <90s/aiopromise.hpp>
 #include <90s/sql/sql.hpp>
 #include <90s/orm/orm.hpp>
+#include <90s/cache/cache.hpp>
 
-struct post : s90::orm::with_orm {
+using namespace s90;
+using namespace s90::orm;
+using namespace s90::cache;
+using namespace s90::sql;
+
+struct post : with_orm {
     int id;
     std::string author;
     std::string text;
 
-    s90::orm::mapper get_orm() {
+    mapper get_orm() {
         return {
             {"id", id},
             {"author", author},
@@ -20,11 +26,11 @@ struct post : s90::orm::with_orm {
 };
 
 class default_context {
-    s90::icontext *ctx;
-    std::shared_ptr<s90::sql::isql> db;
+    icontext *ctx;
+    std::shared_ptr<sql::isql> db;
 public:
-    default_context(s90::icontext *ctx);
+    default_context(icontext *ctx);
     virtual std::string get_message();
-    virtual s90::aiopromise<std::shared_ptr<s90::sql::isql>> get_db();
-    virtual s90::aiopromise<s90::sql::sql_result<post>> get_posts();
+    virtual aiopromise<std::shared_ptr<sql::isql>> get_db();
+    virtual aiopromise<sql_result<post>> get_posts();
 };

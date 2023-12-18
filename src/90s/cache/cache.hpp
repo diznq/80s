@@ -6,23 +6,38 @@
 namespace s90 {
     namespace cache {
 
+        constexpr size_t never = -1;
+        template<class T>
+        using cached = std::shared_ptr<T>;
+        template<class T>
+        using async_cached = aiopromise<std::shared_ptr<T>>;
+        template<class T>
+        using async_vec = std::vector<async_cached<T>>;
+
         template<class T>
         struct expirable {
-            T value;
+            cached<T> value;
             bool never_expire = false;
             std::chrono::steady_clock::time_point expire;
         };
-
-        constexpr size_t never = -1;
 
         template<class T>
         class cache_layer : public storable {
             std::map<std::string, expirable<T>, std::less<>> items;
         public:
-            const expirable<T>* get(const std::string& key) const {
+            cached<T> get(const std::string& key) {
                 auto it = items.find(key);
-                if(it != items.end()) return &(it->second);
-                return nullptr;
+                if(it != items.end()) {
+                    if(it->second.never_expire) {
+                        return it->second.value;
+                    } else if(std::chrono::steady_clock::now() > it->second.expire) {
+                        items.erase(it);
+                        return {};
+                    } else {
+                        return it->second.value;
+                    }
+                }
+                return {};
             }
 
             void set(const std::string& key, expirable<T>&& value) {
@@ -31,39 +46,31 @@ namespace s90 {
         };
 
         template<class T>
-        class async_cache_layer : public storable {
-            std::map<std::string, expirable<T>, std::less<>> items;
-            std::map<std::string, std::shared_ptr<std::vector<aiopromise<T>>>> races;
+        class async_cache_layer : public cache_layer<T> {
+            std::map<std::string, std::shared_ptr<async_vec<T>>> races;
         public:
-            const expirable<T>* get(const std::string& key) const {
-                auto it = items.find(key);
-                if(it != items.end()) return &(it->second);
-                return nullptr;
-            }
-
-            std::shared_ptr<std::vector<aiopromise<T>>> get_races(const std::string& key) const {
+            std::shared_ptr<async_vec<T>> get_races(const std::string& key) const {
                 auto it = races.find(key);
                 if(it != races.end()) return it->second;
-                return nullptr;
+                return {};
             }
 
-            std::shared_ptr<std::vector<aiopromise<T>>> create_races(const std::string& key) {
-                auto ref = races[key] = std::make_shared<std::vector<aiopromise<T>>>();
+            std::shared_ptr<async_vec<T>> create_races(const std::string& key) {
+                auto ref = std::make_shared<async_vec<T>>();
+                races[key] = ref;
                 return ref;
             }
 
             void drop_races(const std::string& key) {
                 auto it = races.find(key);
-                if(it != races.end()) races.erase(it);
-            }
-
-            void set(const std::string& key, expirable<T>&& value) {
-                items.emplace(std::make_pair(key, std::move(value)));
+                if(it != races.end()) {
+                    races.erase(it);
+                }
             }
         };
 
         template<class T>
-        const T& cache(icontext *ctx, const std::string& key, size_t expire, std::function<T()> factory) {
+        cached<T> cache(icontext *ctx, std::string&& key, size_t expire, std::function<cached<T>()> factory) {
             const auto store_key = typeid(T).name();
             auto layer = static_pointer_cast<cache_layer<T>>(ctx->store(store_key));
             if(!layer) {
@@ -71,43 +78,46 @@ namespace s90 {
                 ctx->store(store_key, layer);
             }
             auto found = layer->get(key);
-            if(found && (found->never_expire || found->expire >= std::chrono::steady_clock::now())) {
-                return found->value;
+            if(found) {
+                return found;
             }
             auto result = factory();
-            layer->set(key, expirable {result, expire == never, std::chrono::steady_clock::now() + std::chrono::seconds(expire == never ? -1 : expire)});
-            return layer->get(key)->value;
+            if(result) {
+                layer->set(key, expirable {result, expire == never, std::chrono::steady_clock::now() + std::chrono::seconds(expire == never ? -1 : expire)});
+            }
+            return result;
         }
 
         template<class T>
-        aiopromise<T> async_cache(icontext *ctx, const std::string& key, size_t expire, std::function<aiopromise<T>()> factory) {
+        async_cached<T> async_cache(icontext *ctx, present<std::string> key, size_t expire, std::function<async_cached<T>()> factory) {
             const auto store_key = typeid(T).name();
             auto layer = static_pointer_cast<async_cache_layer<T>>(ctx->store(store_key));
+            
             if(!layer) {
                 layer = std::make_shared<async_cache_layer<T>>();
                 ctx->store(store_key, layer);
             }
 
             auto found = layer->get(key);
-            if(found && (found->never_expire || found->expire >= std::chrono::steady_clock::now())) {
-                co_return found->value;
+            if(found) {
+                co_return found;
             }
-
             auto races = layer->get_races(key);
             if(races) {
-                aiopromise<T> race;
+                async_cached<T> race;
                 races->push_back(race);
                 co_return co_await race;
             } else {
                 races = layer->create_races(key);
                 auto result = co_await factory();
                 layer->drop_races(key);
-                layer->set(key, expirable {std::move(result), expire == never, std::chrono::steady_clock::now() + std::chrono::seconds(expire == never ? -1 : expire)});
-                auto v = layer->get(key);
-                for(auto& race : *races) {
-                    race.resolve(v->value);
+                if(result) {
+                    layer->set(key, expirable {result, expire == never, std::chrono::steady_clock::now() + std::chrono::seconds(expire == never ? -1 : expire)});
                 }
-                co_return v->value;
+                for(auto it = races->begin(); it != races->end(); it++) {
+                    it->resolve(result);
+                }
+                co_return result;
             }
         }
     }

@@ -54,8 +54,8 @@ namespace s90 {
 
             virtual std::string escape_string(std::string_view view) const = 0;
             
-            virtual aiopromise<sql_result<sql_row>> exec(std::string_view query) = 0;
-            virtual aiopromise<sql_result<sql_row>> select(std::string_view query) = 0;
+            virtual aiopromise<sql_result<sql_row>> exec(present<std::string> query) = 0;
+            virtual aiopromise<sql_result<sql_row>> select(present<std::string> query) = 0;
 
             template<class ... Args>
             aiopromise<sql_result<sql_row>> select(std::string_view fmt, Args&& ... args) {

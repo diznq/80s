@@ -9,6 +9,9 @@ namespace s90 {
 
     struct nil {};
 
+    template<class T>
+    using present = const T;
+
     template<typename T>
     class aiopromise;
 

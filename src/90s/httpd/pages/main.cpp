@@ -24,9 +24,7 @@ aiopromise<std::shared_ptr<isql>> default_context::get_db() {
 
 aiopromise<sql_result<post>> default_context::get_posts() {
     auto conn = co_await get_db();
-    auto result = co_await s90::cache::async_cache<sql_result<post>>(ctx, "posts", 30, [conn]() {
-        return conn->select<post>("SELECT * FROM posts");
-    });
+    auto result = co_await conn->select<post>("SELECT * FROM posts");
     if(result.error) {
         printf("failed to select posts: %s\n", result.error_message.c_str());
     }

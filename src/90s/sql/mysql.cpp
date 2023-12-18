@@ -196,7 +196,7 @@ namespace s90 {
             }
         }
 
-        aiopromise<std::tuple<sql_result<sql_row>, std::shared_ptr<iafd>>> mysql::raw_exec(std::string_view query) {
+        aiopromise<std::tuple<sql_result<sql_row>, std::shared_ptr<iafd>>> mysql::raw_exec(const std::string&& query) {
             auto [connected, connection] = co_await obtain_connection();
             if(connected.error) {
                 co_return std::make_tuple(sql_result<sql_row>::with_error(connected.error_message), connection);
@@ -209,9 +209,9 @@ namespace s90 {
             co_return std::make_tuple(sql_result<sql_row>{false}, connection);
         }
 
-        aiopromise<sql_result<sql_row>> mysql::exec(std::string_view query) {
-            auto subproc = [this](std::string_view query) -> aiopromise<sql_result<sql_row>> {
-                auto [command_sent, connection] = co_await raw_exec(query);
+        aiopromise<sql_result<sql_row>> mysql::exec(present<std::string> query) {
+            auto subproc = [this](const std::string&& query) -> aiopromise<sql_result<sql_row>> {
+                auto [command_sent, connection] = co_await raw_exec(std::move(query));
                 if(command_sent.error) co_return std::move(command_sent);
                 auto response = co_await read_packet(connection);
                 if(response.seq < 0 || response.data.length() < 1) co_return sql_result<sql_row>::with_error("failed to read response");
@@ -219,7 +219,7 @@ namespace s90 {
                 co_return decoder.decode_status();
             };
             if(co_await command_lock.lock()){
-                auto result {co_await subproc(query)};
+                auto result {co_await subproc(std::move(query))};
                 command_lock.unlock();
                 co_return std::move(result);
             } else {
@@ -227,9 +227,9 @@ namespace s90 {
             }
         }
 
-        aiopromise<sql_result<sql_row>> mysql::select(std::string_view query) {
-            auto subproc = [this](std::string_view query) -> aiopromise<sql_result<sql_row>> {
-                auto [command_sent, connection] = co_await raw_exec(query);
+        aiopromise<sql_result<sql_row>> mysql::select(present<std::string> query) {
+            auto subproc = [this](const std::string&& query) -> aiopromise<sql_result<sql_row>> {
+                auto [command_sent, connection] = co_await raw_exec(std::move(query));
                 if(command_sent.error) co_return std::move(command_sent);
                 auto n_fields_desc = co_await read_packet(connection);
 
@@ -289,7 +289,7 @@ namespace s90 {
                 co_return std::move(final_result);
             };
             if(co_await command_lock.lock()) {
-                auto result {co_await subproc(query)};
+                auto result {co_await subproc(std::move(query))};
                 command_lock.unlock();
                 co_return std::move(result);
             } else {
