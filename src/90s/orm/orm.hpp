@@ -12,11 +12,10 @@
 
 namespace s90 {
     namespace orm {
-        using datetime = std::string;
 
         class any {
             enum class reftype {
-                empty, vstr, str, cstr, i1, i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, f80
+                empty, vstr, str, cstr, i1, i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, f80, ts, dt
             };
             reftype type = reftype::empty;
             size_t reserved = 0;
@@ -37,6 +36,8 @@ namespace s90 {
             any(uint16_t& value) : ref((void*)&value), type(reftype::u16) {}
             any(uint32_t& value) : ref((void*)&value), type(reftype::u32) {}
             any(uint64_t& value) : ref((void*)&value), type(reftype::u64) {}
+            any(util::datetime& value) : ref((void*)&value), type(reftype::dt) {}
+            any(util::timestamp& value) : ref((void*)&value), type(reftype::ts) {}
             any(float& value) : ref((void*)&value), type(reftype::f32) {}
             any(double& value) : ref((void*)&value), type(reftype::f64) {}
             any(long double& value) : ref((void*)&value), type(reftype::f80) {}
@@ -95,6 +96,13 @@ namespace s90 {
                     case reftype::f80:
                         std::from_chars(value.begin(), value.end(), *(long double*)ref);
                         break;
+                    // dates
+                    case reftype::dt:
+                        ((util::datetime*)ref)->to_native(value);
+                        break;
+                    case reftype::ts:
+                        ((util::timestamp*)ref)->to_native(value);
+                        break;
                 }
             }
 
@@ -152,6 +160,13 @@ namespace s90 {
                         break;
                     case reftype::f80:
                         return std::to_string(*(long double*)ref);
+                        break;
+                    // dates
+                    case reftype::dt:
+                        return ((util::datetime*)ref)->from_native();
+                        break;
+                    case reftype::ts:
+                        return ((util::timestamp*)ref)->from_native();
                         break;
                     default:
                         return "";
