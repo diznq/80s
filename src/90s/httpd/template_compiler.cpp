@@ -117,6 +117,8 @@ namespace s90 {
             code_state state = any_text;
             for(char c : in) {
                 switch(c) {
+                    case '\r':
+                        break;
                     case '\n':
                         if(state == code_hit) {
                             out += cppize(ctx_name, std::move(outline), true, simplify);
@@ -135,7 +137,7 @@ namespace s90 {
                         }
                         break;
                     case '|':
-                        state = state == new_line ? code_hit : any_text;
+                        state = state == new_line ? code_hit : state;
                         if(state != code_hit) {
                             out += c;
                         } else {
