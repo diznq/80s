@@ -105,6 +105,7 @@ namespace s90 {
                     if(std::filesystem::exists(dest)) {
                         env.status("200 OK");
                         env.header("content-type", mime);
+                        env.header("cache-control", "public, immutable, max-age=86400");
                         std::ifstream is(dest, std::ios_base::binary);
                         if(!is.is_open()) return render_error(env, status::internal_server_error);
                         std::stringstream contents; contents << is.rdbuf();
