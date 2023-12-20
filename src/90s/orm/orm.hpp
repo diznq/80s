@@ -56,31 +56,39 @@ namespace s90 {
                         break;
                     // signed
                     case reftype::i8:
-                        std::from_chars(value.begin(), value.end(), below_32, 10);
+                        if(std::from_chars(value.begin(), value.end(), below_32, 10).ec != std::errc())
+                            below_32 = 0;
                         *(int8_t*)ref = (int8_t)below_32;
                         break;
                     case reftype::i16:
-                        std::from_chars(value.begin(), value.end(), *(int16_t*)ref, 10);
+                        if(std::from_chars(value.begin(), value.end(), *(int16_t*)ref, 10).ec != std::errc())
+                            *(int16_t*)ref = 0;
                         break;
                     case reftype::i32:
-                        std::from_chars(value.begin(), value.end(), *(int32_t*)ref, 10);
+                        if(std::from_chars(value.begin(), value.end(), *(int32_t*)ref, 10).ec != std::errc())
+                            *(int32_t*)ref = 0;
                         break;
                     case reftype::i64:
-                        std::from_chars(value.begin(), value.end(), *(int64_t*)ref, 10);
+                        if(std::from_chars(value.begin(), value.end(), *(int64_t*)ref, 10).ec != std::errc())
+                            *(int64_t*)ref = 0;
                         break;
                     // unsigned
                     case reftype::u8:
-                        std::from_chars(value.begin(), value.end(), below_32u, 10);
+                        if(std::from_chars(value.begin(), value.end(), below_32u, 10).ec != std::errc())
+                            below_32u = 0;
                         *(uint8_t*)ref = (uint8_t)below_32u;
                         break;
                     case reftype::u16:
-                        std::from_chars(value.begin(), value.end(), *(uint16_t*)ref, 10);
+                        if(std::from_chars(value.begin(), value.end(), *(uint16_t*)ref, 10).ec != std::errc())
+                            *(uint16_t*)ref = 0;
                         break;
                     case reftype::u32:
-                        std::from_chars(value.begin(), value.end(), *(uint16_t*)ref, 10);
+                        if(std::from_chars(value.begin(), value.end(), *(uint32_t*)ref, 10).ec != std::errc())
+                            *(uint32_t*)ref = 0;
                         break;
                     case reftype::u64:
-                        std::from_chars(value.begin(), value.end(), *(uint64_t*)ref, 10);
+                        if(std::from_chars(value.begin(), value.end(), *(uint64_t*)ref, 10).ec != std::errc())
+                            *(uint64_t*)ref = 0;
                         break;
                     // bool
                     case reftype::i1:

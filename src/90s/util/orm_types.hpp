@@ -12,6 +12,14 @@ namespace s90 {
         struct timestamp {
             std::chrono::system_clock::time_point point = std::chrono::system_clock::now();
 
+            timestamp operator-(size_t t) {
+                return timestamp{ point - std::chrono::seconds(t) };
+            }
+
+            timestamp operator+(size_t t) {
+                return timestamp{ point - std::chrono::seconds(t) };
+            }
+
             bool operator==(const timestamp& v) const {
                 return point == v.point;
             }
@@ -74,6 +82,14 @@ namespace s90 {
         };
 
         struct datetime : public timestamp {
+            datetime operator-(size_t t) {
+                return datetime{ point - std::chrono::seconds(t) };
+            }
+
+            datetime operator+(size_t t) {
+                return datetime{ point - std::chrono::seconds(t) };
+            }
+
             std::string from_native() const {
                 return ymdhis();
             }
