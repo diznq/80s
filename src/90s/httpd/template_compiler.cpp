@@ -303,7 +303,7 @@ namespace s90 {
                     simplify
                 );
             }, [this, output_context, simplify](const std::string& text) -> auto {
-                return cppize(output_context, text, simplify);
+                return cppize(output_context, text, false, simplify);
             });
 
             out = data;
