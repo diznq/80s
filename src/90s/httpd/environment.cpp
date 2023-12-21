@@ -84,17 +84,19 @@ namespace s90 {
             size_t i = 0, j = params.size();
             for(auto& [k, v] : params) {
                 query_string += util::url_encode(k);
-                query_string +"=";
+                query_string += '=';
                 query_string += util::url_encode(v);
-                if(i != j - 1) query_string += "&";
+                if(i != j - 1) query_string += '&';
                 i++;
             }
             if(encrypt != encryption::none) {
                 auto result = util::cipher(query_string, enc_base + std::string(endpoint), true, encrypt == encryption::full);
                 if(result.has_value()) {
-                    query_string = std::string("e=") + util::url_encode(util::to_b64(*result));
+                    query_string += "e=";
+                    query_string += util::url_encode(util::to_b64(*result));
                 } else {
-                    query_string = std::string("er=") + util::url_encode(result.error());
+                    query_string += "er=";
+                    query_string += util::url_encode(result.error());
                 }
             }
             final_result += "?";
