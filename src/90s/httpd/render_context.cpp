@@ -34,7 +34,7 @@ namespace s90 {
 
         std::string render_context::escape_string(std::string_view view) const {
             std::string str;
-            str.reserve(view.size());
+            str.reserve(view.size() + 1);
             for(char c : view) {
                 switch (c) {
                 case '&':
@@ -62,6 +62,7 @@ namespace s90 {
         
         aiopromise<std::string> render_context::finalize() {
             std::string output;
+            output.reserve(est_length + 1);
             if(blocks.size() == 1 && blocks.back().type == output_type::text) {
                 output = std::move(blocks.back().text);
             } else {

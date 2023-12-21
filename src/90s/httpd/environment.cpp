@@ -8,10 +8,18 @@ namespace s90 {
     namespace httpd {
         aiopromise<std::string> environment::http_response() {
             auto rendered = std::move(co_await output_context->finalize());
-            std::string response = "HTTP/1.1 " + status_line + "\r\n";
+            length_estimate += 60 + status_line.length() + rendered.length();
+            std::string response;
+            response.reserve(length_estimate);
+            response += "HTTP/1.1 ";
+            response += status_line;
+            response += "\r\n";
             output_headers["content-length"] = std::to_string(rendered.length());
-            for(auto& [k, v] : output_headers) {
-                response += k + ": " + v + "\r\n";
+            for(const auto& [k, v] : output_headers) {
+                response += k;
+                response += ": ";
+                response += v;
+                response += "\r\n";
             }
             response += "\r\n";
             response += rendered;
@@ -22,6 +30,7 @@ namespace s90 {
             status_line = "200 OK";
             output_headers.clear();
             output_context->clear();
+            length_estimate = 0;
         }
 
         void environment::disable() const {
@@ -42,12 +51,14 @@ namespace s90 {
         void environment::header(const std::string& key, const std::string& value) {
             std::string lower_key = key;
             std::transform(lower_key.begin(), lower_key.end(), lower_key.begin(), [](auto c) -> auto { return std::tolower(c); });
+            length_estimate += key.length() + 5 + value.length();
             output_headers[key] = value;
         }
 
         void environment::header(std::string&& key, std::string&& value) {
             std::transform(key.begin(), key.end(), key.begin(), [](auto c) -> auto { return std::tolower(c); });
             output_headers[std::move(key)] = std::move(value);
+            length_estimate += key.length() + 5 + value.length();
         }
 
         const std::string& environment::endpoint() const {
@@ -69,9 +80,12 @@ namespace s90 {
         std::string environment::url(std::string_view endpoint, std::map<std::string, std::string>&& params, encryption encrypt) const {
             if(params.size() == 0) return std::string(endpoint);
             std::string query_string = "";
+            std::string final_result {endpoint};
             size_t i = 0, j = params.size();
             for(auto& [k, v] : params) {
-                query_string += util::url_encode(k) + "=" + util::url_encode(v);
+                query_string += util::url_encode(k);
+                query_string +"=";
+                query_string += util::url_encode(v);
                 if(i != j - 1) query_string += "&";
                 i++;
             }
@@ -83,7 +97,9 @@ namespace s90 {
                     query_string = std::string("er=") + util::url_encode(result.error());
                 }
             }
-            return std::string(endpoint) + "?" + query_string;
+            final_result += "?";
+            final_result += query_string;
+            return final_result;
         }
 
         const std::string& environment::body() const {

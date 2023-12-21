@@ -53,6 +53,7 @@ namespace s90 {
             std::string status_line = "200 OK";
             std::shared_ptr<render_context> output_context = std::make_shared<render_context>();
             std::map<std::string, std::string> output_headers;
+            size_t length_estimate = 0;
 
             void *local_context_ptr = nullptr;
             icontext *global_context_ptr = nullptr;
