@@ -3,6 +3,7 @@
 #include "render_context.hpp"
 #include <map>
 #include <string>
+#include <expected>
 #include <optional>
 
 namespace s90 {
@@ -42,6 +43,9 @@ namespace s90 {
 
             virtual void *const local_context() const = 0;
             virtual icontext *const global_context() const = 0;
+
+            virtual std::expected<std::string, std::string> encrypt(std::string_view text, std::string_view key, encryption mode);
+            virtual std::expected<std::string, std::string> decrypt(std::string_view text, std::string_view key);
 
             template<class T>
             T* const local_context() const {
@@ -85,6 +89,9 @@ namespace s90 {
             std::shared_ptr<irender_context> output() const override;
             void *const local_context() const override;
             icontext *const global_context() const override;
+
+            std::expected<std::string, std::string> encrypt(std::string_view text, std::string_view key, encryption mode) override;
+            std::expected<std::string, std::string> decrypt(std::string_view text, std::string_view key) override;
 
         private:
             friend class s90::httpd::server;

@@ -192,6 +192,7 @@ namespace s90 {
             if(web_static_env) static_path = web_static_env;
             if(web_root_env != NULL) web_root = web_root_env;
             if(master_key != NULL) enc_base = master_key;
+            if(enc_base.length() == 0) enc_base = "ABCDEFGHIJKLMNOP";
             if(enc_base.length() > 0 && enc_base.length() < 16) enc_base = util::sha256(enc_base);
             ((generic_error_page*)default_page)->set_static_path(static_path);
             for(const auto& entry : std::filesystem::recursive_directory_iterator(web_root)) {

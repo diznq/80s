@@ -128,6 +128,14 @@ namespace s90 {
             return global_context_ptr;
         }
 
+        std::expected<std::string, std::string> environment::encrypt(std::string_view text, std::string_view key, encryption mode) {
+            return util::cipher(text, key, true, mode == encryption::full);
+        }
+
+        std::expected<std::string, std::string> environment::decrypt(std::string_view text, std::string_view key) {
+            return util::cipher(text, key, false, true);
+        }
+
         void environment::write_body(std::string&& data) {
             http_body = std::move(data);
         }
