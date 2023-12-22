@@ -26,7 +26,8 @@ namespace s90 {
                 const std::string& start, 
                 const std::string& end, 
                 std::function<std::string(const std::string&)> match,
-                std::function<std::string(const std::string&)> outside);
+                std::function<std::string(const std::string&)> outside,
+                bool indefinite = false);
 
             public:
             std::string compile(const std::string& file_name, const std::filesystem::path& path, const std::string& output_context, const std::string& data);

@@ -3,6 +3,7 @@
 #include <string_view>
 #include <map>
 #include <expected>
+#include <charconv>
 #include "../aiopromise.hpp"
 
 namespace s90 {
@@ -16,5 +17,16 @@ namespace s90 {
         std::string hmac_sha256(std::string_view text, std::string_view key);
         std::expected<std::string, std::string> cipher( std::string_view text, std::string_view key, bool encrypt, bool iv);
         std::map<std::string, std::string> parse_query_string(std::string_view query_string);
+
+        template<class T>
+        bool str_to_n(const std::string& str, T& ref, int base = 10) {
+            std::string_view view(str);
+            if(std::from_chars(view.begin(), view.end(), ref, base).ec == std::errc()) {
+                return true;
+            } else {
+                ref = 0;
+                return false;
+            }
+        }
     }
 }

@@ -37,6 +37,10 @@ namespace s90 {
             auto end() const { return rows->end(); }
             auto size() const { return error || !rows ? 0 : rows->size(); }
 
+            T& operator[](size_t index) const {
+                return (*rows)[index];
+            }
+
             operator bool() const { return !error && rows; }
         };
 

@@ -163,39 +163,51 @@ namespace s90 {
         }
 
         std::string template_compiler::replace_between(
-            const std::string& data, 
+            const std::string& global_data, 
             const std::string& start, 
             const std::string& end, 
             std::function<std::string(const std::string&)> match_cb,
-            std::function<std::string(const std::string&)> outside
+            std::function<std::string(const std::string&)> outside,
+            bool indefinite
         ) {
-            size_t offset = 0;
+            std::string data = global_data;
             std::string out = "";
-            // printf("begin replace between %s - %s (%zu)\n", start.c_str(), end.c_str(), data.length());
             while(true) {
-                // printf("| replace between %s - %s\n", start.c_str(), end.c_str());
-                auto match = kmp(data.c_str(), data.length(), start.data(), start.length(), offset);
-                if(match.length != start.length()) {
-                    auto new_outside_content =  outside(data.substr(offset, data.length() - offset));
-                    // printf("> outside (%zu -> %zu)\n", data.length() - offset, new_outside_content.length());
+                int matches = 0;
+                size_t offset = 0;
+                out = "";
+
+                // printf("begin replace between %s - %s (%zu)\n", start.c_str(), end.c_str(), data.length());
+                while(true) {
+                    // printf("| replace between %s - %s\n", start.c_str(), end.c_str());
+                    auto match = kmp(data.c_str(), data.length(), start.data(), start.length(), offset);
+                    if(match.length != start.length()) {
+                        auto new_outside_content =  outside(data.substr(offset, data.length() - offset));
+                        // printf("> outside (%zu -> %zu)\n", data.length() - offset, new_outside_content.length());
+                        out += new_outside_content;
+                        break;
+                    }
+                    auto new_outside_content = outside(data.substr(offset, match.offset - offset));
+                    // printf("> outside/2 (%zu -> %zu)\n", match.offset - offset, new_outside_content.length());
                     out += new_outside_content;
-                    break;
-                }
-                auto new_outside_content = outside(data.substr(offset, match.offset - offset));
-                // printf("> outside/2 (%zu -> %zu)\n", match.offset - offset, new_outside_content.length());
-                out += new_outside_content;
-                auto end_match = kmp(data.c_str(), data.length(), end.data(), end.length(), match.offset + start.length());
+                    auto end_match = kmp(data.c_str(), data.length(), end.data(), end.length(), match.offset + start.length());
 
-                match.offset += start.length();
-                auto content = data.substr(match.offset, end_match.length != end.length() ? data.length() - match.offset : end_match.offset - match.offset);
-                auto new_content = match_cb(content);
-                // printf("> inside (%zu -> %zu)\n", content.length(), new_content.length());
-                out += new_content;
+                    match.offset += start.length();
+                    auto content = data.substr(match.offset, end_match.length != end.length() ? data.length() - match.offset : end_match.offset - match.offset);
+                    auto new_content = match_cb(content);
+                    // printf("> inside (%zu -> %zu)\n", content.length(), new_content.length());
+                    out += new_content;
+                    matches++;
 
-                if(end_match.length != end.length()) {
-                    break;
+                    if(end_match.length != end.length()) {
+                        break;
+                    }
+                    offset = end_match.offset + end.length();
                 }
-                offset = end_match.offset + end.length();
+
+                if(indefinite && matches == 0) indefinite = 0;
+                if(indefinite) data = out;
+                if(!indefinite) break;
             }
             // printf("end replace between %s - %s (%zu)\n", start.c_str(), end.c_str(), data.length());
             return out;
@@ -284,7 +296,7 @@ namespace s90 {
                 return included_file;
             }, [this](const std::string& text) -> auto {
                 return text;
-            });
+            }, true);
 
             // extract all <?hpp ... ?> into `include` variable that goes at the beginning of the script
             data = replace_between(data, "<?hpp", "?>", [&includes](const std::string& text) -> auto {
@@ -316,16 +328,23 @@ namespace s90 {
                     "#include <90s/httpd/page.hpp>\n"
                     + includes + 
                     "\n"
-                    "using namespace s90::httpd;\n\n"
+                    "using s90::httpd::ienvironment;\n"
+                    "using s90::httpd::render_context;\n"
+                    "using s90::httpd::page;\n"
+                    "using s90::httpd::status;\n"
+                    "using s90::httpd::encryption;\n"
+                    "using s90::aiopromise;\n"
+                    "using s90::nil;\n\n"
+
                     "class renderable : public page {\n"
                     "public:\n"
                     "    const char *name() const override {\n"
                     "        return \"" + script_name + "\";\n"
                     "    }\n\n"
-                    "    s90::aiopromise<std::expected<s90::nil, status>> render(ienvironment& env) const override {\n"
+                    "    aiopromise<std::expected<nil, status>> render(ienvironment& env) const override {\n"
                     "        env.content_type(\"" + mime_type + "\");\n"
                     + out + "\n"
-                    "        co_return s90::nil {};\n"
+                    "        co_return nil {};\n"
                     "    }\n"
                     "};\n\n"
                     "#ifndef PAGE_INCLUDE\n"
