@@ -106,6 +106,7 @@ namespace s90 {
                 i++;
             }
 
+            if(result.size() == 0) return "";
             result = std::string("\t\t" + ctx_name + "->write") + (vars.empty() ? "" : "_formatted") + "(\"" + result + "\"" + vars + ");\n";
             return result;
         }
@@ -287,7 +288,9 @@ namespace s90 {
 
             // extract all <?hpp ... ?> into `include` variable that goes at the beginning of the script
             data = replace_between(data, "<?hpp", "?>", [&includes](const std::string& text) -> auto {
+                includes += "\n";
                 includes += text;
+                includes += "\n";
                 return "";
             }, [this](const std::string& text) -> auto {
                 return text;
