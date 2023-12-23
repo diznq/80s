@@ -348,9 +348,14 @@ namespace s90 {
                 } else {
                     endpoint = s90::util::url_decode(script);
                 }
-                auto page_it = pages.find(env.method() + " " + endpoint);
+                auto page_it = pages.find(endpoint);
                 if(page_it == pages.end()) {
-                    current_page = default_page;
+                    page_it = pages.find(env.method() + " " + endpoint);
+                    if(page_it == pages.end()) {
+                        current_page = default_page;
+                    } else {
+                        current_page = page_it->second.webpage;
+                    }
                 } else {
                     current_page = page_it->second.webpage;
                 }
