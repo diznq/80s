@@ -98,10 +98,10 @@ namespace s90 {
             if(encrypt != encryption::none) {
                 auto result = util::cipher(query_string, enc_base + std::string(endpoint), true, encrypt == encryption::full);
                 if(result.has_value()) {
-                    query_string += "e=";
+                    query_string = "e=";
                     query_string += util::url_encode(util::to_b64(*result));
                 } else {
-                    query_string += "er=";
+                    query_string = "er=";
                     query_string += util::url_encode(result.error());
                 }
             }
