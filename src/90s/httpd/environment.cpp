@@ -182,6 +182,7 @@ namespace s90 {
         }
 
         void environment::write_header(std::string&& key, std::string&& value) {
+            std::transform(key.begin(), key.end(), key.begin(), [](auto c) -> auto { return std::tolower(c); });
             headers[std::move(key)] = std::move(value);
         }
 

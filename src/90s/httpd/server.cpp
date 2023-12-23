@@ -307,7 +307,7 @@ namespace s90 {
                     co_return {};
                 }
                 
-                // parse header kesy values
+                // parse header keys values
                 remaining = remaining.substr(pivot + 2);
                 while(true) {
                     pivot = remaining.find_first_of("\r\n");
@@ -363,7 +363,7 @@ namespace s90 {
                 // read body if applicable
                 auto content_length = env.header("content-length");
                 if(content_length) {
-                    auto len = atoll(content_length.value().c_str());
+                    auto len = atoll(content_length->c_str());
                     if(len > 0) {
                         auto body = co_await fd->read_n(len);
                         if(body.error) co_return {};
