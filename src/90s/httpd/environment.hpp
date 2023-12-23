@@ -32,6 +32,9 @@ namespace s90 {
             virtual std::optional<std::string> query(std::string&& key) const = 0;
             virtual std::optional<std::string> signed_query(std::string&& key) const = 0;
 
+            virtual const std::map<std::string, std::string>& query() const = 0;
+            virtual const std::map<std::string, std::string>& signed_query() const = 0;
+
             virtual std::string url(std::string_view endpoint, std::map<std::string, std::string>&& params, encryption encrypt = encryption::full) const = 0;
 
             virtual const std::string& body() const = 0;
@@ -60,9 +63,34 @@ namespace s90 {
             virtual std::expected<std::string, std::string> from_b64(std::string_view data) const = 0;
             virtual std::string to_hex(std::string_view data) const = 0;
 
+            // template helpers
             template<class T>
             T* const local_context() const {
                 return static_cast<T *const>(local_context());
+            }
+
+            template<class T>
+            requires orm::with_orm_trait<T>
+            T query() const {
+                T val;
+                val.get_orm().to_native(query());
+                return val;
+            }
+            
+            template<class T>
+            requires orm::with_orm_trait<T>
+            T signed_query() const {
+                T val;
+                val.get_orm().to_native(signed_query());
+                return val;
+            }
+            
+            template<class T>
+            requires orm::with_orm_trait<T>
+            T form() const {
+                T val;
+                val.get_orm().to_native(form());
+                return val;
             }
         };
 
@@ -92,10 +120,14 @@ namespace s90 {
             void header(std::string&& key, std::string&& value) override;
 
             const std::string& endpoint() const override;
-            std::optional<std::string> signed_query(std::string&& key) const override;
             std::string url(std::string_view endpoint, std::map<std::string, std::string>&& params, encryption encrypt = encryption::lean) const override;
 
+            const std::map<std::string, std::string>& query() const override;
+            const std::map<std::string, std::string>& signed_query() const override;
+
             std::optional<std::string> query(std::string&& key) const override;
+            std::optional<std::string> signed_query(std::string&& key) const override;
+
             const std::string& body() const override;
             std::map<std::string, std::string> form() const override;
 

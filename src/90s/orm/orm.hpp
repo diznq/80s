@@ -13,21 +13,95 @@
 namespace s90 {
     namespace orm {
 
+        class any;
+
+        template<class T>
+        class optional {
+            bool is_set = false;
+            T value_;
+        public:
+            friend class any;
+            optional() : is_set(false) {}
+
+            optional(const T& value) : value_(value), is_set(true) {}
+            optional(T&& value) : value_(std::move(value)), is_set(true) {}
+            optional(const optional& v) : value_(v.value_), is_set(v.is_set) {}
+            optional(optional&& v) : value_(std::move(v.value_)), is_set(std::move(v.is_set)) {}
+
+            optional& operator=(const T& v) {
+                value_ = v;
+                is_set = true;
+                return *this;
+            }
+
+            optional& operator=(T&& v) {
+                value_ = std::move(v);
+                is_set = true;
+                return *this;
+            }
+
+            optional& operator=(const optional& v) {
+                value_ = v.value_;
+                is_set = v.is_set;
+                return *this;
+            }
+
+            optional& operator=(optional&& v) {
+                value_ = std::move(v.value_);
+                is_set = std::move(v.is_set);
+                return *this;
+            }
+
+            const T& operator*() const {
+                return value_;
+            }
+
+            operator bool() const {
+                return is_set;
+            }
+
+            bool has_value() const {
+                return is_set;
+            }
+
+            const T& or_else(const T& value) const {
+                if(is_set) return value_;
+                return value;
+            }
+
+            const T& value() const {
+                if(!is_set)
+                    throw std::runtime_error("optional doesn't have a value");
+                return value_;
+            }
+
+        };
+
         class any {
             enum class reftype {
                 empty, vstr, str, cstr, i1, i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, f80, ts, dt
             };
             reftype type = reftype::empty;
             size_t reserved = 0;
+            uintptr_t success_wb = 0;
             void *ref = nullptr;
         public:
             any() : type(reftype::empty), ref(nullptr), reserved(0) {}
-            any(const any& a) : type(a.type), ref(a.ref), reserved(a.reserved) {}
-            any& operator=(const any& a) { type = a.type; ref = a.ref; reserved = a.reserved; return *this; }
-            any(std::string& value) : ref((void*)&value), type(reftype::str) {}
-            any(const char*& value) : ref((void*)&value), type(reftype::cstr) {}
+            any(const any& a) : type(a.type), ref(a.ref), reserved(a.reserved), success_wb(a.success_wb) {}
+            any& operator=(const any& a) { type = a.type; ref = a.ref; reserved = a.reserved; success_wb = a.success_wb; return *this; }
+
+            template<class T>
+            any(optional<T>& opt) : any(opt.value_) {
+                success_wb = (uintptr_t)&opt.is_set;
+            }
+
             template<size_t N>
             any(util::varstr<N>& value) : ref((void*)&value), type(reftype::vstr), reserved(value.get_max_size()) {}
+            any(std::string& value) : ref((void*)&value), type(reftype::str) {}
+            any(const char*& value) : ref((void*)&value), type(reftype::cstr) {}
+            any(util::datetime& value) : ref((void*)&value), type(reftype::dt) {}
+            any(util::timestamp& value) : ref((void*)&value), type(reftype::ts) {}
+            
             any(int8_t& value) : ref((void*)&value), type(reftype::i8) {}
             any(int16_t& value) : ref((void*)&value), type(reftype::i16) {}
             any(int32_t& value) : ref((void*)&value), type(reftype::i32) {}
@@ -36,16 +110,16 @@ namespace s90 {
             any(uint16_t& value) : ref((void*)&value), type(reftype::u16) {}
             any(uint32_t& value) : ref((void*)&value), type(reftype::u32) {}
             any(uint64_t& value) : ref((void*)&value), type(reftype::u64) {}
-            any(util::datetime& value) : ref((void*)&value), type(reftype::dt) {}
-            any(util::timestamp& value) : ref((void*)&value), type(reftype::ts) {}
+            
             any(float& value) : ref((void*)&value), type(reftype::f32) {}
             any(double& value) : ref((void*)&value), type(reftype::f64) {}
             any(long double& value) : ref((void*)&value), type(reftype::f80) {}
             any(bool& value) : ref((void*)&value), type(reftype::i1) {}
 
-            void to_native(std::string_view value) const {
+            bool to_native(std::string_view value) const {
                 int32_t below_32 = 0;
                 uint32_t below_32u = 0;
+                bool success = true;
                 switch(type) {
                     case reftype::str:
                     case reftype::vstr:
@@ -56,39 +130,55 @@ namespace s90 {
                         break;
                     // signed
                     case reftype::i8:
-                        if(std::from_chars(value.begin(), value.end(), below_32, 10).ec != std::errc())
+                        if(std::from_chars(value.begin(), value.end(), below_32, 10).ec != std::errc()) {
                             below_32 = 0;
+                            success = false;
+                        }
                         *(int8_t*)ref = (int8_t)below_32;
                         break;
                     case reftype::i16:
-                        if(std::from_chars(value.begin(), value.end(), *(int16_t*)ref, 10).ec != std::errc())
+                        if(std::from_chars(value.begin(), value.end(), *(int16_t*)ref, 10).ec != std::errc()) {
                             *(int16_t*)ref = 0;
+                            success = false;
+                        }
                         break;
                     case reftype::i32:
-                        if(std::from_chars(value.begin(), value.end(), *(int32_t*)ref, 10).ec != std::errc())
+                        if(std::from_chars(value.begin(), value.end(), *(int32_t*)ref, 10).ec != std::errc()) {
                             *(int32_t*)ref = 0;
+                            success = false;
+                        }
                         break;
                     case reftype::i64:
-                        if(std::from_chars(value.begin(), value.end(), *(int64_t*)ref, 10).ec != std::errc())
+                        if(std::from_chars(value.begin(), value.end(), *(int64_t*)ref, 10).ec != std::errc()) {
                             *(int64_t*)ref = 0;
+                            success = false;
+                        }
                         break;
                     // unsigned
                     case reftype::u8:
-                        if(std::from_chars(value.begin(), value.end(), below_32u, 10).ec != std::errc())
+                        if(std::from_chars(value.begin(), value.end(), below_32u, 10).ec != std::errc()) {
                             below_32u = 0;
+                            success = false;
+                        }
                         *(uint8_t*)ref = (uint8_t)below_32u;
                         break;
                     case reftype::u16:
-                        if(std::from_chars(value.begin(), value.end(), *(uint16_t*)ref, 10).ec != std::errc())
+                        if(std::from_chars(value.begin(), value.end(), *(uint16_t*)ref, 10).ec != std::errc()) {
                             *(uint16_t*)ref = 0;
+                            success = false;
+                        }
                         break;
                     case reftype::u32:
-                        if(std::from_chars(value.begin(), value.end(), *(uint32_t*)ref, 10).ec != std::errc())
+                        if(std::from_chars(value.begin(), value.end(), *(uint32_t*)ref, 10).ec != std::errc()) {
                             *(uint32_t*)ref = 0;
+                            success = false;
+                        }
                         break;
                     case reftype::u64:
-                        if(std::from_chars(value.begin(), value.end(), *(uint64_t*)ref, 10).ec != std::errc())
+                        if(std::from_chars(value.begin(), value.end(), *(uint64_t*)ref, 10).ec != std::errc()) {
                             *(uint64_t*)ref = 0;
+                            success = false;
+                        }
                         break;
                     // bool
                     case reftype::i1:
@@ -111,10 +201,18 @@ namespace s90 {
                     case reftype::ts:
                         ((util::timestamp*)ref)->to_native(value);
                         break;
+                    default:
+                        success = false;
+                        break;
                 }
+                if(success_wb) {
+                    *(bool*)success_wb = success;
+                }
+                return success;
             }
 
             std::string from_native(bool bool_as_text = false) const {
+                if(success_wb && !*(bool*)success_wb) return "";
                 switch(type) {
                     case reftype::str:
                         return *(std::string*)ref;
@@ -191,8 +289,8 @@ namespace s90 {
 
         class with_orm;
 
-        template <class Type>
-        concept WithOrm = std::is_base_of<with_orm, Type>::value;
+        template <class T>
+        concept with_orm_trait = std::is_base_of<with_orm, T>::value;
 
         class mapper {
             std::vector<mapping> relations;
@@ -218,7 +316,7 @@ namespace s90 {
 
             // sql_row -> T
             template<class T>
-            requires WithOrm<T>
+            requires with_orm_trait<T>
             static std::vector<T> transform(std::span<std::map<std::string, std::string>> items) {
                 std::vector<T> result;
                 std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [](const std::map<std::string, std::string>& item) -> auto {
@@ -230,7 +328,7 @@ namespace s90 {
             }
 
             template<class T>
-            requires WithOrm<T>
+            requires with_orm_trait<T>
             static std::vector<T> transform(std::vector<std::map<std::string, std::string>>&& items) {
                 std::vector<T> result;
                 std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [](const std::map<std::string, std::string>& item) -> auto {
@@ -243,7 +341,7 @@ namespace s90 {
             
             // T -> sql_row
             template<class T>
-            requires WithOrm<T>
+            requires with_orm_trait<T>
             static std::vector<std::map<std::string,std::string>> transform(std::span<T> items, bool bool_as_text = false) {
                 std::vector<std::map<std::string,std::string>> result;
                 std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text](T& item) -> auto {
@@ -253,7 +351,7 @@ namespace s90 {
             }
 
             template<class T>
-            requires WithOrm<T>
+            requires with_orm_trait<T>
             static std::vector<std::map<std::string,std::string>> transform(std::vector<T>&& items, bool bool_as_text = false) {
                 std::vector<std::map<std::string,std::string>> result;
                 std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text](T& item) -> auto {
@@ -264,7 +362,7 @@ namespace s90 {
 
             // ptr<sql_row> -> ptr<T>
             template<class T>
-            requires WithOrm<T>
+            requires with_orm_trait<T>
             static std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<std::map<std::string, std::string>>>&& items) {
                 auto result = std::make_shared<std::vector<T>>();
                 std::transform(items->cbegin(), items->cend(), std::back_inserter(*result), [](const std::map<std::string, std::string>& item) -> auto {

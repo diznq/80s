@@ -83,6 +83,14 @@ namespace s90 {
             return it->second;
         }
 
+        const std::map<std::string, std::string>& environment::query() const {
+            return query_params;
+        }
+
+        const std::map<std::string, std::string>& environment::signed_query() const {
+            return signed_params;
+        }
+
         std::string environment::url(std::string_view endpoint, std::map<std::string, std::string>&& params, encryption encrypt) const {
             if(params.size() == 0) return std::string(endpoint);
             std::string query_string = "";

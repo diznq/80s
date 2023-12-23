@@ -67,7 +67,7 @@ namespace s90 {
             }
 
             template<class T>
-            requires orm::WithOrm<T>
+            requires orm::with_orm_trait<T>
             aiopromise<sql_result<T>> select(std::string_view query) {
                 auto result = co_await select(query);
                 if(result.error) {
@@ -78,7 +78,7 @@ namespace s90 {
             }
 
             template<class T, class ... Args>
-            requires orm::WithOrm<T>
+            requires orm::with_orm_trait<T>
             aiopromise<sql_result<T>> select(std::string_view fmt, Args&& ... args) {
                 auto result = co_await select(std::vformat(fmt, std::make_format_args(escape(args)...)));
                 if(result.error) {
