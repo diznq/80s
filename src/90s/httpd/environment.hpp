@@ -35,17 +35,30 @@ namespace s90 {
             virtual std::string url(std::string_view endpoint, std::map<std::string, std::string>&& params, encryption encrypt = encryption::full) const = 0;
 
             virtual const std::string& body() const = 0;
+            virtual std::map<std::string, std::string> form() const = 0;
 
             virtual void content_type(std::string&& value) = 0;
             
             virtual void status(std::string&& status_code) = 0;
             virtual std::shared_ptr<irender_context> output() const = 0;
+            virtual void redirect(std::string_view target) = 0;
 
             virtual void *const local_context() const = 0;
             virtual icontext *const global_context() const = 0;
 
-            virtual std::expected<std::string, std::string> encrypt(std::string_view text, std::string_view key, encryption mode);
-            virtual std::expected<std::string, std::string> decrypt(std::string_view text, std::string_view key);
+            // cryptography
+            virtual std::expected<std::string, std::string> encrypt(std::string_view text, std::string_view key, encryption mode) const = 0;
+            virtual std::expected<std::string, std::string> decrypt(std::string_view text, std::string_view key) const = 0;
+
+            // hashes
+            virtual std::string sha1(std::string_view data) const = 0;
+            virtual std::string sha256(std::string_view data) const = 0;
+            virtual std::string hmac_sha256(std::string_view data, std::string_view key) const = 0;
+
+            // encoding
+            virtual std::string to_b64(std::string_view data) const = 0;
+            virtual std::expected<std::string, std::string> from_b64(std::string_view data) const = 0;
+            virtual std::string to_hex(std::string_view data) const = 0;
 
             template<class T>
             T* const local_context() const {
@@ -58,6 +71,7 @@ namespace s90 {
             std::shared_ptr<render_context> output_context = std::make_shared<render_context>();
             std::map<std::string, std::string> output_headers;
             size_t length_estimate = 0;
+            bool redirects = false;
 
             void *local_context_ptr = nullptr;
             icontext *global_context_ptr = nullptr;
@@ -83,15 +97,30 @@ namespace s90 {
 
             std::optional<std::string> query(std::string&& key) const override;
             const std::string& body() const override;
+            std::map<std::string, std::string> form() const override;
 
             void content_type(std::string&& value) override;
             void status(std::string&& status_code) override;
+            
             std::shared_ptr<irender_context> output() const override;
+            void redirect(std::string_view target) override;
+
             void *const local_context() const override;
             icontext *const global_context() const override;
 
-            std::expected<std::string, std::string> encrypt(std::string_view text, std::string_view key, encryption mode) override;
-            std::expected<std::string, std::string> decrypt(std::string_view text, std::string_view key) override;
+            // cryptography
+            std::expected<std::string, std::string> encrypt(std::string_view text, std::string_view key, encryption mode) const override;
+            std::expected<std::string, std::string> decrypt(std::string_view text, std::string_view key) const override;
+
+            // hashes
+            std::string sha1(std::string_view data) const override;
+            std::string sha256(std::string_view data) const override;
+            std::string hmac_sha256(std::string_view data, std::string_view key) const override;
+
+            // encoding
+            std::string to_b64(std::string_view data) const override;
+            std::expected<std::string, std::string> from_b64(std::string_view data) const override;
+            std::string to_hex(std::string_view data) const override;
 
         private:
             friend class s90::httpd::server;

@@ -7,13 +7,18 @@
 namespace s90 {
     namespace httpd {
         aiopromise<std::string> environment::http_response() {
-            auto rendered = std::move(co_await output_context->finalize());
-            length_estimate += 60 + status_line.length() + rendered.length();
+            std::string rendered;
+            if(!redirects)
+                rendered = std::move(co_await output_context->finalize());
+
             std::string response;
+            length_estimate += 60 + status_line.length() + rendered.length();
             response.reserve(length_estimate);
+
             response += "HTTP/1.1 ";
             response += status_line;
             response += "\r\n";
+            
             output_headers["content-length"] = std::to_string(rendered.length());
             for(const auto& [k, v] : output_headers) {
                 response += k;
@@ -21,6 +26,7 @@ namespace s90 {
                 response += v;
                 response += "\r\n";
             }
+            
             response += "\r\n";
             response += rendered;
             co_return std::move(response);
@@ -108,6 +114,10 @@ namespace s90 {
             return http_body;
         }
 
+        std::map<std::string, std::string> environment::form() const {
+            return util::parse_query_string(body());
+        }
+
         void environment::content_type(std::string&& value) {
             output_headers["content-type"] = value;
         }
@@ -120,6 +130,12 @@ namespace s90 {
             return static_pointer_cast<irender_context>(output_context);
         }
 
+        void environment::redirect(std::string_view target) {
+            status_line = "302 Temporary redirect";
+            output_headers["location"] = target;
+            redirects = true;
+        }
+
         void *const environment::local_context() const {
             return local_context_ptr;
         }
@@ -128,12 +144,37 @@ namespace s90 {
             return global_context_ptr;
         }
 
-        std::expected<std::string, std::string> environment::encrypt(std::string_view text, std::string_view key, encryption mode) {
-            return util::cipher(text, key, true, mode == encryption::full);
+        std::expected<std::string, std::string> environment::encrypt(std::string_view text, std::string_view key, encryption mode) const {
+            return util::cipher(text, enc_base + std::string(key), true, mode == encryption::full);
         }
 
-        std::expected<std::string, std::string> environment::decrypt(std::string_view text, std::string_view key) {
-            return util::cipher(text, key, false, true);
+        std::expected<std::string, std::string> environment::decrypt(std::string_view text, std::string_view key) const {
+            return util::cipher(text, enc_base + std::string(key), false, true);
+        }
+
+        std::string environment::sha1(std::string_view data) const {
+            return util::sha1(data);
+        }
+
+        std::string environment::sha256(std::string_view data) const {
+            return util::sha256(data);
+        }
+
+        std::string environment::hmac_sha256(std::string_view data, std::string_view key) const {
+            return util::hmac_sha256(data, key);
+        }
+
+        // encoding
+        std::string environment::to_b64(std::string_view data) const {
+            return util::to_b64(data);
+        }
+
+        std::expected<std::string, std::string> environment::from_b64(std::string_view data) const {
+            return util::from_b64(data);
+        }
+
+        std::string environment::to_hex(std::string_view data) const {
+            return util::to_hex(data);
         }
 
         void environment::write_body(std::string&& data) {
@@ -145,7 +186,7 @@ namespace s90 {
         }
 
         void environment::write_method(std::string&& method) {
-            method = std::move(method);
+            http_method = std::move(method);
         }
 
         void environment::write_query(std::map<std::string, std::string>&& qs) {

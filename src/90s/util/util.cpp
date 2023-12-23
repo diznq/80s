@@ -68,6 +68,18 @@ namespace s90 {
             return result;
         }
 
+        std::string to_hex(std::string_view data) {
+            std::string result;
+            result.reserve(data.size() * 2);
+            char chars[] = "0123456789ABCDEF";
+            for (char c_ : data) {
+                unsigned c = ((unsigned)c_)&255;
+                result += chars[(c >> 4) & 15];
+                result += chars[c & 15];
+            }
+            return result;
+        }
+
         std::string sha1(std::string_view text) {
             unsigned char buff[20];
             crypto_sha1(text.data(), text.length(), buff, sizeof(buff));
