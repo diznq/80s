@@ -149,7 +149,7 @@ namespace s90 {
                     current = query_string.substr(prev_pos);
                     prev_pos = query_string.length();
                 } else {
-                    current = query_string.substr(prev_pos, pos);
+                    current = query_string.substr(prev_pos, pos - prev_pos);
                     prev_pos = pos + 1;
                 }
                 if(current.length() == 0) break;
