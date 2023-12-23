@@ -129,6 +129,7 @@ if [ "$arg" = "pages" ]; then
   for file in $to_translate; do
     echo "> Translating $file"
     bin/template "$file" "$file" $(echo "$file" | sed  s/\\.html$/.html.cpp/g)
+    touch -r "$file" "$(echo "$file" | sed  s/\\.html$/.html.cpp/g)"
   done
 
   to_compile=$(find "$WEB_ROOT" -name "*.html.cpp" -type f)

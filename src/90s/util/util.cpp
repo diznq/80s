@@ -71,7 +71,7 @@ namespace s90 {
         std::string to_hex(std::string_view data) {
             std::string result;
             result.reserve(data.size() * 2);
-            char chars[] = "0123456789ABCDEF";
+            char chars[] = "0123456789abcdef";
             for (char c_ : data) {
                 unsigned c = ((unsigned)c_)&255;
                 result += chars[(c >> 4) & 15];
