@@ -333,9 +333,7 @@ namespace s90 {
                     "using s90::httpd::page;\n"
                     "using s90::httpd::status;\n"
                     "using s90::httpd::encryption;\n"
-                    "using s90::orm;\n"
-                    "using s90::aiopromise;\n"
-                    "using s90::nil;\n\n"
+                    "using namespace s90;\n"
 
                     "class renderable : public page {\n"
                     "public:\n"
