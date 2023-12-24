@@ -28,7 +28,7 @@
 namespace s90 {
     namespace httpd {
 
-        std::map<std::string, server::loaded_lib> server::loaded_libs;
+        dict<std::string, server::loaded_lib> server::loaded_libs;
         std::mutex server::loaded_libs_lock;
 
         struct quit_page : public page {
@@ -272,7 +272,7 @@ namespace s90 {
         }
 
         aiopromise<nil> server::on_accept(std::shared_ptr<afd> fd) {
-            std::map<std::string, page*>::iterator it;
+            dict<std::string, page*>::iterator it;
             page *current_page = default_page;
             std::string_view script;
             std::string endpoint;

@@ -105,7 +105,7 @@ namespace s90 {
         this->init_callback = init_callback;
     }
 
-    const std::map<fd_t, std::shared_ptr<afd>>& context::get_fds() const {
+    const dict<fd_t, std::shared_ptr<afd>>& context::get_fds() const {
         return fds;
     }
 
@@ -122,7 +122,7 @@ namespace s90 {
     }
 
     std::shared_ptr<storable> context::store(std::string_view name) {
-        auto it = stores.find(name);
+        auto it = stores.find(std::string(name));
         if(it != stores.end())
             return it->second;
         return nullptr;

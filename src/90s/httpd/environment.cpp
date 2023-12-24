@@ -83,15 +83,15 @@ namespace s90 {
             return it->second;
         }
 
-        const std::map<std::string, std::string>& environment::query() const {
+        const dict<std::string, std::string>& environment::query() const {
             return query_params;
         }
 
-        const std::map<std::string, std::string>& environment::signed_query() const {
+        const dict<std::string, std::string>& environment::signed_query() const {
             return signed_params;
         }
 
-        std::string environment::url(std::string_view endpoint, std::map<std::string, std::string>&& params, encryption encrypt) const {
+        std::string environment::url(std::string_view endpoint, dict<std::string, std::string>&& params, encryption encrypt) const {
             if(params.size() == 0) return std::string(endpoint);
             std::string query_string = "";
             std::string final_result {endpoint};
@@ -122,7 +122,7 @@ namespace s90 {
             return http_body;
         }
 
-        std::map<std::string, std::string> environment::form() const {
+        dict<std::string, std::string> environment::form() const {
             return util::parse_query_string(body());
         }
 
@@ -198,11 +198,11 @@ namespace s90 {
             http_method = std::move(method);
         }
 
-        void environment::write_query(std::map<std::string, std::string>&& qs) {
+        void environment::write_query(dict<std::string, std::string>&& qs) {
             query_params = std::move(qs);
         }
 
-        void environment::write_signed_query(std::map<std::string, std::string>&& qs) {
+        void environment::write_signed_query(dict<std::string, std::string>&& qs) {
             signed_params = std::move(qs);
         }
 

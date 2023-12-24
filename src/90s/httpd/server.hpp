@@ -2,7 +2,6 @@
 #include "../afd.hpp"
 #include "page.hpp"
 #include <memory>
-#include <map>
 #include <string>
 #include <mutex>
 
@@ -35,8 +34,8 @@ namespace s90 {
                 bool shared = false;
             };
 
-            std::map<std::string, loaded_page> pages;
-            static std::map<std::string, loaded_lib> loaded_libs;
+            dict<std::string, loaded_page> pages;
+            static dict<std::string, loaded_lib> loaded_libs;
             static std::mutex loaded_libs_lock;
             void *local_context = nullptr;
             context *global_context = nullptr;

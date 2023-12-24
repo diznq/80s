@@ -1,7 +1,6 @@
 #pragma once
 #include "../context.hpp"
 #include <functional>
-#include <map>
 #include <chrono>
 
 namespace s90 {
@@ -24,7 +23,7 @@ namespace s90 {
 
         template<class T>
         class cache_layer : public storable {
-            std::map<std::string, expirable<T>, std::less<>> items;
+            dict<std::string, expirable<T>> items;
         public:
             cached<T> get(const std::string& key) {
                 auto it = items.find(key);
@@ -48,7 +47,7 @@ namespace s90 {
 
         template<class T>
         class async_cache_layer : public cache_layer<T> {
-            std::map<std::string, std::shared_ptr<async_vec<T>>> races;
+            dict<std::string, std::shared_ptr<async_vec<T>>> races;
         public:
             std::shared_ptr<async_vec<T>> get_races(const std::string& key) const {
                 auto it = races.find(key);

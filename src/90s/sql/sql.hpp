@@ -1,13 +1,13 @@
 #pragma once
-#include <map>
 #include <vector>
+#include "../shared.hpp"
 #include "../aiopromise.hpp"
 #include "../orm/orm.hpp"
 #include "../util/orm_types.hpp"
 
 namespace s90 {
     namespace sql {
-        using sql_row = std::map<std::string, std::string>;
+        using sql_row = dict<std::string, std::string>;
 
         template<class T>
         struct sql_result {

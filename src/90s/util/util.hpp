@@ -1,10 +1,10 @@
 #pragma once
+#include "../shared.hpp"
+#include "../aiopromise.hpp"
 #include <string>
 #include <string_view>
-#include <map>
 #include <expected>
 #include <charconv>
-#include "../aiopromise.hpp"
 
 namespace s90 {
     namespace util {
@@ -21,7 +21,7 @@ namespace s90 {
         std::string to_hex(std::string_view text);
         
         std::expected<std::string, std::string> cipher( std::string_view text, std::string_view key, bool encrypt, bool iv);
-        std::map<std::string, std::string> parse_query_string(std::string_view query_string);
+        dict<std::string, std::string> parse_query_string(std::string_view query_string);
 
         template<class T>
         bool str_to_n(const std::string& str, T& ref, int base = 10) {

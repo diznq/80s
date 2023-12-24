@@ -244,7 +244,7 @@ namespace s90 {
                 }
                 
                 std::vector<mysql_field> fields;
-                std::map<std::string, mysql_field> by_name;
+                dict<std::string, mysql_field> by_name;
 
                 // read initial packet that simply contains number of fields following
                 mysql_decoder decoder(n_fields_desc.data);

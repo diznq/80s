@@ -1,13 +1,13 @@
 #pragma once
 #include <80s/80s.h>
+#include "shared.hpp"
 #include "afd.hpp"
 #include "aiopromise.hpp"
 #include "sql/sql.hpp"
-#include <map>
 #include <memory>
 
 namespace s90 {
-
+    
     class storable {
     public:
         virtual ~storable() = default;
@@ -28,7 +28,7 @@ namespace s90 {
         virtual ~icontext() = default;
         virtual aiopromise<std::weak_ptr<iafd>> connect(const std::string& addr, int port, bool udp) = 0;
         virtual std::shared_ptr<sql::isql> new_sql_instance(const std::string& type) = 0;
-        virtual const std::map<fd_t, std::shared_ptr<afd>>& get_fds() const = 0;
+        virtual const dict<fd_t, std::shared_ptr<afd>>& get_fds() const = 0;
         virtual void quit() const = 0;
         virtual void reload() const = 0;
 
@@ -40,9 +40,9 @@ namespace s90 {
         node_id *id;
         reload_context *rld;
         fd_t elfd;
-        std::map<fd_t, std::shared_ptr<afd>> fds;
-        std::map<fd_t, aiopromise<std::weak_ptr<iafd>>> connect_promises;
-        std::map<std::string, std::shared_ptr<storable>, std::less<>> stores;
+        dict<fd_t, std::shared_ptr<afd>> fds;
+        dict<fd_t, aiopromise<std::weak_ptr<iafd>>> connect_promises;
+        dict<std::string, std::shared_ptr<storable>> stores;
         std::shared_ptr<connection_handler> handler;
         std::function<void(context*)> init_callback;
 
@@ -67,7 +67,7 @@ namespace s90 {
         aiopromise<std::weak_ptr<iafd>> connect(const std::string& addr, int port, bool udp) override;
         std::shared_ptr<sql::isql> new_sql_instance(const std::string& type) override;
 
-        const std::map<fd_t, std::shared_ptr<afd>>& get_fds() const override;
+        const dict<fd_t, std::shared_ptr<afd>>& get_fds() const override;
         void quit() const override;
         void reload() const override;
 

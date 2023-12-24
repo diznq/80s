@@ -139,9 +139,9 @@ namespace s90 {
             return result;
         }
 
-        std::map<std::string, std::string> parse_query_string(std::string_view query_string) {
+        dict<std::string, std::string> parse_query_string(std::string_view query_string) {
             size_t prev_pos = 0, pos = -1;
-            std::map<std::string, std::string> qs;
+            dict<std::string, std::string> qs;
             while(prev_pos < query_string.length()) {
                 pos = query_string.find('&', prev_pos);
                 std::string_view current;

@@ -1,7 +1,6 @@
 #pragma once
 #include "../context.hpp"
 #include "render_context.hpp"
-#include <map>
 #include <string>
 #include <expected>
 #include <optional>
@@ -32,13 +31,13 @@ namespace s90 {
             virtual std::optional<std::string> query(std::string&& key) const = 0;
             virtual std::optional<std::string> signed_query(std::string&& key) const = 0;
 
-            virtual const std::map<std::string, std::string>& query() const = 0;
-            virtual const std::map<std::string, std::string>& signed_query() const = 0;
+            virtual const dict<std::string, std::string>& query() const = 0;
+            virtual const dict<std::string, std::string>& signed_query() const = 0;
 
-            virtual std::string url(std::string_view endpoint, std::map<std::string, std::string>&& params, encryption encrypt = encryption::full) const = 0;
+            virtual std::string url(std::string_view endpoint, dict<std::string, std::string>&& params, encryption encrypt = encryption::full) const = 0;
 
             virtual const std::string& body() const = 0;
-            virtual std::map<std::string, std::string> form() const = 0;
+            virtual dict<std::string, std::string> form() const = 0;
 
             virtual void content_type(std::string&& value) = 0;
             
@@ -97,7 +96,7 @@ namespace s90 {
         class environment : public ienvironment {
             std::string status_line = "200 OK";
             std::shared_ptr<render_context> output_context = std::make_shared<render_context>();
-            std::map<std::string, std::string> output_headers;
+            dict<std::string, std::string> output_headers;
             size_t length_estimate = 0;
             bool redirects = false;
 
@@ -106,9 +105,9 @@ namespace s90 {
             std::string http_method = "GET";
             std::string endpoint_path = "/";
             std::string enc_base = "";
-            std::map<std::string, std::string> signed_params;
-            std::map<std::string, std::string> query_params;
-            std::map<std::string, std::string> headers;
+            dict<std::string, std::string> signed_params;
+            dict<std::string, std::string> query_params;
+            dict<std::string, std::string> headers;
             std::string http_body;
         public:
             void disable() const override;
@@ -120,16 +119,16 @@ namespace s90 {
             void header(std::string&& key, std::string&& value) override;
 
             const std::string& endpoint() const override;
-            std::string url(std::string_view endpoint, std::map<std::string, std::string>&& params, encryption encrypt = encryption::lean) const override;
+            std::string url(std::string_view endpoint, dict<std::string, std::string>&& params, encryption encrypt = encryption::lean) const override;
 
-            const std::map<std::string, std::string>& query() const override;
-            const std::map<std::string, std::string>& signed_query() const override;
+            const dict<std::string, std::string>& query() const override;
+            const dict<std::string, std::string>& signed_query() const override;
 
             std::optional<std::string> query(std::string&& key) const override;
             std::optional<std::string> signed_query(std::string&& key) const override;
 
             const std::string& body() const override;
-            std::map<std::string, std::string> form() const override;
+            dict<std::string, std::string> form() const override;
 
             void content_type(std::string&& value) override;
             void status(std::string&& status_code) override;
@@ -158,8 +157,8 @@ namespace s90 {
             friend class s90::httpd::server;
             void write_method(std::string&& method);
             void write_header(std::string&& key, std::string&& value);
-            void write_query(std::map<std::string, std::string>&& qs);
-            void write_signed_query(std::map<std::string, std::string>&& qs);
+            void write_query(dict<std::string, std::string>&& qs);
+            void write_signed_query(dict<std::string, std::string>&& qs);
             void write_body(std::string&& data);
             void write_local_context(void *ctx);
             void write_global_context(icontext *ctx);

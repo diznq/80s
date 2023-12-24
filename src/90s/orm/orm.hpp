@@ -4,10 +4,10 @@
 #include <vector>
 #include <set>
 #include <initializer_list>
-#include <map>
 #include <concepts>
 #include <format>
-#include <stdint.h>
+#include <cstdint>
+#include "../shared.hpp"
 #include "../util/orm_types.hpp"
 
 namespace s90 {
@@ -297,7 +297,7 @@ namespace s90 {
         public:
             mapper(std::initializer_list<mapping> rels) : relations(rels) {}
 
-            void to_native(const std::map<std::string, std::string>& fields) const {
+            void to_native(const dict<std::string, std::string>& fields) const {
                 for(auto& item : relations) {
                     auto it = fields.find(item.name);
                     if(it != fields.end()) {
@@ -306,8 +306,8 @@ namespace s90 {
                 }
             }
 
-            std::map<std::string, std::string> from_native(bool bool_as_text = false) const {
-                std::map<std::string, std::string> obj;
+            dict<std::string, std::string> from_native(bool bool_as_text = false) const {
+                dict<std::string, std::string> obj;
                 for(auto& item : relations) {
                     obj[item.name] = item.value.from_native(bool_as_text);
                 }
@@ -317,9 +317,9 @@ namespace s90 {
             // sql_row -> T
             template<class T>
             requires with_orm_trait<T>
-            static std::vector<T> transform(std::span<std::map<std::string, std::string>> items) {
+            static std::vector<T> transform(std::span<dict<std::string, std::string>> items) {
                 std::vector<T> result;
-                std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [](const std::map<std::string, std::string>& item) -> auto {
+                std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [](const dict<std::string, std::string>& item) -> auto {
                     T new_item;
                     new_item.get_orm().to_native(item);
                     return new_item;
@@ -329,9 +329,9 @@ namespace s90 {
 
             template<class T>
             requires with_orm_trait<T>
-            static std::vector<T> transform(std::vector<std::map<std::string, std::string>>&& items) {
+            static std::vector<T> transform(std::vector<dict<std::string, std::string>>&& items) {
                 std::vector<T> result;
-                std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [](const std::map<std::string, std::string>& item) -> auto {
+                std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [](const dict<std::string, std::string>& item) -> auto {
                     T new_item;
                     new_item.get_orm().to_native(item);
                     return new_item;
@@ -342,8 +342,8 @@ namespace s90 {
             // T -> sql_row
             template<class T>
             requires with_orm_trait<T>
-            static std::vector<std::map<std::string,std::string>> transform(std::span<T> items, bool bool_as_text = false) {
-                std::vector<std::map<std::string,std::string>> result;
+            static std::vector<dict<std::string,std::string>> transform(std::span<T> items, bool bool_as_text = false) {
+                std::vector<dict<std::string,std::string>> result;
                 std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text](T& item) -> auto {
                     return item.get_orm().from_native(bool_as_text);
                 });
@@ -352,8 +352,8 @@ namespace s90 {
 
             template<class T>
             requires with_orm_trait<T>
-            static std::vector<std::map<std::string,std::string>> transform(std::vector<T>&& items, bool bool_as_text = false) {
-                std::vector<std::map<std::string,std::string>> result;
+            static std::vector<dict<std::string,std::string>> transform(std::vector<T>&& items, bool bool_as_text = false) {
+                std::vector<dict<std::string,std::string>> result;
                 std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text](T& item) -> auto {
                     return item.get_orm().from_native(bool_as_text);
                 });
@@ -363,9 +363,9 @@ namespace s90 {
             // ptr<sql_row> -> ptr<T>
             template<class T>
             requires with_orm_trait<T>
-            static std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<std::map<std::string, std::string>>>&& items) {
+            static std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<dict<std::string, std::string>>>&& items) {
                 auto result = std::make_shared<std::vector<T>>();
-                std::transform(items->cbegin(), items->cend(), std::back_inserter(*result), [](const std::map<std::string, std::string>& item) -> auto {
+                std::transform(items->cbegin(), items->cend(), std::back_inserter(*result), [](const dict<std::string, std::string>& item) -> auto {
                     T new_item;
                     new_item.get_orm().to_native(item);
                     return new_item;
