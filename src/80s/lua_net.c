@@ -347,12 +347,14 @@ static int l_net_mkdir(lua_State *L) {
     }
 #else
     const int len = strlen(dir_name);
-    char copy[len + 1];
+    char *copy = calloc(len + 1, sizeof(char));
+    if(!copy) return luaL_error(L, "failed to allocate space for path");
     strcpy(copy, dir_name);
     for(int i = 0; i < len; i++) {
         if(copy[i] == '/') copy[i] = '\\';
     }
     int status = CreateDirectoryA(copy, NULL);
+    free(copy);
     if(!status && GetLastError() == ERROR_ALREADY_EXISTS) status = 1;
     lua_pushboolean(L, status);
     return 1;
@@ -392,7 +394,9 @@ static int l_net_popen(lua_State *L) {
     int i, status;
     fd_t pipes[2];
     fd_t elfd = void_to_fd(lua_touserdata(L, 1));
-    const char* args[lua_gettop(L) - 1];
+    typedef char const *pcchar;
+    pcchar *args = calloc(lua_gettop(L) - 1, sizeof(pcchar));
+    if(!args) return luaL_error(L, "failed to allocate memory for args");
     const char* cmd = lua_tostring(L, 2);
     args[0] = (const char*)NULL;
     for(i=2; i<=lua_gettop(L); i++) {
@@ -400,6 +404,7 @@ static int l_net_popen(lua_State *L) {
     }
     args[i - 2] = (const char*)NULL;
     status = s80_popen(elfd, pipes, cmd, (char* const*)args);
+    free(args);
     if(status < 0) {
         lua_pushnil(L);
         lua_pushstring(L, strerror(errno));

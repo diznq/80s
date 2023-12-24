@@ -79,7 +79,7 @@ static int l_crypto_to64(lua_State *L) {
     size_t len, target_len;
     dynstr str;
     int result;
-    char buffer[65536];
+    char buffer[10000];
     const char *error_message = NULL;
     const char *data = lua_tolstring(L, 1, &len);
 
@@ -104,7 +104,7 @@ static int l_crypto_from64(lua_State *L) {
     size_t len;
     dynstr str;
     int result;
-    char buffer[65536];
+    char buffer[10000];
     const char *error_message = NULL;
     const char *data = lua_tolstring(L, 1, &len);
 
@@ -351,11 +351,12 @@ static int l_crypto_random(lua_State *L) {
     if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TNUMBER) {
         return luaL_error(L, "expecting 1 argument: length (integer)");
     }
-    // generate max 65535 random bytes
-    const size_t len = ((size_t)lua_tointeger(L, 1)) & 0xFFFF;
-    char buf[len];
+    const size_t len = ((size_t)lua_tointeger(L, 1));
+    char *buf = calloc(len, sizeof(char));
+    if(!buf) return 0;
     crypto_random(buf, len);
     lua_pushlstring(L, buf, len);
+    free(buf);
     return 1;
 }
 

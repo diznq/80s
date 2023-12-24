@@ -30,7 +30,7 @@ extern "C" {
 #define S80_MB_CLOSE 4
 
 #define BUFSIZE 16384
-#define MAX_EVENTS 4096
+#define MAX_EVENTS 100
 
 #if defined(__FreeBSD__) || defined(__APPLE__)
     #define UNIX_BASED
@@ -67,6 +67,12 @@ extern "C" {
     typedef HANDLE fd_t;
     typedef HANDLE sem_t;
     struct winevent { int reserved; };
+
+    #ifdef _MSC_VER
+    #pragma comment(lib, "ws2_32")
+    #pragma comment(lib, "mswsock")
+    #pragma comment(lib, "crypt32")
+    #endif
 
     #define S80_WIN_OP_READ 1
     #define S80_WIN_OP_ACCEPT 2

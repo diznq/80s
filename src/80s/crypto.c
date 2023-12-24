@@ -231,7 +231,6 @@ int crypto_to64(const char *data, size_t len, dynstr *output_str, const char **o
 int crypto_from64(const char *data, size_t len, dynstr *output_str, const char **output_error_message) {
     EVP_ENCODE_CTX *ctx;
     int final_len, target_len;
-    char buffer[65536];
     final_len = target_len = (int)len;
 
     ctx = EVP_ENCODE_CTX_new();

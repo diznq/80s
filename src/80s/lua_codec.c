@@ -424,7 +424,7 @@ static void json_decode(lua_State *L, const char *text, size_t len) {
             case '7':
             case '8':
             case '9':
-                num = (num * 10) + (c - '0');
+                num = (num * 10) + (int64_t)(c - '0');
                 i++;
                 break;
             case '.':
@@ -462,7 +462,7 @@ static void json_decode(lua_State *L, const char *text, size_t len) {
             case '7':
             case '8':
             case '9':
-                real = (real * 10) + (c - '0');
+                real = (real * 10) + (int64_t)(c - '0');
                 if (fractions == 0)
                     fractions = 10;
                 else
@@ -543,7 +543,7 @@ static void json_decode(lua_State *L, const char *text, size_t len) {
 }
 
 static int l_codec_json_encode(lua_State *L) {
-    char buffer[65536];
+    char buffer[10000];
     size_t offset = 0;
     dynstr str;
     if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TTABLE) {
@@ -568,7 +568,7 @@ static int l_codec_json_decode(lua_State *L) {
 }
 
 static int l_codec_lua_encode(lua_State *L) {
-    char buffer[65536];
+    char buffer[10000];
     size_t offset = 0;
     dynstr str;
     int args = lua_gettop(L);
@@ -617,7 +617,7 @@ static int l_codec_url_encode(lua_State *L) {
     char chars[] = "0123456789ABCDEF";
     char buf[3] = {'%', 0, 0};
     const char *data = lua_tolstring(L, 1, &len);
-    char *ptr;
+    char *ptr = NULL;
     dynstr_init(&str, buffer, sizeof(buffer));
     if (dynstr_check(&str, len * 3)) {
         ptr = str.ptr;
@@ -650,7 +650,7 @@ static int l_codec_url_decode(lua_State *L) {
                 // [  \  ]  ^  _  `   a   b   c   d   e   f
                    0, 0, 0, 0, 0, 0, 10, 11, 12, 13, 14, 15};
     const char *data = lua_tolstring(L, 1, &len);
-    char *ptr;
+    char *ptr = NULL;
     dynstr_init(&str, buffer, sizeof(buffer));
     if (dynstr_check(&str, len)) {
         ptr = str.ptr;

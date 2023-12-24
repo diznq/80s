@@ -186,6 +186,7 @@ static void* run(void *params_) {
         if(params->quit) return result;
     }
 #endif
+    return NULL;
 }
 
 static void* allocator(void* ud, void* ptr, size_t old_size, size_t new_size) {
@@ -214,19 +215,19 @@ int main(int argc, const char **argv) {
     const char *node_name = get_sz_arg("-n", argc, argv, "NODE", "localhost");
     const char *addr = v6 ? "::" : "0.0.0.0";
     char *module_names = NULL;
-    serve_params params[workers];
+    serve_params *params = (serve_params*)calloc(workers, sizeof(serve_params));
     node_id node;
     sem_t serve_lock;
 #ifdef _WIN32
-    HANDLE handles[workers];
+    HANDLE *handles = (HANDLE*)calloc(workers, sizeof(HANDLE));
     char pipe_names[2][255];
     SECURITY_ATTRIBUTES saAttr;
 #else
-    pthread_t handles[workers];
+    pthread_t *handles = (pthread_t*)calloc(workers, sizeof(pthread_t));
 #endif
-    fd_t els[workers];
-    pvoid ctxes[workers];
-    mailbox mailboxes[workers];
+    fd_t *els = (fd_t*)calloc(workers, sizeof(fd_t));
+    pvoid *ctxes = (pvoid*)calloc(workers, sizeof(pvoid));
+    mailbox *mailboxes = (mailbox*)calloc(workers, sizeof(mailbox));
 
     if(show_cfg) {
         printf("Name: %s\n", node_name);
@@ -290,7 +291,6 @@ int main(int argc, const char **argv) {
         }
     }
 
-    memset(params, 0, sizeof(params));
     memset(&reload, 0, sizeof(reload));
 
     reload.loaded = 0;
@@ -469,5 +469,12 @@ int main(int argc, const char **argv) {
         if(mailboxes[i].messages)
             free(mailboxes[i].messages);
     }
-    
+
+    free(mailboxes);
+    free(ctxes);
+    free(els);
+    free(handles);
+    free(params);
+
+    return 0;
 }

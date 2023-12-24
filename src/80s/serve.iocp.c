@@ -9,6 +9,7 @@ union addr_common {
 // create a new iocp context
 context_holder* new_context_holder(fd_t fd, int fdtype) {
     context_holder *ctx = (context_holder*)calloc(1, sizeof(context_holder));
+    if(!ctx) return NULL;
     memset(ctx, 0, sizeof(context_holder));
     ctx->ol.Pointer = ctx;
     ctx->wsaBuf.buf = ctx->data;
@@ -23,6 +24,11 @@ context_holder* new_context_holder(fd_t fd, int fdtype) {
 context_holder* new_fd_context(fd_t childfd, int fdtype) {
     context_holder *recv_helper = new_context_holder(childfd, fdtype);
     context_holder *send_helper = new_context_holder(childfd, fdtype);
+    if(!recv_helper || !send_helper) {
+        if(recv_helper) free(recv_helper);
+        if(send_helper) free(send_helper);
+        return NULL;
+    }
     // tie them together so we don't lose track
     recv_helper->op = S80_WIN_OP_ACCEPT;
     send_helper->op = S80_WIN_OP_WRITE;
@@ -84,6 +90,10 @@ void *serve(void *vparams) {
 
         if(CreateIoCompletionPort(selfpipe, elfd, (ULONG_PTR)S80_FD_PIPE, 0) != NULL) {
             cx = new_fd_context(selfpipe, S80_FD_SOCKET);
+            if(!cx) {
+                error("serve: failed to allocate memory for self pipe context\n");
+                return NULL;
+            }
             cx->recv->op = S80_WIN_OP_READ;
             cx->worker = id;
             ReadFile(cx->recv->fd, cx->recv->wsaBuf.buf, cx->recv->wsaBuf.len, NULL, &cx->recv->ol);
@@ -100,12 +110,20 @@ void *serve(void *vparams) {
                 error("serve: failed to add parentfd socket to iocp");
             }
             
-            // preload workers * 3 accepts
-            for(n=0; n<workers * 3; n++) {
+            // preload workers * 4 accepts
+            for(n=0; n < (ULONG)(workers * 4); n++) {
                 childfd = (fd_t)WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
                 s80_enable_async(childfd);
                 // prepare overlapped structs for both recv and send for newly accepted socket
                 cx = new_fd_context(childfd, S80_FD_SOCKET);
+                if(!cx) {
+                    closesocket((SOCKET)childfd);
+                    if(n == 0) {
+                        error("serve: failed to allocate memory for accept socket context");
+                        return NULL;
+                    }
+                    continue;
+                }
                 cx->recv->op = S80_WIN_OP_ACCEPT;
                 cx->worker = accepts;
                 
@@ -206,6 +224,10 @@ void *serve(void *vparams) {
                 childfd = (fd_t)WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
                 s80_enable_async(childfd);
                 cx = new_fd_context(childfd, S80_FD_SOCKET);
+                if(!cx) {
+                    closesocket((SOCKET)childfd);
+                    continue;
+                }
                 cx->recv->op = S80_WIN_OP_ACCEPT;
                 cx->worker = accepts;
 

@@ -200,7 +200,7 @@ static void set_package_path(lua_State *L) {
 #elif defined(__linux__)
     readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
 #elif defined(_WIN32)
-    GetModuleFileName(NULL, exe_path, sizeof(exe_path) - 1);
+    GetModuleFileNameA(NULL, exe_path, sizeof(exe_path) - 1);
 #endif
     len = strlen(exe_path) - 1;
     for(; len > 0; len--) {
