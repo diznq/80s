@@ -70,9 +70,9 @@ namespace s90 {
             /// @brief Create an URL
             /// @param endpoint endpoint name
             /// @param params query params
-            /// @param encrypt encryption mode, defaults to full
+            /// @param encrypt encryption mode, defaults to lean (lean = without IV, full = with IV - different each time)
             /// @return URL
-            virtual std::string url(std::string_view endpoint, dict<std::string, std::string>&& params, encryption encrypt = encryption::full) const = 0;
+            virtual std::string url(std::string_view endpoint, dict<std::string, std::string>&& params, encryption encrypt = encryption::lean) const = 0;
 
             /// @brief Get request body
             /// @return request body
