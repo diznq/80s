@@ -59,10 +59,6 @@ namespace s90 {
                 if(length <= 0) length = size() + length;
                 if(length + from_incl > size()) length = size() - from_incl;
                 res.back_offset = rows->size() - (res.front_offset + length);
-                //if(res.back_offset < res.front_offset) res.back_offset = res.front_offset;
-                printf("original(%zu - %zu)\n", front_offset, rows->size() - back_offset);
-                printf("range(%zu - %zu)\n", res.front_offset, rows->size() - res.back_offset);
-                printf("-----\n");
                 res.error = false;
                 res.rows = rows;
                 return res;
