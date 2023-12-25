@@ -108,7 +108,7 @@ namespace s90 {
                 std::expected<std::string, std::string> result;
                 if(encrypt == encryption::lean) {
                     result = *cache::cache<std::expected<std::string, std::string>>(
-                        global_context_ptr, query_string + enc_base + std::string(endpoint), cache::never,
+                        global_context_ptr, query_string + std::string(endpoint), cache::never,
                         [&query_string, &endpoint, this]() -> auto {
                             return std::make_shared<std::expected<std::string, std::string>>(std::move(util::cipher(query_string, enc_base + std::string(endpoint), true, false)));
                         });
