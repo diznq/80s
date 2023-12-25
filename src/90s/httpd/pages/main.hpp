@@ -30,7 +30,7 @@ class default_context {
     std::shared_ptr<sql::isql> db;
 public:
     default_context(icontext *ctx);
-    virtual std::string get_message();
     virtual aiopromise<std::shared_ptr<sql::isql>> get_db();
     virtual aiopromise<sql_result<post>> get_posts();
+    virtual aiopromise<int> add_post(const std::string& author, const std::string& text);
 };

@@ -8,10 +8,6 @@ default_context::default_context(s90::icontext *ctx) : ctx(ctx) {
     db = ctx->new_sql_instance("mysql");
 }
 
-std::string default_context::get_message() {
-    return "Hello world!";
-}
-
 aiopromise<std::shared_ptr<isql>> default_context::get_db() {
     if(!db->is_connected()) {
         auto connect_ok = co_await db->connect("localhost", 3306, "80s", "password", "db80");
@@ -20,6 +16,14 @@ aiopromise<std::shared_ptr<isql>> default_context::get_db() {
         }
     }
     co_return db;
+}
+
+aiopromise<int> default_context::add_post(const std::string& author, const std::string& text) {
+    if(author.empty() || text.empty()) co_return -2;
+    auto conn = co_await get_db();
+    auto result = co_await db->exec("INSERT INTO posts(author, `text`) VALUES ('{}', '{}')", author, text);
+    printf("err: %s\n", result.error_message.c_str());
+    co_return result ? result.last_insert_id : -1;
 }
 
 aiopromise<sql_result<post>> default_context::get_posts() {
@@ -32,12 +36,12 @@ aiopromise<sql_result<post>> default_context::get_posts() {
 }
 
 extern "C" {
-    default_context* initialize(s90::icontext *ctx, default_context *previous) {
+    void* initialize(s90::icontext *ctx, void *previous) {
         if(previous) return previous;
         return new default_context(ctx);
     }
 
-    default_context* release(s90::icontext *ctx, default_context *current) {
+    void* release(s90::icontext *ctx, void *current) {
         return current;
     }
 }

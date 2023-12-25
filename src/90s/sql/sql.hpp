@@ -13,7 +13,7 @@ namespace s90 {
         /// @tparam T either sql_row or any type that extends with_orm
         template<class T>
         struct sql_result {
-            bool error = false;
+            bool error = false, has_rows = false;
             std::shared_ptr<std::vector<T>> rows;
             int last_insert_id = 0;
             
@@ -28,7 +28,7 @@ namespace s90 {
             sql_result() {}
             sql_result(const std::string& err) : error(true), error_message(err) {}
             sql_result(bool error) : error(error) {}
-            sql_result(const std::shared_ptr<std::vector<T>>& result) : error(false), rows(result) {}
+            sql_result(const std::shared_ptr<std::vector<T>>& result) : error(false), has_rows(true), rows(result) {}
 
             /// @brief Create a new SQL result with error
             /// @param err error message
@@ -37,6 +37,7 @@ namespace s90 {
                 sql_result result;
                 result.error_message = err;
                 result.error = true;
+                result.has_rows = false;
                 return result;
             }
 
@@ -45,6 +46,7 @@ namespace s90 {
             /// @return SELECT SQL result
             static inline sql_result with_rows(const std::shared_ptr<std::vector<T>>& rows) {
                 sql_result result;
+                result.has_rows = true;
                 result.rows = rows;
                 return result;
             }
@@ -87,12 +89,13 @@ namespace s90 {
                 if(length + from_incl > size()) length = size() - from_incl;
                 res.back_offset = rows->size() - (res.front_offset + length);
                 res.error = false;
+                res.has_rows = true;
                 res.rows = rows;
                 return res;
             }
 
             /// @brief Evaluate if SQL result is not an error
-            operator bool() const { return !error && rows; }
+            operator bool() const { return !error && (!has_rows || rows); }
         };
 
         /// @brief SQL connect result
@@ -138,7 +141,17 @@ namespace s90 {
             /// @return SQL result
             virtual aiopromise<sql_result<sql_row>> select(present<std::string> query) = 0;
 
-            /// @brief Execute a SQL statement
+            /// @brief Execute a SQL statement (except SELECT)
+            /// @tparam ...Args format types
+            /// @param fmt SQL query base using std::format syntax
+            /// @param ...args arguments
+            /// @return SQL result
+            template<class ... Args>
+            aiopromise<sql_result<sql_row>> exec(std::string_view fmt, Args&& ... args) {
+                return exec(std::vformat(fmt, std::make_format_args(escape(args)...)));
+            }
+
+            /// @brief Execute a SQL SELECT statement
             /// @tparam ...Args format types
             /// @param fmt SQL query base using std::format syntax
             /// @param ...args arguments
@@ -148,7 +161,7 @@ namespace s90 {
                 return select(std::vformat(fmt, std::make_format_args(escape(args)...)));
             }
 
-            /// @brief Execute a SQL statement returning ORM-ed object array
+            /// @brief Execute a SQL SELECT statement returning ORM-ed object array
             /// @tparam T result class, must extend with_orm
             /// @param query SQL query
             /// @return SQL result
@@ -163,7 +176,7 @@ namespace s90 {
                 }
             }
 
-            /// @brief Execute a SQL statement returning ORM-ed object array
+            /// @brief Execute a SQL SELECT statement returning ORM-ed object array
             /// @tparam T result class, must extend with_orm
             /// @tparam ...Args format args types
             /// @param fmt SQL query base using std::format syntax

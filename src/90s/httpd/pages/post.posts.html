@@ -1,0 +1,20 @@
+#! POST /posts
+<?hpp
+    #include "main.hpp"
+    struct request_body : public orm::with_orm {
+        orm::optional<std::string> author;
+        orm::optional<std::string> text;
+        orm::mapper get_orm() {
+            return {{"author", author}, {"text", text}};
+        }
+    };
+?>
+<?cpp
+    auto body = env.form<request_body>();
+    auto ctx = env.local_context<default_context>();
+    int post_id = -3;
+    if(body.author && body.text) {
+        post_id = co_await ctx->add_post(*(body.author), *(body.text));
+    }
+    env.redirect("/posts?last_id=" + std::to_string(post_id));
+?>

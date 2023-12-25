@@ -1,0 +1,53 @@
+#! GET /posts
+<?hpp 
+#include "main.hpp"
+?><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <?cpp
+        auto ctx = env.local_context<default_context>();
+        auto name = env.query("name");
+        if(name) {
+            | <h1>Hi, #[[name.value()]]</h1>
+        } else {
+            | <h1>Hello!</h1>
+        }
+    ?>
+    <br><br>
+    <?cpp
+        auto posts = co_await ctx->get_posts();
+        ```
+        <form action="/posts" method="post" enctype="application/x-www-form-urlencoded">
+            <fieldset>
+                <legend>New post</legend>
+                <label for="name">Your name: </label>
+                <input name="author" required aria-required="true" maxlength="80" id="author" placeholder="John Doe">
+                <br>
+                <label for="text">Your post: </label><br>
+                <textarea id="text" name="text" placeholder="Your message" required aria-required="true"></textarea>
+                <br>
+                <input type="submit" name="submit" value="Add post">
+            </fieldset>
+        </form>
+        ```
+        if(posts.size() == 0) {
+            | <h3>No posts found</h3>
+        } else {
+            for(auto& p : posts) {
+            ```
+            <div class="post">
+                <p><a href="##[[ p.id ]]">##[[ p.id ]]</a> Author: #[[ p.author ]]</p>
+                <p>#[[p.text]]</p>
+            </div>
+            <hr>
+            ```
+            }
+        }
+    ?>
+</body>
+</html>
