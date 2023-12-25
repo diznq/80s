@@ -40,6 +40,7 @@ namespace s90 {
             auto cbegin() const { return rows->cbegin() + front_offset; }
             auto cend() const { return rows->cend() - back_offset; }
             auto size() const { return error || !rows ? 0 : rows->size() - front_offset - back_offset; }
+            bool empty() const { return error || size() == 0; }
 
             T& back() const { return rows[rows->size() - back_offset]; }
             T& front() const { return rows[front_offset]; }
