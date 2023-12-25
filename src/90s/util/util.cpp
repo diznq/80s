@@ -22,60 +22,67 @@ namespace s90 {
                 // [  \  ]  ^  _  `   a   b   c   d   e   f
                    0, 0, 0, 0, 0, 0, 10, 11, 12, 13, 14, 15};
             std::string output;
+            output.resize(data.length());
             size_t len = data.length();
             size_t i = 0;
             char c;
+            char *ptr = output.data();
             for (i = 0; i < len; i++) {
                 c = data[i] & 255;
                 if (i <= len - 3) {
                     switch (c) {
                     case '+':
-                        output += ' ';
+                        *ptr = ' '; ptr++;
                         break;
                     case '%': {
                         if (((data[i + 1] >= '0' && data[i + 1] <= '9') || (data[i + 1] >= 'A' && data[i + 1] <= 'F') || (data[i + 1] >= 'a' && data[i + 1] <= 'f')) && ((data[i + 2] >= '0' && data[i + 2] <= '9') || (data[i + 2] >= 'A' && data[i + 2] <= 'F') || (data[i + 2] >= 'a' && data[i + 2] <= 'f'))) {
-                            output += (lut[data[i + 1] - '0'] << 4) | (lut[data[i + 2] - '0']);
+                            *ptr = (lut[data[i + 1] - '0'] << 4) | (lut[data[i + 2] - '0']); ptr++;
                             i += 2;
                         } else {
-                            output += c;
+                            *ptr = c; ptr++;
                         }
                         break;
                     }
                     default:
-                        output += c;
+                        *ptr = c; ptr++;
                     }
                 } else {
-                    output += c == '+' ? ' ' : c;
+                    *ptr = c == '+' ? ' ' : c; ptr++;
                 }
             }
+            output.resize(ptr - output.data());
             return output;
         }
 
         std::string url_encode(std::string_view data) {
             std::string result;
-            result.reserve(data.size());
+            result.resize(3 * data.size() + 1);
             char chars[] = "0123456789ABCDEF";
+            char *ptr = result.data();
             for (char c_ : data) {
                 unsigned c = ((unsigned)c_)&255;
                 if (url_lut[c]) {
-                    result += c_;
+                    *ptr = c;
+                    ptr++;
                 } else {
-                    result += '%';
-                    result += chars[(c >> 4) & 15];
-                    result += chars[c & 15];
+                    *ptr = '%'; ptr++;
+                    *ptr = chars[(c >> 4) & 15]; ptr++;
+                    *ptr = chars[c & 15]; ptr++;
                 }
             }
+            result.resize(ptr - result.data());
             return result;
         }
 
         std::string to_hex(std::string_view data) {
             std::string result;
-            result.reserve(data.size() * 2);
+            result.resize(data.size() * 2);
+            char *ptr = result.data();
             char chars[] = "0123456789abcdef";
             for (char c_ : data) {
                 unsigned c = ((unsigned)c_)&255;
-                result += chars[(c >> 4) & 15];
-                result += chars[c & 15];
+                *ptr = chars[(c >> 4) & 15]; ptr++;
+                *ptr = chars[c & 15]; ptr++;
             }
             return result;
         }

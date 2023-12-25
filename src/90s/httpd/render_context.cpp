@@ -1,4 +1,5 @@
 #include "render_context.hpp"
+#include <cstring>
 
 namespace s90 {
     namespace httpd {
@@ -34,29 +35,31 @@ namespace s90 {
 
         std::string render_context::escape_string(std::string_view view) const {
             std::string str;
-            str.reserve(view.size() + 1);
+            str.resize(6 * view.size() + 1);
+            char *ptr = str.data();
             for(char c : view) {
                 switch (c) {
                 case '&':
-                    str += "&amp;";
+                    std::memcpy(ptr, "&amp;", 5); ptr += 5;
                     break;
                 case '"':
-                    str += "&quot;";
+                    std::memcpy(ptr, "&quot;", 6); ptr += 6;
                     break;
                 case '<':
-                    str += "&lt;";
+                    std::memcpy(ptr, "&lt;", 4); ptr += 4;
                     break;
                 case '>':
-                    str += "&gt;";
+                    std::memcpy(ptr, "&gt;", 4); ptr += 4;
                     break;
                 case '\'':
-                    str += "&#39;";
+                    std::memcpy(ptr, "&#39;", 5); ptr += 5;
                     break;
                 default:
-                    str += c;
+                    *ptr = c; ptr++;
                     break;
                 }
             }
+            str.resize(ptr - str.data());
             return str;
         }
         
