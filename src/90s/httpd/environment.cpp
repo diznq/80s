@@ -3,6 +3,7 @@
 #include "../util/util.hpp"
 #include <algorithm>
 #include <cctype>
+#include "../cache/cache.hpp"
 
 namespace s90 {
     namespace httpd {
@@ -104,7 +105,16 @@ namespace s90 {
                 i++;
             }
             if(encrypt != encryption::none) {
-                auto result = util::cipher(query_string, enc_base + std::string(endpoint), true, encrypt == encryption::full);
+                std::expected<std::string, std::string> result;
+                if(encrypt == encryption::lean) {
+                    result = *cache::cache<std::expected<std::string, std::string>>(
+                        global_context_ptr, query_string + enc_base + std::string(endpoint), cache::never,
+                        [&query_string, &endpoint, this]() -> auto {
+                            return std::make_shared<std::expected<std::string, std::string>>(std::move(util::cipher(query_string, enc_base + std::string(endpoint), true, false)));
+                        });
+                } else {
+                    result = util::cipher(query_string, enc_base + std::string(endpoint), true, encrypt == encryption::full);
+                }
                 if(result.has_value()) {
                     query_string = "e=";
                     query_string += util::url_encode(util::to_b64(*result));
