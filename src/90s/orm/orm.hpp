@@ -56,6 +56,10 @@ namespace s90 {
                 return value_;
             }
 
+            T* operator->() const {
+                return &value_;
+            }
+
             operator bool() const {
                 return is_set;
             }

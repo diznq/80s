@@ -48,8 +48,12 @@ namespace s90 {
                 return (*rows)[front_offset + index];
             }
 
+            T* operator->() const {
+                return rows->data() + front_offset;
+            }
+
             T& operator*() const {
-                return front();
+                return *(rows->data() + front_offset);
             }
 
             sql_result slice(size_t from_incl, int64_t length) const {
