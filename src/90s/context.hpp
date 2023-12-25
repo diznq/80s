@@ -26,13 +26,37 @@ namespace s90 {
     class icontext {
     public:
         virtual ~icontext() = default;
+
+        /// @brief Create a new file descriptor
+        /// @param addr IP address to connect to
+        /// @param port port
+        /// @param udp true if UDP
+        /// @return return an already connected file descriptor
         virtual aiopromise<std::weak_ptr<iafd>> connect(const std::string& addr, int port, bool udp) = 0;
+
+        /// @brief Create a new SQL instance
+        /// @param type SQL type, currently only "mysql" is accepted
+        /// @return SQL instance
         virtual std::shared_ptr<sql::isql> new_sql_instance(const std::string& type) = 0;
+
+        /// @brief Get dictionary of all existing file descriptors
+        /// @return file descriptors
         virtual const dict<fd_t, std::shared_ptr<afd>>& get_fds() const = 0;
+
+        /// @brief Quit the application
         virtual void quit() const = 0;
+
+        /// @brief Reload the application
         virtual void reload() const = 0;
 
+        /// @brief Create a new store within the context
+        /// @param name store name
+        /// @param entity store
         virtual void store(std::string_view name, std::shared_ptr<storable> entity) = 0;
+
+        /// @brief Get store by name
+        /// @param name store by name
+        /// @return store, nullptr if it doesn't exist
         virtual std::shared_ptr<storable> store(std::string_view name) = 0;
     };
 

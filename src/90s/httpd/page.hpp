@@ -21,7 +21,13 @@ namespace s90 {
         class page {
         public:
             virtual ~page() = default;
+            /// @brief Get page method + endpoint name or just endpoint name, i.e. GET /index or just /index for all HTTP methods
+            /// @return endpoint name
             virtual const char* name() const = 0;
+
+            /// @brief Render the page
+            /// @param env environment
+            /// @return nil
             virtual aiopromise<std::expected<nil, status>> render(ienvironment& env) const = 0;
         };
     }

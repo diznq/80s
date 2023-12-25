@@ -40,15 +40,47 @@ namespace s90 {
     class iafd {
     public:
         virtual ~iafd() = default;
+        /// @brief Return error state
+        /// @return true if file descriptor experienced error
         virtual bool is_error() const = 0;
+
+        /// @brief Return closed state
+        /// @return true if file descriptor is closed
         virtual bool is_closed() const = 0;
+
+        /// @brief Ready any number of bytes
+        /// @return read result
         virtual aiopromise<read_arg> read_any() = 0;
+
+        /// @brief Read exactly `n` bytes
+        /// @param n_bytes number of bytes to be read
+        /// @return read result
         virtual aiopromise<read_arg> read_n(size_t n_bytes) = 0;
+
+        /// @brief Read until `delim` occurs
+        /// @param delim delimiter
+        /// @return read result excluding delimiter, next read excludes it as well
         virtual aiopromise<read_arg> read_until(std::string&& delim) = 0;
+
+        /// @brief Write data to the file descriptor
+        /// @param data data to be written
+        /// @return true on success
         virtual aiopromise<bool> write(std::string_view data) = 0;
+
+        /// @brief Get memory usage information
+        /// @return memory usage
         virtual fd_meminfo usage() const = 0;
+
+        /// @brief Get file descriptor name if available
+        /// @return file descriptor name
         virtual std::string name() const = 0;
+
+        /// @brief Set file descriptor name
+        /// @param name new name
         virtual void set_name(std::string_view name) = 0;
+
+        /// @brief Close the file descriptor
+        /// @param immediate call on_close immediately
         virtual void close(bool immediate = true) = 0;
     };
 

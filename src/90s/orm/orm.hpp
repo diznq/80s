@@ -120,6 +120,9 @@ namespace s90 {
             any(long double& value) : ref((void*)&value), type(reftype::f80) {}
             any(bool& value) : ref((void*)&value), type(reftype::i1) {}
 
+            /// @brief Transform string form to the underlying native form
+            /// @param value string form
+            /// @return true if conversion was successful
             bool to_native(std::string_view value) const {
                 int32_t below_32 = 0;
                 uint32_t below_32u = 0;
@@ -215,6 +218,9 @@ namespace s90 {
                 return success;
             }
 
+            /// @brief Transform from native form to string form
+            /// @param bool_as_text if true, bools are treated as "true" / "false", otherwise "1" / "0"
+            /// @return string form
             std::string from_native(bool bool_as_text = false) const {
                 if(success_wb && !*(bool*)success_wb) return "";
                 switch(type) {
@@ -301,6 +307,8 @@ namespace s90 {
         public:
             mapper(std::initializer_list<mapping> rels) : relations(rels) {}
 
+            /// @brief Transform dictionary of string keys and values to a native C++ object
+            /// @param fields dictionary of keys and values
             void to_native(const dict<std::string, std::string>& fields) const {
                 for(auto& item : relations) {
                     auto it = fields.find(item.name);
@@ -310,6 +318,9 @@ namespace s90 {
                 }
             }
 
+            /// @brief Transform a native C++ object into dictionary of keys and values
+            /// @param bool_as_text true if booleans are treated as "true" / "false", otherwise "1" / "0"
+            /// @return dictionary
             dict<std::string, std::string> from_native(bool bool_as_text = false) const {
                 dict<std::string, std::string> obj;
                 for(auto& item : relations) {
@@ -318,7 +329,10 @@ namespace s90 {
                 return obj;
             }
 
-            // sql_row -> T
+            /// @brief Transform an array of dictionaries to array of native C++ objects
+            /// @tparam T object type
+            /// @param items array of dictionaries to be transformed
+            /// @return transformed result
             template<class T>
             requires with_orm_trait<T>
             static std::vector<T> transform(std::span<dict<std::string, std::string>> items) {
@@ -331,6 +345,10 @@ namespace s90 {
                 return result;
             }
 
+            /// @brief Transform an array of dictionaries to array of native C++ objects
+            /// @tparam T object type
+            /// @param items array of dictionaries to be transformed
+            /// @return transformed result
             template<class T>
             requires with_orm_trait<T>
             static std::vector<T> transform(std::vector<dict<std::string, std::string>>&& items) {
@@ -343,7 +361,10 @@ namespace s90 {
                 return result;
             }
             
-            // T -> sql_row
+            /// @brief Transform an array of native C++ objects into an array of dictionaries
+            /// @tparam T object type
+            /// @param items array of native objects to be transformed
+            /// @return transformed result
             template<class T>
             requires with_orm_trait<T>
             static std::vector<dict<std::string,std::string>> transform(std::span<T> items, bool bool_as_text = false) {
@@ -354,6 +375,10 @@ namespace s90 {
                 return result;
             }
 
+            /// @brief Transform an array of native C++ objects into an array of dictionaries
+            /// @tparam T object type
+            /// @param items array of native objects to be transformed
+            /// @return transformed result
             template<class T>
             requires with_orm_trait<T>
             static std::vector<dict<std::string,std::string>> transform(std::vector<T>&& items, bool bool_as_text = false) {
@@ -364,7 +389,10 @@ namespace s90 {
                 return result;
             }
 
-            // ptr<sql_row> -> ptr<T>
+            /// @brief Transform a shared array of dictionaries to a shared array of native C++ objects
+            /// @tparam T object type
+            /// @param items shared array of dictionaries
+            /// @return transformed result
             template<class T>
             requires with_orm_trait<T>
             static std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<dict<std::string, std::string>>>&& items) {

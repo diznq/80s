@@ -15,12 +15,12 @@ namespace s90 {
         void render_context::write(std::string&& text) {
             if(disabled) return;
             est_length += text.length();
-            if(blocks.size() > 0 && blocks.back().type == output_type::text) {
-                blocks.back().text += text;
-            } else {
+            //if(blocks.size() > 0 && blocks.back().type == output_type::text) {
+            //    blocks.back().text += text;
+            //} else {
                 output_block blk { output_type::text, std::move(text) };
                 blocks.emplace_back(std::move(blk));
-            }
+            //}
         }
 
         std::shared_ptr<irender_context> render_context::append_context() {

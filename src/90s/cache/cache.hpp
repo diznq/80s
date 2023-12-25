@@ -69,6 +69,13 @@ namespace s90 {
             }
         };
 
+        /// @brief Cache a result within the context
+        /// @tparam T result type
+        /// @param ctx global context
+        /// @param key cache key
+        /// @param expire expiry in seconds
+        /// @param factory result factory
+        /// @return cached result
         template<class T>
         cached<T> cache(icontext *ctx, std::string&& key, size_t expire, std::function<cached<T>()> factory) {
             const auto store_key = typeid(T).name();
@@ -88,6 +95,13 @@ namespace s90 {
             return result;
         }
 
+        /// @brief Cache a result of asynchronous operation
+        /// @tparam T result type
+        /// @param ctx global context
+        /// @param key cache key
+        /// @param expire expiry time in seconds, use cache::never to never expire
+        /// @param factory result factory
+        /// @return cached result
         template<class T>
         async_cached<T> async_cache(icontext *ctx, present<std::string> key, size_t expire, std::function<async_cached<T>()> factory) {
             const auto store_key = typeid(T).name();

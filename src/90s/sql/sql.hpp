@@ -9,19 +9,30 @@ namespace s90 {
     namespace sql {
         using sql_row = dict<std::string, std::string>;
 
+        /// @brief SQL result
+        /// @tparam T either sql_row or any type that extends with_orm
         template<class T>
         struct sql_result {
             bool error = false;
+            std::shared_ptr<std::vector<T>> rows;
+            int last_insert_id = 0;
+            
             bool eof = false;
             int affected_rows = 0;
-            int last_insert_id = 0;
             size_t front_offset = 0;
             size_t back_offset = 0;
 
             std::string info_message;
             std::string error_message;
-            std::shared_ptr<std::vector<T>> rows;
 
+            sql_result() {}
+            sql_result(const std::string& err) : error(true), error_message(err) {}
+            sql_result(bool error) : error(error) {}
+            sql_result(const std::shared_ptr<std::vector<T>>& result) : error(false), rows(result) {}
+
+            /// @brief Create a new SQL result with error
+            /// @param err error message
+            /// @return faulty SQL result
             static inline sql_result with_error(const std::string& err) {
                 sql_result result;
                 result.error_message = err;
@@ -29,12 +40,15 @@ namespace s90 {
                 return result;
             }
 
+            /// @brief Create a new SQL result with result of a SELECT command
+            /// @param rows selected rows
+            /// @return SELECT SQL result
             static inline sql_result with_rows(const std::shared_ptr<std::vector<T>>& rows) {
                 sql_result result;
                 result.rows = rows;
                 return result;
             }
-
+            
             auto begin() const { return rows->begin() + front_offset; }
             auto end() const { return rows->end() - back_offset; }
             auto cbegin() const { return rows->cbegin() + front_offset; }
@@ -49,14 +63,22 @@ namespace s90 {
                 return (*rows)[front_offset + index];
             }
 
+            /// @brief Get the first row
+            /// @return first row
             T* operator->() const {
                 return rows->data() + front_offset;
             }
 
+            /// @brief Get the first row
+            /// @return first row
             T& operator*() const {
                 return *(rows->data() + front_offset);
             }
 
+            /// @brief Create a slice
+            /// @param from_incl starting position
+            /// @param length length of the slice, if negative, it's equal to size() - length, 0 for the remaining size
+            /// @return slice of the SQL result
             sql_result slice(size_t from_incl, int64_t length) const {
                 if(error) return with_error(error_message);
                 sql_result res;
@@ -69,31 +91,67 @@ namespace s90 {
                 return res;
             }
 
+            /// @brief Evaluate if SQL result is not an error
             operator bool() const { return !error && rows; }
         };
 
+        /// @brief SQL connect result
         struct sql_connect {
             bool error = false;
             std::string error_message;
         };
 
+        /// @brief SQL interface
         class isql {
         public:
             virtual ~isql() = default;
+            
+            /// @brief Connect to the database
+            /// @param hostname database host name
+            /// @param port database port
+            /// @param username user name
+            /// @param passphrase password
+            /// @param database database name
+            /// @return SQL connect result
             virtual aiopromise<sql_connect> connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) = 0;
+            
+            /// @brief Reestablish the connection
+            /// @return SQL connect result
             virtual aiopromise<sql_connect> reconnect() = 0;
+
+            /// @brief Check connection state
+            /// @return true if login credentials were provided
             virtual bool is_connected() const = 0;
 
+            /// @brief Escape a string
+            /// @param view string to be escaped
+            /// @return escaped string
             virtual std::string escape_string(std::string_view view) const = 0;
             
+            /// @brief Execute a SQL statement (except SELECT)
+            /// @param query query to be executed
+            /// @return SQL result
             virtual aiopromise<sql_result<sql_row>> exec(present<std::string> query) = 0;
+
+            /// @brief Execute a SQL SELECT statement
+            /// @param query query to be executed
+            /// @return SQL result
             virtual aiopromise<sql_result<sql_row>> select(present<std::string> query) = 0;
 
+            /// @brief Execute a SQL statement
+            /// @tparam ...Args format types
+            /// @param fmt SQL query base using std::format syntax
+            /// @param ...args arguments
+            /// @return SQL result
             template<class ... Args>
             aiopromise<sql_result<sql_row>> select(std::string_view fmt, Args&& ... args) {
                 return select(std::vformat(fmt, std::make_format_args(escape(args)...)));
             }
 
+            /// @brief Execute a SQL statement returning ORM-ed object array
+            /// @tparam T result class, must extend with_orm
+            /// @param query SQL query
+            /// @return SQL result
             template<class T>
             requires orm::with_orm_trait<T>
             aiopromise<sql_result<T>> select(std::string_view query) {
@@ -105,6 +163,12 @@ namespace s90 {
                 }
             }
 
+            /// @brief Execute a SQL statement returning ORM-ed object array
+            /// @tparam T result class, must extend with_orm
+            /// @tparam ...Args format args types
+            /// @param fmt SQL query base using std::format syntax
+            /// @param ...args argument
+            /// @return SQL result
             template<class T, class ... Args>
             requires orm::with_orm_trait<T>
             aiopromise<sql_result<T>> select(std::string_view fmt, Args&& ... args) {
