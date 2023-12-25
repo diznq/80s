@@ -22,7 +22,6 @@ aiopromise<int> default_context::add_post(const std::string& author, const std::
     if(author.empty() || text.empty()) co_return -2;
     auto conn = co_await get_db();
     auto result = co_await db->exec("INSERT INTO posts(author, `text`) VALUES ('{}', '{}')", author, text);
-    printf("err: %s\n", result.error_message.c_str());
     co_return result ? result.last_insert_id : -1;
 }
 
