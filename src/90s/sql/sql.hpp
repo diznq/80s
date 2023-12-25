@@ -15,6 +15,8 @@ namespace s90 {
             bool eof = false;
             int affected_rows = 0;
             int last_insert_id = 0;
+            size_t front_offset = 0;
+            size_t back_offset = 0;
 
             std::string info_message;
             std::string error_message;
@@ -33,12 +35,37 @@ namespace s90 {
                 return result;
             }
 
-            auto begin() const { return rows->begin(); }
-            auto end() const { return rows->end(); }
-            auto size() const { return error || !rows ? 0 : rows->size(); }
+            auto begin() const { return rows->begin() + front_offset; }
+            auto end() const { return rows->end() - back_offset; }
+            auto cbegin() const { return rows->cbegin() + front_offset; }
+            auto cend() const { return rows->cend() - back_offset; }
+            auto size() const { return error || !rows ? 0 : rows->size() - front_offset - back_offset; }
+
+            T& back() const { return rows[rows->size() - back_offset]; }
+            T& front() const { return rows[front_offset]; }
 
             T& operator[](size_t index) const {
-                return (*rows)[index];
+                return (*rows)[front_offset + index];
+            }
+
+            T& operator*() const {
+                return front();
+            }
+
+            sql_result slice(size_t from_incl, int64_t length) const {
+                if(error) return with_error(error_message);
+                sql_result res;
+                res.front_offset = front_offset + from_incl;
+                if(length <= 0) length = size() + length;
+                if(length + from_incl > size()) length = size() - from_incl;
+                res.back_offset = rows->size() - (res.front_offset + length);
+                //if(res.back_offset < res.front_offset) res.back_offset = res.front_offset;
+                printf("original(%zu - %zu)\n", front_offset, rows->size() - back_offset);
+                printf("range(%zu - %zu)\n", res.front_offset, rows->size() - res.back_offset);
+                printf("-----\n");
+                res.error = false;
+                res.rows = rows;
+                return res;
             }
 
             operator bool() const { return !error && rows; }
