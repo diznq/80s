@@ -29,7 +29,7 @@ namespace s90 {
             return !error;
         }
 
-        const std::weak_ptr<iafd>& operator*() const {
+        std::weak_ptr<iafd>& operator*() {
             return fd;
         }
 
