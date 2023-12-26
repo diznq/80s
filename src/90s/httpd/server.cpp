@@ -271,7 +271,7 @@ namespace s90 {
             pages[webpage->name()] = {webpage, false};
         }
 
-        aiopromise<nil> server::on_accept(std::shared_ptr<afd> fd) {
+        aiopromise<nil> server::on_accept(std::shared_ptr<iafd> fd) {
             dict<std::string, page*>::iterator it;
             page *current_page = default_page;
             std::string_view script;
@@ -280,6 +280,16 @@ namespace s90 {
             environment env;
             size_t pivot = 0, body_length = 0, prev_pivot = 0;
             bool write_status = true;
+
+            #if 0
+            auto ssl_ctx = global_context->new_ssl_server_context("private/pubkey.pem", "private/privkey.pem");
+            if(ssl_ctx) {
+                auto handshake = co_await fd->enable_server_ssl(*ssl_ctx);
+            } else {
+                printf("failed to initialize SSL: %s\n", ssl_ctx.error().c_str());
+            }
+            #endif
+
             while(true) {
                 // implement basic HTTP loop by waiting until \r\n\r\n, parsing header and then
                 // optinally waiting for `n` bytes of the body

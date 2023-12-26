@@ -48,7 +48,7 @@ namespace s90 {
     class connection_handler {
     public:
         virtual ~connection_handler() = default;
-        virtual aiopromise<nil> on_accept(std::shared_ptr<afd> fd) = 0;
+        virtual aiopromise<nil> on_accept(std::shared_ptr<iafd> fd) = 0;
         
         virtual void on_load() = 0;
         virtual void on_pre_refresh() = 0;

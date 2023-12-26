@@ -106,13 +106,13 @@ namespace s90 {
         virtual void close(bool immediate = true) = 0;
 
         /// @brief Initialize client SSL session
-        /// @param ssl_context SSL context
+        /// @param ssl_context SSL client context (created by context->new_ssl_client_context())
         /// @param hostname host name
         /// @return true on success
         virtual aiopromise<ssl_result> enable_client_ssl(void *ssl_context, const std::string& hostname) = 0;
 
         /// @brief Initialize server SSL session
-        /// @param ssl_context SSL session
+        /// @param ssl_context SSL server context (created by context->new_ssl_server_context())
         /// @return true on success
         virtual aiopromise<ssl_result> enable_server_ssl(void *ssl_context) = 0;
     };

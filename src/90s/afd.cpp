@@ -397,6 +397,7 @@ namespace s90 {
 
         while(ssl_status == ssl_state::none || !crypto_ssl_is_init_finished(ssl_bio)) {
             ssl_status = ssl_state::client_initializing;
+            want_io = 0;
             status = crypto_ssl_connect(ssl_bio, &want_io, &err);
             dbgf("SSL connect\n");
 
@@ -413,11 +414,18 @@ namespace s90 {
                 ssl_read = crypto_ssl_bio_read(ssl_bio, output, sizeof(output));
                 dbgf("SSL BIO read - %d\n", ssl_read);
                 if(ssl_read > 0) {
-                    co_await write(std::string_view(output, output + ssl_read));
+                    if(!co_await write(std::string_view(output, output + ssl_read))) {   
+                        dbgf("SSL socket write - fail\n");
+                        crypto_ssl_bio_release(ssl_bio, 3);
+                        ssl_bio = nullptr;
+                        ssl_status = ssl_state::none;
+                        co_return {true, "failed to write to fd"};
+                    }
                 } else {
                     break;
                 }
             }
+
             dbgf("SSL read any\n");
             auto arg = co_await read_any();
             if(arg.error) {
@@ -425,7 +433,7 @@ namespace s90 {
                 crypto_ssl_bio_release(ssl_bio, 3);
                 ssl_bio = nullptr;
                 ssl_status = ssl_state::none;
-                co_return {true, "fd read failed"};
+                co_return {true, "failed to read from fd"};
             } else {
                 dbgf("SSL - read any write\n");
                 crypto_ssl_bio_write(ssl_bio, arg.data.data(), arg.data.length());
@@ -437,7 +445,55 @@ namespace s90 {
     }
 
     aiopromise<ssl_result> afd::enable_server_ssl(void *ssl_context) {
-        co_return {true, "not yet implemented"};
+        const char *err = NULL;
+        int want_io = 0, ssl_read = 0;
+        char output[2000];
+        int status = crypto_ssl_bio_new(ssl_context, elfd, fd, false, &ssl_bio, &err);
+        if(status < 0) co_return {true, err};
+        
+        while(ssl_status == ssl_state::none || !crypto_ssl_is_init_finished(ssl_bio)) {
+            ssl_status = ssl_state::server_initializing;
+            auto arg = co_await read_any();
+            if(arg.error) {
+                dbgf("SSL socket read - fail\n");
+                crypto_ssl_bio_release(ssl_bio, 3);
+                ssl_bio = nullptr;
+                ssl_status = ssl_state::none;
+                co_return {true, "failed to read from fd"};
+            }
+
+            want_io = 0;
+            crypto_ssl_bio_write(ssl_bio, arg.data.data(), arg.data.length());
+            status = crypto_ssl_accept(ssl_bio, &want_io, &err);
+
+            dbgf("SSL accept: %d\n", status);
+            if(status < 0) {
+                dbgf("SSL accept - fail\n");
+                crypto_ssl_bio_release(ssl_bio, 3);
+                ssl_bio = nullptr;
+                ssl_status = ssl_state::none;
+                co_return {true, err};
+            }
+
+            while(true) {
+                ssl_read = crypto_ssl_bio_read(ssl_bio, output, sizeof(output));
+                dbgf("SSL BIO read - %d\n", ssl_read);
+                if(ssl_read > 0) {
+                    if(!co_await write(std::string_view(output, output + ssl_read))) {
+                        dbgf("SSL socket write - fail\n");
+                        crypto_ssl_bio_release(ssl_bio, 3);
+                        ssl_bio = nullptr;
+                        ssl_status = ssl_state::none;
+                        co_return {true, "failed to write to fd"};
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+        ssl_cycle(read_buffer);
+        ssl_status = ssl_state::server_ready;
+        co_return {false, ""};
     }
 
 }
