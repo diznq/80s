@@ -13,14 +13,14 @@ namespace s90 {
                 rendered = std::move(co_await output_context->finalize());
 
             std::string response;
-            length_estimate += 60 + status_line.length() + rendered.length();
+            output_headers["content-length"] = std::to_string(rendered.length());
+            length_estimate = length_estimate + 9 + status_line.length() + 4 + rendered.length();
             response.reserve(length_estimate);
 
             response += "HTTP/1.1 ";
             response += status_line;
             response += "\r\n";
             
-            output_headers["content-length"] = std::to_string(rendered.length());
             for(const auto& [k, v] : output_headers) {
                 response += k;
                 response += ": ";
@@ -58,14 +58,14 @@ namespace s90 {
         void environment::header(const std::string& key, const std::string& value) {
             std::string lower_key = key;
             std::transform(lower_key.begin(), lower_key.end(), lower_key.begin(), [](auto c) -> auto { return std::tolower(c); });
-            length_estimate += key.length() + 5 + value.length();
+            length_estimate += key.length() + 4 + value.length();
             output_headers[key] = value;
         }
 
         void environment::header(std::string&& key, std::string&& value) {
             std::transform(key.begin(), key.end(), key.begin(), [](auto c) -> auto { return std::tolower(c); });
+            length_estimate += key.length() + 4 + value.length();
             output_headers[std::move(key)] = std::move(value);
-            length_estimate += key.length() + 5 + value.length();
         }
 
         const std::string& environment::endpoint() const {
