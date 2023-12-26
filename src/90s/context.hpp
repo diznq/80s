@@ -5,12 +5,37 @@
 #include "aiopromise.hpp"
 #include "sql/sql.hpp"
 #include <memory>
+#include <expected>
 
 namespace s90 {
     
     class storable {
     public:
         virtual ~storable() = default;
+    };
+
+    enum class proto {
+        tcp,
+        udp,
+        tls
+    };
+
+    struct connect_result {
+        bool error;
+        std::weak_ptr<iafd> fd;
+        std::string error_message;
+
+        operator bool() const {
+            return !error;
+        }
+
+        const std::weak_ptr<iafd>& operator*() const {
+            return fd;
+        }
+
+        std::shared_ptr<iafd> operator->() const {
+            return fd.lock();
+        }
     };
 
     class connection_handler {
@@ -30,9 +55,9 @@ namespace s90 {
         /// @brief Create a new file descriptor
         /// @param addr IP address to connect to
         /// @param port port
-        /// @param udp true if UDP
+        /// @param proto protocol
         /// @return return an already connected file descriptor
-        virtual aiopromise<std::weak_ptr<iafd>> connect(const std::string& addr, int port, bool udp) = 0;
+        virtual aiopromise<connect_result> connect(const std::string& addr, int port, proto protocol) = 0;
 
         /// @brief Create a new SQL instance
         /// @param type SQL type, currently only "mysql" is accepted
@@ -58,6 +83,20 @@ namespace s90 {
         /// @param name store by name
         /// @return store, nullptr if it doesn't exist
         virtual std::shared_ptr<storable> store(std::string_view name) = 0;
+
+        /// @brief Create a new client SSL context
+        /// @param ca_file CA file to use (or NULL)
+        /// @param ca_path CA folder path (or NULL)
+        /// @param pubkey Public key (or NULL)
+        /// @param privkey Private key (or NULL)
+        /// @return SSL context oe error
+        virtual std::expected<void*, std::string> new_ssl_client_context(const char *ca_file = NULL, const char *ca_path = NULL, const char *pubkey = NULL, const char *privkey = NULL) = 0;
+        
+        /// @brief Create a new server SSL context
+        /// @param pubkey Public key (or NULL)
+        /// @param privkey Private key (or NULL)
+        /// @return SSL context oe error
+        virtual std::expected<void*, std::string> new_ssl_server_context(const char *pubkey = NULL, const char *privkey = NULL) = 0;
     };
 
     class context : public icontext {
@@ -67,11 +106,13 @@ namespace s90 {
         dict<fd_t, std::shared_ptr<afd>> fds;
         dict<fd_t, aiopromise<std::weak_ptr<iafd>>> connect_promises;
         dict<std::string, std::shared_ptr<storable>> stores;
+        dict<std::string, void*> ssl_contexts;
         std::shared_ptr<connection_handler> handler;
         std::function<void(context*)> init_callback;
 
     public:
         context(node_id *id, reload_context *reload_ctx);
+        ~context();
 
         fd_t event_loop() const;
         void set_handler(std::shared_ptr<connection_handler> handler);
@@ -88,7 +129,7 @@ namespace s90 {
         std::shared_ptr<afd> on_accept(accept_params params);
         void on_init(init_params params);
 
-        aiopromise<std::weak_ptr<iafd>> connect(const std::string& addr, int port, bool udp) override;
+        aiopromise<connect_result> connect(const std::string& addr, int port, proto protocol) override;
         std::shared_ptr<sql::isql> new_sql_instance(const std::string& type) override;
 
         const dict<fd_t, std::shared_ptr<afd>>& get_fds() const override;
@@ -97,6 +138,8 @@ namespace s90 {
 
         void store(std::string_view name, std::shared_ptr<storable> entity) override;
         std::shared_ptr<storable> store(std::string_view name) override;
-    };
 
+        std::expected<void*, std::string> new_ssl_client_context(const char *ca_file = NULL, const char *ca_path = NULL, const char *pubkey = NULL, const char *privkey = NULL) override;
+        std::expected<void*, std::string> new_ssl_server_context(const char *pubkey = NULL, const char *privkey = NULL) override;
+    };
 }

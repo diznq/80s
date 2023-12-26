@@ -102,6 +102,10 @@ namespace s90 {
         struct sql_connect {
             bool error = false;
             std::string error_message;
+
+            operator bool() const {
+                return !error;
+            }
         };
 
         /// @brief SQL interface

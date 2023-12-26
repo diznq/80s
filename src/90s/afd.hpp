@@ -22,6 +22,19 @@ namespace s90 {
     struct read_arg {
         bool error;
         std::string_view data;
+
+        operator bool() const {
+            return !error;
+        }
+    };
+
+    struct ssl_result {
+        bool error;
+        std::string error_message;
+        
+        operator bool() const {
+            return !error;
+        }
     };
 
     struct fd_buffinfo {
@@ -64,8 +77,9 @@ namespace s90 {
 
         /// @brief Write data to the file descriptor
         /// @param data data to be written
+        /// @param layers if true, apply additional layers such as TLS
         /// @return true on success
-        virtual aiopromise<bool> write(std::string_view data) = 0;
+        virtual aiopromise<bool> write(std::string_view data, bool layers = true) = 0;
 
         /// @brief Get memory usage information
         /// @return memory usage
@@ -82,6 +96,17 @@ namespace s90 {
         /// @brief Close the file descriptor
         /// @param immediate call on_close immediately
         virtual void close(bool immediate = true) = 0;
+
+        /// @brief Initialize client SSL session
+        /// @param ssl_context SSL context
+        /// @param hostname host name
+        /// @return true on success
+        virtual aiopromise<ssl_result> enable_client_ssl(void *ssl_context, const std::string& hostname) = 0;
+
+        /// @brief Initialize server SSL session
+        /// @param ssl_context SSL session
+        /// @return true on success
+        virtual aiopromise<ssl_result> enable_server_ssl(void *ssl_context) = 0;
     };
 
     class afd : public iafd {
@@ -119,6 +144,14 @@ namespace s90 {
             ) : promise(promise), type(type), n(n), delimiter(std::move(delimiter)) {}
         };
 
+        enum class ssl_state {
+            none,
+            client_initializing,
+            client_ready,
+            server_initializing,
+            server_ready
+        };
+
         struct kmp_state {
             int offset = 0,
                 match = 0,
@@ -126,6 +159,8 @@ namespace s90 {
         };
 
         size_t write_back_offset = 0;
+        void *ssl_bio = NULL;
+        ssl_state ssl_status = ssl_state::none;
         std::vector<char> write_back_buffer;
         std::queue<back_buffer> write_back_buffer_info;
 
@@ -155,11 +190,14 @@ namespace s90 {
         aiopromise<read_arg> read_any() override;
         aiopromise<read_arg> read_n(size_t n_bytes) override;
         aiopromise<read_arg> read_until(std::string&& delim) override;
-        aiopromise<bool> write(std::string_view data) override;
+        aiopromise<bool> write(std::string_view data, bool layers = true) override;
         fd_meminfo usage() const override;
         std::string name() const override;
         void set_name(std::string_view name);
         void close(bool immediate) override;
+
+        aiopromise<ssl_result> enable_client_ssl(void *ssl_context, const std::string& hostname) override;
+        aiopromise<ssl_result> enable_server_ssl(void *ssl_context) override;
     };
 
 }
