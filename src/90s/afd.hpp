@@ -23,7 +23,7 @@ namespace s90 {
         bool error;
         std::string_view data;
 
-        operator bool() const {
+        explicit operator bool() const {
             return !error;
         }
 
@@ -40,7 +40,7 @@ namespace s90 {
         bool error;
         std::string error_message;
         
-        operator bool() const {
+        explicit operator bool() const {
             return !error;
         }
     };

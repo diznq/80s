@@ -32,7 +32,7 @@ namespace s90 {
         std::weak_ptr<iafd> fd;
         std::string error_message;
 
-        operator bool() const {
+        explicit operator bool() const {
             return !error && !fd.expired();
         }
 

@@ -95,7 +95,7 @@ namespace s90 {
             }
 
             /// @brief Evaluate if SQL result is not an error
-            operator bool() const { return !error && (!has_rows || rows); }
+            explicit operator bool() const { return !error && (!has_rows || rows); }
         };
 
         /// @brief SQL connect result
@@ -103,7 +103,7 @@ namespace s90 {
             bool error = false;
             std::string error_message;
 
-            operator bool() const {
+            explicit operator bool() const {
                 return !error;
             }
         };
