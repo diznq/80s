@@ -37,34 +37,10 @@ namespace s90 {
 
             // SSL layer
             if(data.length() > 0 && (ssl_status == ssl_state::client_ready || ssl_status == ssl_state::server_ready)) {
-                char new_data[4000];
-                int err;
-                int want_io = 0;
                 int bio_result = crypto_ssl_bio_write(ssl_bio, data.data(), data.length());
                 data = std::string_view {};
-                dbgf("SSL decode: %d\n", bio_result);
-                while(true) {
-                    int ssl_read = crypto_ssl_read(ssl_bio, new_data, sizeof(new_data), &want_io, &err);
-                    dbgf("SSL decode - read %d, want IO: %d\n", ssl_read, want_io);
-
-                    if(want_io) {
-                        while(true) {
-                            int ssl_write = crypto_ssl_bio_read(ssl_bio, new_data, sizeof(new_data));
-                            dbgf("SSL decode - write %d\n", ssl_write);
-                            if(ssl_write <= 0) {
-                                break;
-                            }
-                            write(std::string_view(new_data, new_data + ssl_write), false);
-                        }
-                    }
-
-                    if(ssl_read > 0) {
-                        decoded.insert(decoded.end(), new_data, new_data + ssl_read);
-                    } else {
-                        break;
-                    }
-                    data = std::string_view(decoded.data(), decoded.data() + decoded.size());
-                }
+                ssl_cycle(decoded);
+                data = std::string_view(decoded.data(), decoded.data() + decoded.size());
             }
 
             if(is_closed()) {
@@ -231,6 +207,35 @@ namespace s90 {
         if(closed != close_state::closed) {
             closed = close_state::closed;
             handle_failure();
+        }
+    }
+
+    void afd::ssl_cycle(std::vector<char>& decoded) {
+        char new_data[4000];
+        int err;
+        int want_io = 0;
+        
+        dbgf("SSL decode: %d\n", bio_result);
+        while(true) {
+            int ssl_read = crypto_ssl_read(ssl_bio, new_data, sizeof(new_data), &want_io, &err);
+            dbgf("SSL decode - read %d, want IO: %d\n", ssl_read, want_io);
+
+            if(want_io) {
+                while(true) {
+                    int ssl_write = crypto_ssl_bio_read(ssl_bio, new_data, sizeof(new_data));
+                    dbgf("SSL decode - write %d\n", ssl_write);
+                    if(ssl_write <= 0) {
+                        break;
+                    }
+                    write(std::string_view(new_data, new_data + ssl_write), false);
+                }
+            }
+
+            if(ssl_read > 0) {
+                decoded.insert(decoded.end(), new_data, new_data + ssl_read);
+            } else {
+                break;
+            }
         }
     }
 
@@ -426,6 +431,7 @@ namespace s90 {
                 crypto_ssl_bio_write(ssl_bio, arg.data.data(), arg.data.length());
             }
         }
+        ssl_cycle(read_buffer);
         ssl_status = ssl_state::client_ready;
         co_return {false, ""};
     }

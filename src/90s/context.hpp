@@ -20,13 +20,20 @@ namespace s90 {
         tls
     };
 
+    enum class dns_type {
+        A,
+        CNAME,
+        MX,
+        AAAA
+    };
+
     struct connect_result {
         bool error;
         std::weak_ptr<iafd> fd;
         std::string error_message;
 
         operator bool() const {
-            return !error;
+            return !error && !fd.expired();
         }
 
         std::weak_ptr<iafd>& operator*() {
@@ -54,10 +61,11 @@ namespace s90 {
 
         /// @brief Create a new file descriptor
         /// @param addr IP address to connect to
+        /// @param record_type DNS record type
         /// @param port port
         /// @param proto protocol
         /// @return return an already connected file descriptor
-        virtual aiopromise<connect_result> connect(const std::string& addr, int port, proto protocol) = 0;
+        virtual aiopromise<connect_result> connect(const std::string& addr, dns_type record_type, int port, proto protocol) = 0;
 
         /// @brief Create a new SQL instance
         /// @param type SQL type, currently only "mysql" is accepted
@@ -129,7 +137,7 @@ namespace s90 {
         std::shared_ptr<afd> on_accept(accept_params params);
         void on_init(init_params params);
 
-        aiopromise<connect_result> connect(const std::string& addr, int port, proto protocol) override;
+        aiopromise<connect_result> connect(const std::string& addr, dns_type record_type, int port, proto protocol) override;
         std::shared_ptr<sql::isql> new_sql_instance(const std::string& type) override;
 
         const dict<fd_t, std::shared_ptr<afd>>& get_fds() const override;

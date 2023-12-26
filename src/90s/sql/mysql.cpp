@@ -110,7 +110,7 @@ namespace s90 {
                 std::string conn_error = "unknown error";
                 if(!connection || connection->is_closed() || connection->is_error()) {
                     dbg_infof("Reconnect - get connection\n");
-                    auto conn_result = co_await ctx->connect(host, sql_port, proto::tcp);
+                    auto conn_result = co_await ctx->connect(host, dns_type::A, sql_port, proto::tcp);
                     conn_ok = !conn_result.error;
                     connection_ref = conn_result.fd;
                     conn_error = conn_result.error_message;

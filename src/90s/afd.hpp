@@ -26,6 +26,14 @@ namespace s90 {
         operator bool() const {
             return !error;
         }
+
+        std::string_view& operator*() {
+            return data;
+        }
+
+        std::string_view* operator->() {
+            return &data;
+        }
     };
 
     struct ssl_result {
@@ -171,6 +179,7 @@ namespace s90 {
         std::function<void()> on_command_queue_empty;
 
         void handle_failure();
+        void ssl_cycle(std::vector<char>& decoded);
         std::tuple<int, bool> perform_write();
 
     public:

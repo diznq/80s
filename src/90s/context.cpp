@@ -84,7 +84,7 @@ namespace s90 {
         return fd;
     }
 
-    aiopromise<connect_result> context::connect(const std::string& addr, int port, proto protocol) {
+    aiopromise<connect_result> context::connect(const std::string& addr, dns_type record_type, int port, proto protocol) {
         fd_t fd = s80_connect(this, elfd, addr.c_str(), port, protocol == proto::udp);
         if(fd == (fd_t)-1) {
             co_return {
