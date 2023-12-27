@@ -55,7 +55,7 @@ namespace s90 {
             void on_load() override;
             void on_pre_refresh() override;
             void on_refresh() override;
-            aiopromise<nil> on_accept(std::shared_ptr<afd> fd) override;
+            aiopromise<nil> on_accept(std::shared_ptr<iafd> fd) override;
         };
     }
 }

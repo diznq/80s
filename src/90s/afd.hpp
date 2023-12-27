@@ -22,6 +22,27 @@ namespace s90 {
     struct read_arg {
         bool error;
         std::string_view data;
+
+        explicit operator bool() const {
+            return !error;
+        }
+
+        std::string_view& operator*() {
+            return data;
+        }
+
+        std::string_view* operator->() {
+            return &data;
+        }
+    };
+
+    struct ssl_result {
+        bool error;
+        std::string error_message;
+        
+        explicit operator bool() const {
+            return !error;
+        }
     };
 
     struct fd_buffinfo {
@@ -64,8 +85,9 @@ namespace s90 {
 
         /// @brief Write data to the file descriptor
         /// @param data data to be written
+        /// @param layers if true, apply additional layers such as TLS
         /// @return true on success
-        virtual aiopromise<bool> write(std::string_view data) = 0;
+        virtual aiopromise<bool> write(std::string_view data, bool layers = true) = 0;
 
         /// @brief Get memory usage information
         /// @return memory usage
@@ -82,6 +104,39 @@ namespace s90 {
         /// @brief Close the file descriptor
         /// @param immediate call on_close immediately
         virtual void close(bool immediate = true) = 0;
+
+        /// @brief Initialize client SSL session
+        /// @param ssl_context SSL client context (created by context->new_ssl_client_context())
+        /// @param hostname host name
+        /// @return true on success
+        virtual aiopromise<ssl_result> enable_client_ssl(void *ssl_context, const std::string& hostname) = 0;
+
+        /// @brief Initialize server SSL session
+        /// @param ssl_context SSL server context (created by context->new_ssl_server_context())
+        /// @return true on success
+        virtual aiopromise<ssl_result> enable_server_ssl(void *ssl_context) = 0;
+
+        // Events
+
+        /// @brief Called on accept
+        virtual void on_accept() = 0;
+
+        /// @brief Called when data comes
+        /// @param data data
+        /// @param cycle true if forced cycle
+        virtual void on_data(std::string_view data, bool cycle = false) = 0;
+
+        /// @brief Called when fd becomes writeable again
+        /// @param written_bytes bytes that were written
+        virtual void on_write(size_t written_bytes) = 0;
+
+        /// @brief Called when fd is closed
+        virtual void on_close() = 0;
+
+
+        /// @brief Set callback that gets called when read command queue becomes empty
+        /// @param on_empty callback
+        virtual void set_on_empty_queue(std::function<void()> on_empty) = 0;
     };
 
     class afd : public iafd {
@@ -119,6 +174,14 @@ namespace s90 {
             ) : promise(promise), type(type), n(n), delimiter(std::move(delimiter)) {}
         };
 
+        enum class ssl_state {
+            none,
+            client_initializing,
+            client_ready,
+            server_initializing,
+            server_ready
+        };
+
         struct kmp_state {
             int offset = 0,
                 match = 0,
@@ -126,6 +189,8 @@ namespace s90 {
         };
 
         size_t write_back_offset = 0;
+        void *ssl_bio = NULL;
+        ssl_state ssl_status = ssl_state::none;
         std::vector<char> write_back_buffer;
         std::queue<back_buffer> write_back_buffer_info;
 
@@ -136,6 +201,7 @@ namespace s90 {
         std::function<void()> on_command_queue_empty;
 
         void handle_failure();
+        void ssl_cycle(std::vector<char>& decoded);
         std::tuple<int, bool> perform_write();
 
     public:
@@ -143,23 +209,26 @@ namespace s90 {
         afd(context *ctx, fd_t elfd, bool has_error);
         ~afd();
 
-        void on_accept();
-        void on_data(std::string_view data, bool cycle = false);
-        void on_write(size_t written_bytes);
-        void on_close();
+        void on_accept() override;
+        void on_data(std::string_view data, bool cycle = false) override;
+        void on_write(size_t written_bytes) override;
+        void on_close() override;
 
-        void set_on_empty_queue(std::function<void()> on_empty);
+        void set_on_empty_queue(std::function<void()> on_empty) override;
 
         bool is_error() const override;
         bool is_closed() const override;
         aiopromise<read_arg> read_any() override;
         aiopromise<read_arg> read_n(size_t n_bytes) override;
         aiopromise<read_arg> read_until(std::string&& delim) override;
-        aiopromise<bool> write(std::string_view data) override;
+        aiopromise<bool> write(std::string_view data, bool layers = true) override;
         fd_meminfo usage() const override;
         std::string name() const override;
         void set_name(std::string_view name);
         void close(bool immediate) override;
+
+        aiopromise<ssl_result> enable_client_ssl(void *ssl_context, const std::string& hostname) override;
+        aiopromise<ssl_result> enable_server_ssl(void *ssl_context) override;
     };
 
 }

@@ -46,7 +46,7 @@ void on_write(write_params params) {
 
 void on_accept(accept_params params) {
     context *ctx = (context*)params.ctx;
-    auto fd = ctx->on_accept(params);
+    ctx->on_accept(params);
 }
 
 void on_init(init_params params) {

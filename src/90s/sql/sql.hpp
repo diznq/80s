@@ -95,13 +95,17 @@ namespace s90 {
             }
 
             /// @brief Evaluate if SQL result is not an error
-            operator bool() const { return !error && (!has_rows || rows); }
+            explicit operator bool() const { return !error && (!has_rows || rows); }
         };
 
         /// @brief SQL connect result
         struct sql_connect {
             bool error = false;
             std::string error_message;
+
+            explicit operator bool() const {
+                return !error;
+            }
         };
 
         /// @brief SQL interface

@@ -60,7 +60,7 @@ namespace s90 {
                 return &value_;
             }
 
-            operator bool() const {
+            explicit operator bool() const {
                 return is_set;
             }
 

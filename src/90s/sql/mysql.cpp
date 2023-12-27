@@ -8,7 +8,7 @@ namespace s90 {
         }
 
         mysql::~mysql() {
-            auto connection = connection_ref.lock();
+            auto& connection = connection_ref;
             if(connection && !connection->is_closed() && !connection->is_error()) {
                 connection->close();
             }
@@ -91,7 +91,7 @@ namespace s90 {
 
         aiopromise<std::tuple<sql_connect, std::shared_ptr<iafd>>> mysql::obtain_connection() {
             dbg_infof("Reconnect\n");
-            auto connection = connection_ref.lock();
+            auto& connection = connection_ref;
             if(connection && !connection->is_closed() && !connection->is_error() && authenticated) {
                 co_return std::make_tuple(sql_connect {false, ""}, connection);
             }
@@ -106,13 +106,17 @@ namespace s90 {
                 // connect if not connected
                 is_connecting = true;
                 authenticated = false;
+                bool conn_ok = true;
+                std::string conn_error = "unknown error";
                 if(!connection || connection->is_closed() || connection->is_error()) {
                     dbg_infof("Reconnect - get connection\n");
-                    connection_ref = co_await ctx->connect(host, sql_port, false);
-                    connection = connection_ref.lock();
+                    auto conn_result = co_await ctx->connect(host, dns_type::A, sql_port, proto::tcp);
+                    conn_ok = !conn_result.error;
+                    connection_ref = conn_result.fd;
+                    conn_error = conn_result.error_message;
                 }
                 dbg_infof("Reconnect - connection obtained\n");
-                if(!connection || (connection && connection->is_error())) {
+                if(!conn_ok || !connection || connection->is_error() || connection->is_closed()) {
                     dbg_infof("Reconnect - obtained connection failure\n");
                     connection = nullptr;
                     is_connecting = false;
@@ -121,9 +125,9 @@ namespace s90 {
                         auto c = connecting.front();
                         connecting.pop();
                         if(auto ptr = c.lock())
-                            aiopromise(ptr).resolve(std::make_tuple<sql_connect, std::shared_ptr<iafd>>({true, "failed to establish connection"}, nullptr));
+                            aiopromise(ptr).resolve(std::make_tuple<sql_connect, std::shared_ptr<iafd>>({true, "failed to establish connection: " + conn_error}, nullptr));
                     }
-                    co_return std::make_tuple<sql_connect, std::shared_ptr<iafd>>({true, "failed to establish connection"}, nullptr);
+                    co_return std::make_tuple<sql_connect, std::shared_ptr<iafd>>({true, "failed to establish connection: " + conn_error}, nullptr);
                 }
                 dbg_infof("Reconnect - obtained connection ok\n");
                 connection->set_name("mysql");

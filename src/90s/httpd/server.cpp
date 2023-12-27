@@ -57,14 +57,16 @@ namespace s90 {
                 auto ctx = env.global_context();
                 std::string response;
                 auto& refs = ctx->get_fds();
-                for(auto& [k, v] : refs) {
-                    response += "name: " + v->name() + "\n";
-                    auto usage = v->usage();
-                    response += "  read buffer   : " + std::to_string(usage.read_buffer.size) + " / " + std::to_string(usage.read_buffer.capacity) + " / " + std::to_string(usage.read_buffer.offset) + "\n";
-                    response += "  read commands : " + std::to_string(usage.read_commands.size) + " / " + std::to_string(usage.read_commands.capacity) + " / " + std::to_string(usage.read_commands.offset) + "\n";
-                    response += "  write buffer  : " + std::to_string(usage.write_buffer.size) + " / " + std::to_string(usage.write_buffer.capacity) + " / " + std::to_string(usage.write_buffer.offset) + "\n";
-                    response += "  write commands: " + std::to_string(usage.write_commands.size) + " / " + std::to_string(usage.write_commands.capacity) + " / " + std::to_string(usage.write_commands.offset) + "\n";
-                    response += "\n";
+                for(auto& [k, w] : refs) {
+                    if(auto v = w.lock()) {
+                        response += "name: " + v->name() + "\n";
+                        auto usage = v->usage();
+                        response += "  read buffer   : " + std::to_string(usage.read_buffer.size) + " / " + std::to_string(usage.read_buffer.capacity) + " / " + std::to_string(usage.read_buffer.offset) + "\n";
+                        response += "  read commands : " + std::to_string(usage.read_commands.size) + " / " + std::to_string(usage.read_commands.capacity) + " / " + std::to_string(usage.read_commands.offset) + "\n";
+                        response += "  write buffer  : " + std::to_string(usage.write_buffer.size) + " / " + std::to_string(usage.write_buffer.capacity) + " / " + std::to_string(usage.write_buffer.offset) + "\n";
+                        response += "  write commands: " + std::to_string(usage.write_commands.size) + " / " + std::to_string(usage.write_commands.capacity) + " / " + std::to_string(usage.write_commands.offset) + "\n";
+                        response += "\n";
+                    }
                 }
                 env.status("200 OK");
                 env.content_type("text/plain");
@@ -192,6 +194,12 @@ namespace s90 {
             if(web_static_env) static_path = web_static_env;
             if(web_root_env != NULL) web_root = web_root_env;
             if(master_key != NULL) enc_base = master_key;
+            if(enc_base.starts_with("b64:")) {
+                auto decoded = util::from_b64(enc_base.substr(4));
+                if(decoded) {
+                    enc_base = *decoded;
+                }
+            }
             if(enc_base.length() == 0) enc_base = "ABCDEFGHIJKLMNOP";
             if(enc_base.length() > 0 && enc_base.length() < 16) enc_base = util::sha256(enc_base);
             ((generic_error_page*)default_page)->set_static_path(static_path);
@@ -271,7 +279,7 @@ namespace s90 {
             pages[webpage->name()] = {webpage, false};
         }
 
-        aiopromise<nil> server::on_accept(std::shared_ptr<afd> fd) {
+        aiopromise<nil> server::on_accept(std::shared_ptr<iafd> fd) {
             dict<std::string, page*>::iterator it;
             page *current_page = default_page;
             std::string_view script;
@@ -280,6 +288,16 @@ namespace s90 {
             environment env;
             size_t pivot = 0, body_length = 0, prev_pivot = 0;
             bool write_status = true;
+
+            #if 0
+            auto ssl_ctx = global_context->new_ssl_server_context("private/pubkey.pem", "private/privkey.pem");
+            if(ssl_ctx) {
+                auto handshake = co_await fd->enable_server_ssl(*ssl_ctx);
+            } else {
+                printf("failed to initialize SSL: %s\n", ssl_ctx.error().c_str());
+            }
+            #endif
+
             while(true) {
                 // implement basic HTTP loop by waiting until \r\n\r\n, parsing header and then
                 // optinally waiting for `n` bytes of the body
