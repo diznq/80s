@@ -29,19 +29,19 @@ namespace s90 {
 
     struct connect_result {
         bool error;
-        std::weak_ptr<iafd> fd;
+        std::shared_ptr<iafd> fd;
         std::string error_message;
 
         explicit operator bool() const {
-            return !error && !fd.expired();
+            return !error && fd;
         }
 
-        std::weak_ptr<iafd>& operator*() {
+        std::shared_ptr<iafd>& operator*() {
             return fd;
         }
 
         std::shared_ptr<iafd> operator->() const {
-            return fd.lock();
+            return fd;
         }
     };
 
@@ -74,7 +74,7 @@ namespace s90 {
 
         /// @brief Get dictionary of all existing file descriptors
         /// @return file descriptors
-        virtual const dict<fd_t, std::shared_ptr<afd>>& get_fds() const = 0;
+        virtual const dict<fd_t, std::weak_ptr<iafd>>& get_fds() const = 0;
 
         /// @brief Quit the application
         virtual void quit() const = 0;
@@ -111,8 +111,8 @@ namespace s90 {
         node_id *id;
         reload_context *rld;
         fd_t elfd;
-        dict<fd_t, std::shared_ptr<afd>> fds;
-        dict<fd_t, aiopromise<std::weak_ptr<iafd>>> connect_promises;
+        dict<fd_t, std::weak_ptr<iafd>> fds;
+        dict<fd_t, aiopromise<std::shared_ptr<iafd>>> connect_promises;
         dict<std::string, std::shared_ptr<storable>> stores;
         dict<std::string, void*> ssl_contexts;
         std::shared_ptr<connection_handler> handler;
@@ -131,16 +131,16 @@ namespace s90 {
 
         void set_init_callback(std::function<void(context*)> init_callback);
 
-        std::shared_ptr<afd> on_receive(read_params params);
-        std::shared_ptr<afd> on_close(close_params params);
-        std::shared_ptr<afd> on_write(write_params params);
-        std::shared_ptr<afd> on_accept(accept_params params);
+        void on_receive(read_params params);
+        void on_close(close_params params);
+        void on_write(write_params params);
+        void on_accept(accept_params params);
         void on_init(init_params params);
 
         aiopromise<connect_result> connect(const std::string& addr, dns_type record_type, int port, proto protocol) override;
         std::shared_ptr<sql::isql> new_sql_instance(const std::string& type) override;
 
-        const dict<fd_t, std::shared_ptr<afd>>& get_fds() const override;
+        const dict<fd_t, std::weak_ptr<iafd>>& get_fds() const override;
         void quit() const override;
         void reload() const override;
 

@@ -57,14 +57,16 @@ namespace s90 {
                 auto ctx = env.global_context();
                 std::string response;
                 auto& refs = ctx->get_fds();
-                for(auto& [k, v] : refs) {
-                    response += "name: " + v->name() + "\n";
-                    auto usage = v->usage();
-                    response += "  read buffer   : " + std::to_string(usage.read_buffer.size) + " / " + std::to_string(usage.read_buffer.capacity) + " / " + std::to_string(usage.read_buffer.offset) + "\n";
-                    response += "  read commands : " + std::to_string(usage.read_commands.size) + " / " + std::to_string(usage.read_commands.capacity) + " / " + std::to_string(usage.read_commands.offset) + "\n";
-                    response += "  write buffer  : " + std::to_string(usage.write_buffer.size) + " / " + std::to_string(usage.write_buffer.capacity) + " / " + std::to_string(usage.write_buffer.offset) + "\n";
-                    response += "  write commands: " + std::to_string(usage.write_commands.size) + " / " + std::to_string(usage.write_commands.capacity) + " / " + std::to_string(usage.write_commands.offset) + "\n";
-                    response += "\n";
+                for(auto& [k, w] : refs) {
+                    if(auto v = w.lock()) {
+                        response += "name: " + v->name() + "\n";
+                        auto usage = v->usage();
+                        response += "  read buffer   : " + std::to_string(usage.read_buffer.size) + " / " + std::to_string(usage.read_buffer.capacity) + " / " + std::to_string(usage.read_buffer.offset) + "\n";
+                        response += "  read commands : " + std::to_string(usage.read_commands.size) + " / " + std::to_string(usage.read_commands.capacity) + " / " + std::to_string(usage.read_commands.offset) + "\n";
+                        response += "  write buffer  : " + std::to_string(usage.write_buffer.size) + " / " + std::to_string(usage.write_buffer.capacity) + " / " + std::to_string(usage.write_buffer.offset) + "\n";
+                        response += "  write commands: " + std::to_string(usage.write_commands.size) + " / " + std::to_string(usage.write_commands.capacity) + " / " + std::to_string(usage.write_commands.offset) + "\n";
+                        response += "\n";
+                    }
                 }
                 env.status("200 OK");
                 env.content_type("text/plain");

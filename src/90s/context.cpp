@@ -31,57 +31,64 @@ namespace s90 {
         if(handler) handler->on_refresh();
     }
 
-    std::shared_ptr<afd> context::on_receive(read_params params) {
-        std::shared_ptr<afd> fd;
+    void context::on_receive(read_params params) {
         auto it = fds.find(params.childfd);
         if(it != fds.end()) {
-            fd = it->second;
-            fd->on_data(std::string_view(params.buf, params.readlen));
-        }
-        return fd;
-    }
-
-    std::shared_ptr<afd> context::on_close(close_params params) {
-        std::shared_ptr<afd> fd;
-        auto it = fds.find(params.childfd);
-        if(it != fds.end()) {
-            fd = it->second;
-            fds.erase(it);
-            fd->on_close();
-        }
-        return fd;
-    }
-
-    std::shared_ptr<afd> context::on_write(write_params params) {
-        std::shared_ptr<afd> fd;
-        auto it = fds.find(params.childfd);
-        if(it != fds.end()) {
-            fd = it->second;
-            fd->on_write((size_t)params.written);
-            auto connect_it = connect_promises.find(params.childfd);
-            if(connect_it != connect_promises.end()) {
-                connect_it->second.resolve(static_pointer_cast<iafd>(fd));
-                connect_promises.erase(connect_it);
+            if(auto fd = it->second.lock()) {
+                fd->on_data(std::string_view(params.buf, params.readlen));
+            } else {
+                fds.erase(it);
             }
         }
-        
-        return fd;
     }
 
-    std::shared_ptr<afd> context::on_accept(accept_params params) {
-        std::shared_ptr<afd> fd;
+    void context::on_close(close_params params) {
         auto it = fds.find(params.childfd);
         if(it != fds.end()) {
-            fd = it->second;
+            if(auto fd = it->second.lock()) {
+                fds.erase(it);
+                fd->on_close();
+            } else {
+                fds.erase(it);
+            }
+        }
+    }
+
+    void context::on_write(write_params params) {
+        auto it = fds.find(params.childfd);
+        if(it != fds.end()) {
+            if(auto fd = it->second.lock()) {
+                fd->on_write((size_t)params.written);
+                auto connect_it = connect_promises.find(params.childfd);
+                if(connect_it != connect_promises.end()) {
+                    connect_it->second.resolve(std::move(static_pointer_cast<iafd>(fd)));
+                    connect_promises.erase(connect_it);
+                }
+            } else {
+                fds.erase(it);
+            }
+        }
+    }
+
+    void context::on_accept(accept_params params) {
+        auto it = fds.find(params.childfd);
+        if(it != fds.end()) {
+            if(auto fd = it->second.lock()) {
+                fd->on_accept();
+                if(handler) {
+                    handler->on_accept(std::move(fd));
+                }
+            } else {
+                fds.erase(it);
+            }
         } else {
-            fd = std::make_shared<afd>(this, params.elfd, params.childfd, params.fdtype);
+            auto fd = std::make_shared<afd>(this, params.elfd, params.childfd, params.fdtype);
             fds.insert(std::make_pair(params.childfd, fd));
+            fd->on_accept();
+            if(handler) {
+                handler->on_accept(std::move(fd));
+            }
         }
-        fd->on_accept();
-        if(handler) {
-            handler->on_accept(fd);
-        }
-        return fd;
     }
 
     aiopromise<connect_result> context::connect(const std::string& addr, dns_type record_type, int port, proto protocol) {
@@ -92,25 +99,34 @@ namespace s90 {
                 static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, true)),
                 "failed to create fd"
             };
+        } else if(protocol == proto::udp) {
+            auto ptr = static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, fd, S80_FD_SOCKET));
+            this->fds[fd] = ptr;
+            co_return {
+                false,
+                std::move(ptr),
+                ""
+            };
         } else {
-            aiopromise<std::weak_ptr<iafd>> promise;
-            this->fds[fd] = std::make_shared<afd>(this, elfd, fd, S80_FD_SOCKET);
+            // TCP requires on_Write to be called beforehand to make sure we're connected
+            aiopromise<std::shared_ptr<iafd>> promise;
+            auto ptr = static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, fd, S80_FD_SOCKET));
+            this->fds[fd] = ptr;
             connect_promises[fd] = promise;
             if(protocol == proto::tls) {
                 std::string address_copy = addr;
                 std::string ssl_error;
                 bool ok = false;
-                auto fd_weak = co_await promise;
-                if(auto ptr = fd_weak.lock()) {
-                    auto ssl_context = new_ssl_client_context();
-                    if(ssl_context) {
-                        auto ssl_connect = co_await ptr->enable_client_ssl(*ssl_context, address_copy);
-                        if(!ssl_connect.error) {
-                            ok = true;
-                        } else {
-                            ssl_error = ssl_connect.error_message;
-                            ptr->close();
-                        }
+                auto ptr = co_await promise;
+                auto ssl_context = new_ssl_client_context();
+                if(ssl_context) {
+                    auto ssl_connect = co_await ptr->enable_client_ssl(*ssl_context, address_copy);
+                    if(!ssl_connect.error) {
+                        ok = true;
+                    } else {
+                        ssl_error = ssl_connect.error_message;
+                        ptr->close();
+                        ptr.reset();
                     }
                 }
                 if(!ok) {
@@ -120,13 +136,14 @@ namespace s90 {
                         ssl_error
                     };
                 }
-                co_return {false, fd_weak, ""};
+                co_return {false, std::move(ptr), ""};
             } else {
-                auto ok = co_await promise;
+                ptr = co_await promise;
+                bool is_error = !ptr;
                 co_return {
-                    ok.expired(),
-                    ok,
-                    "failed to connect"
+                    is_error,
+                    std::move(ptr),
+                    !is_error ? "" : "failed to connect"
                 };
             }
         }
@@ -148,7 +165,7 @@ namespace s90 {
         this->init_callback = init_callback;
     }
 
-    const dict<fd_t, std::shared_ptr<afd>>& context::get_fds() const {
+    const dict<fd_t, std::weak_ptr<iafd>>& context::get_fds() const {
         return fds;
     }
 

@@ -115,6 +115,28 @@ namespace s90 {
         /// @param ssl_context SSL server context (created by context->new_ssl_server_context())
         /// @return true on success
         virtual aiopromise<ssl_result> enable_server_ssl(void *ssl_context) = 0;
+
+        // Events
+
+        /// @brief Called on accept
+        virtual void on_accept() = 0;
+
+        /// @brief Called when data comes
+        /// @param data data
+        /// @param cycle true if forced cycle
+        virtual void on_data(std::string_view data, bool cycle = false) = 0;
+
+        /// @brief Called when fd becomes writeable again
+        /// @param written_bytes bytes that were written
+        virtual void on_write(size_t written_bytes) = 0;
+
+        /// @brief Called when fd is closed
+        virtual void on_close() = 0;
+
+
+        /// @brief Set callback that gets called when read command queue becomes empty
+        /// @param on_empty callback
+        virtual void set_on_empty_queue(std::function<void()> on_empty) = 0;
     };
 
     class afd : public iafd {
@@ -187,12 +209,12 @@ namespace s90 {
         afd(context *ctx, fd_t elfd, bool has_error);
         ~afd();
 
-        void on_accept();
-        void on_data(std::string_view data, bool cycle = false);
-        void on_write(size_t written_bytes);
-        void on_close();
+        void on_accept() override;
+        void on_data(std::string_view data, bool cycle = false) override;
+        void on_write(size_t written_bytes) override;
+        void on_close() override;
 
-        void set_on_empty_queue(std::function<void()> on_empty);
+        void set_on_empty_queue(std::function<void()> on_empty) override;
 
         bool is_error() const override;
         bool is_closed() const override;

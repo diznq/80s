@@ -8,7 +8,7 @@ namespace s90 {
         }
 
         mysql::~mysql() {
-            auto connection = connection_ref.lock();
+            auto& connection = connection_ref;
             if(connection && !connection->is_closed() && !connection->is_error()) {
                 connection->close();
             }
@@ -91,7 +91,7 @@ namespace s90 {
 
         aiopromise<std::tuple<sql_connect, std::shared_ptr<iafd>>> mysql::obtain_connection() {
             dbg_infof("Reconnect\n");
-            auto connection = connection_ref.lock();
+            auto& connection = connection_ref;
             if(connection && !connection->is_closed() && !connection->is_error() && authenticated) {
                 co_return std::make_tuple(sql_connect {false, ""}, connection);
             }
@@ -114,7 +114,6 @@ namespace s90 {
                     conn_ok = !conn_result.error;
                     connection_ref = conn_result.fd;
                     conn_error = conn_result.error_message;
-                    connection = connection_ref.lock();
                 }
                 dbg_infof("Reconnect - connection obtained\n");
                 if(!conn_ok || !connection || connection->is_error() || connection->is_closed()) {
