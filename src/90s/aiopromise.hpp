@@ -117,25 +117,6 @@ namespace s90 {
             }
         }
 
-        void resolve(const T& value) {
-            auto s = state();
-            if(s->callback) {
-                s->has_result = false;
-                auto cb = std::move(s->callback);
-                s->callback = nullptr;
-                cb(T(value));
-            } else if(s->coro_callback) {
-                s->result = value;
-                s->has_result = true;
-                auto cb = std::move(s->coro_callback);
-                s->coro_callback = nullptr;
-                cb();
-            } else {
-                s->result = value;
-                s->has_result = true;
-            }
-        }
-
         void then(std::function<void(T&&)> cb) {
             auto s = state();
             if(s->has_result) {

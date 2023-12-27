@@ -120,7 +120,7 @@ namespace s90 {
             if(races) {
                 async_cached<T> race;
                 races->push_back(race);
-                co_return co_await race;
+                co_return std::move(co_await race);
             } else {
                 races = layer->create_races(key);
                 auto result = co_await factory();
@@ -129,9 +129,9 @@ namespace s90 {
                     layer->set(key, expirable {result, expire == never, std::chrono::steady_clock::now() + std::chrono::seconds(expire == never ? -1 : expire)});
                 }
                 for(auto it = races->begin(); it != races->end(); it++) {
-                    it->resolve(result);
+                    it->resolve(cached<T>(result));
                 }
-                co_return result;
+                co_return std::move(result);
             }
         }
     }
