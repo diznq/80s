@@ -28,6 +28,7 @@ extern "C" {
 #define S80_MB_READ 2
 #define S80_MB_WRITE 3
 #define S80_MB_CLOSE 4
+#define S80_MB_MESSAGE 5
 
 #define BUFSIZE 16384
 #define MAX_EVENTS 100
@@ -174,22 +175,32 @@ typedef struct accept_params_ {
 } accept_params;
 
 struct mailbox_message_ {
+    int sender_id;
     fd_t sender_elfd;
     fd_t sender_fd;
     fd_t receiver_fd;
     int type;
-    char *message;
+    size_t size;
+    void *message;
 };
 
 struct mailbox_ {
     void *ctx;
+    int id;
     fd_t elfd;
     sem_t lock;
+    int signaled;
     fd_t pipes[2];
     struct mailbox_message_ *messages;
     int size;
     int reserved;
 };
+
+typedef struct message_params_ {
+    void *ctx;
+    fd_t elfd;
+    struct mailbox_message_* mail;
+} message_params;
 
 struct reload_context_ {
     int running;
@@ -258,6 +269,7 @@ void on_close(struct close_params_ params);
 void on_write(struct write_params_ params);
 void on_accept(struct accept_params_ params);
 void on_init(struct init_params_ params);
+void on_message(struct message_params_ params);
 
 fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int port, int is_udp);
 int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, size_t offset, size_t len);

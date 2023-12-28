@@ -135,6 +135,7 @@ namespace s90 {
         void on_close(close_params params);
         void on_write(write_params params);
         void on_accept(accept_params params);
+        void on_message(message_params params);
         void on_init(init_params params);
 
         aiopromise<connect_result> connect(const std::string& addr, dns_type record_type, int port, proto protocol) override;

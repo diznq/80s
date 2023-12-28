@@ -49,6 +49,11 @@ void on_accept(accept_params params) {
     ctx->on_accept(params);
 }
 
+void on_message(message_params params) {
+    context *ctx = (context*)params.ctx;
+    ctx->on_message(params);
+}
+
 void on_init(init_params params) {
     context *ctx = (context*)params.ctx;
     ctx->on_init(params);
