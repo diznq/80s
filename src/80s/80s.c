@@ -404,6 +404,7 @@ int main(int argc, const char **argv) {
         mailboxes[i].lock = CreateSemaphoreA(NULL, 1, 1, NULL);
     #endif
 
+        mailboxes[i].id = i;
         mailboxes[i].size = 0;
         mailboxes[i].reserved = 32;
         mailboxes[i].messages = (mailbox_message*)calloc(mailboxes[i].reserved, sizeof(mailbox_message));

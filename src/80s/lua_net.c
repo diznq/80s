@@ -81,6 +81,49 @@ static int l_net_sockname(lua_State *L) {
     return 2;
 }
 
+static int l_net_mail(lua_State *L) {
+    size_t len;
+    mailbox_message msg;
+    reload_context *reload = (reload_context*)lua_touserdata(L, 1);
+
+    int id = lua_tointeger(L, 2);
+    fd_t elfd = void_to_fd(lua_touserdata(L, 3));
+    fd_t childfd = void_to_fd(lua_touserdata(L, 4));
+
+    int target_id = lua_tointeger(L, 5);
+    fd_t targetfd = void_to_fd(lua_touserdata(L, 6));
+
+    int type = lua_tointeger(L, 7);
+    const char *data = lua_tolstring(L, 8, &len);
+
+    if(id >= reload->workers || id < 0) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    msg.sender_elfd = elfd;
+    msg.sender_fd = childfd;
+    msg.sender_id = id;
+    msg.receiver_fd = targetfd;
+    msg.type = type;
+    msg.message = (void*)calloc(len, sizeof(char));
+    msg.size = len;
+    memcpy(msg.message, data, len);
+
+    if(id == target_id) {
+        message_params params;
+        params.ctx = L;
+        params.elfd = elfd;
+        params.mail = &msg;
+        on_message(params);
+        free(msg.message);
+        lua_pushboolean(L, 1);
+    } else {
+        lua_pushboolean(L, s80_mail(reload->mailboxes + target_id, &msg) >= 0);
+    }
+    return 1;
+}
+
 static int l_net_readfile(lua_State *L) {
     char buf[10000];
     dynstr dyn;
@@ -479,6 +522,7 @@ int luaopen_net(lua_State *L) {
         {"popen", l_net_popen},
         {"mkdir", l_net_mkdir},
         {"info", l_net_info},
+        {"mail", l_net_mail},
         {NULL, NULL}};
 #if LUA_VERSION_NUM > 501
     luaL_newlib(L, netlib);

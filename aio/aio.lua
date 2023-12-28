@@ -26,6 +26,7 @@
 --- @field popen fun(elfd: lightuserdata, command: string, ...: string): read: lightuserdata|nil, write: lightuserdata|string process
 --- @field info fun(): string return build info and capabilities
 --- @field mkdir fun(dir_name: string): boolean create a directory, returns true if exists or on success
+--- @field mail fun(c_reload: lightuserdata, sender_worker_id: integer, sender_elfd: lightuserdata, sender_fd: lightuserdata, target_worker_id: integer, target_fd: lightuserdata, type: integer, message: string): boolean send mail to a different worker
 net = net or {}
 
 --- @class crypto
@@ -87,6 +88,12 @@ S80_FD_PIPE = S80_FD_PIPE or nil
 S80_FD_OTHER = S80_FD_OTHER or nil
 --- @type lightuserdata
 S80_RELOAD = S80_RELOAD or nil
+--- @type integer
+S80_MB_MESSAGE = S80_MB_MESSAGE or nil
+--- @type lightuserdata
+NILFD = NILFD or nil
+--- @type integer
+WORKERS = WORKERS or nil
 
 --- @type integer
 PORT = PORT or 8080
@@ -1364,6 +1371,18 @@ function aio:start()
     _G.on_accept = function(elfd, parentfd, childfd, fdtype)
         aio:on_accept(elfd, parentfd, childfd, fdtype)
     end
+
+    --- Message handler
+    ---@param sender_worker_id integer worker ID of the sender
+    ---@param sender_elfd lightuserdata event loop of the sender
+    ---@param sender_fd lightuserdata sender fd
+    ---@param elfd lightuserdata current event loop
+    ---@param fd lightuserdata target fd
+    ---@param type integer message type
+    ---@param message string message contents
+    _G.on_message = function(sender_worker_id, sender_elfd, sender_fd, elfd, fd, type, message)
+
+    end
 end
 
 --- Initialization handler
@@ -1386,6 +1405,15 @@ end
 --- Exit the worker
 function aio:quit()
     net.quit(S80_RELOAD)
+end
+
+--- Send mail to a worker
+---@param params {sender: aiosocket|nil, target: lightuserdata|nil, worker: integer, message: string}
+function aio:mail(params)
+    local sender_fd = NILFD
+    local target_fd = params.target or NILFD
+    if params.sender then sender_fd = params.sender.fd end
+    return net.mail(S80_RELOAD, WORKERID, ELFD, sender_fd or NILFD, params.worker, target_fd, S80_MB_MESSAGE, params.message)
 end
 
 --- Default HTTP request handler

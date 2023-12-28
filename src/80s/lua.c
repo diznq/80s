@@ -35,6 +35,21 @@ void close_context(void *ctx) {
     lua_close((lua_State *)ctx);
 }
 
+void on_message(struct message_params_ params) {
+    lua_State *L = (lua_State *)params.ctx;
+    lua_getglobal(L, "on_message");
+    lua_pushinteger(L, params.mail->sender_id);
+    lua_pushlightuserdata(L, fd_to_void(params.mail->sender_elfd));
+    lua_pushlightuserdata(L, fd_to_void(params.mail->sender_fd));
+    lua_pushlightuserdata(L, fd_to_void(params.elfd));
+    lua_pushlightuserdata(L, fd_to_void(params.mail->receiver_fd));
+    lua_pushinteger(L, params.mail->type);
+    lua_pushlstring(L, (const char*)params.mail->message, params.mail->size);
+    if (lua_pcall(L, 7, 0, 0) != 0) {
+        printf("on_message: error running on_data: %s\n", lua_tostring(L, -1));
+    }
+}
+
 void on_receive(struct read_params_ params) {
     lua_State *L = (lua_State *)params.ctx;
     lua_getglobal(L, "on_data");
@@ -131,6 +146,9 @@ static void refresh_lua(lua_State *L, fd_t elfd, node_id *id, const char *entryp
     lua_pushinteger(L, id->id);
     lua_setglobal(L, "WORKERID");
 
+    lua_pushinteger(L, reload->workers);
+    lua_setglobal(L, "WORKERS");
+
     lua_pushinteger(L, id->port);
     lua_setglobal(L, "PORT");
     
@@ -152,8 +170,14 @@ static void refresh_lua(lua_State *L, fd_t elfd, node_id *id, const char *entryp
     lua_pushlightuserdata(L, (void *)S80_FD_OTHER);
     lua_setglobal(L, "S80_FD_OTHER");
 
+    lua_pushinteger(L, S80_MB_MESSAGE);
+    lua_setglobal(L, "S80_MB_MESSAGE");
+
     lua_pushlightuserdata(L, (void *)reload);
     lua_setglobal(L, "S80_RELOAD");
+
+    lua_pushlightuserdata(L, NULL);
+    lua_setglobal(L, "NILFD");
 
 #ifdef USE_KTLS
     lua_pushboolean(L, 1);

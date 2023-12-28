@@ -435,13 +435,16 @@ int s80_mail(mailbox *mailbox, mailbox_message *message) {
         }
     }
     mailbox->messages[mailbox->size++] = *message;
-    WriteFile(mailbox->pipes[1], buf, 1, NULL, NULL);
+    if(!mailbox->signaled) {
+        mailbox->signaled = 1;
+        WriteFile(mailbox->pipes[1], buf, 1, NULL, NULL);
+    }
     s80_release_mailbox(mailbox);
     return 0;
 }
 
 void s80_acquire_mailbox(mailbox *mailbox) {
-    WaitForSingleObject(mailbox->lock, 0);
+    WaitForSingleObject(mailbox->lock, INFINITE);
 }
 
 void s80_release_mailbox(mailbox *mailbox) {
@@ -451,6 +454,10 @@ void s80_release_mailbox(mailbox *mailbox) {
 void resolve_mail(serve_params *params, int id) {
     int i;
     mailbox_message *message;
+    message_params mail;
+    mail.ctx = params->ctx;
+    mail.elfd = params->els[id];
+    
     s80_acquire_mailbox(params->reload->mailboxes + id);
     for(i = 0; i < params->reload->mailboxes[id].size; i++) {
         message = &params->reload->mailboxes[id].messages[i];
@@ -466,6 +473,10 @@ void resolve_mail(serve_params *params, int id) {
                 break;
             case S80_MB_ACCEPT:
                 on_accept(*(accept_params*)message->message);
+                break;
+            default:
+                mail.mail = message;
+                on_message(mail);
                 break;
         }
         if(message->message) {
