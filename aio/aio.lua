@@ -1220,8 +1220,8 @@ function aio:popen(elfd, command, ...)
         ---@diagnostic disable-next-line: return-type-mismatch
         return nil, wr
     end
-    self.fds[rd] = aiosocket:new(elfd, rd, S80_FD_PIPE, false, false)
-    self.fds[wr] = aiosocket:new(elfd, wr, S80_FD_PIPE, false, false)
+    self.fds[rd] = aiosocket:new(elfd, rd, S80_FD_PIPE, false, true)
+    self.fds[wr] = aiosocket:new(elfd, wr, S80_FD_PIPE, false, true)
     return self.fds[rd], self.fds[wr]
 end
 

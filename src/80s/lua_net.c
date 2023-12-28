@@ -498,16 +498,17 @@ static int l_net_popen(lua_State *L) {
     int i, status;
     fd_t pipes[2];
     fd_t elfd = void_to_fd(lua_touserdata(L, 1));
-    typedef char const *pcchar;
-    pcchar *args = calloc(lua_gettop(L) - 1, sizeof(pcchar));
+    const char **args = (const char **)calloc(lua_gettop(L) + 4, sizeof(char*));
     if(!args) return luaL_error(L, "failed to allocate memory for args");
     const char* cmd = lua_tostring(L, 2);
     args[0] = (const char*)NULL;
     for(i=2; i<=lua_gettop(L); i++) {
         args[i - 2] = lua_tostring(L, i);
     }
-    args[i - 2] = (const char*)NULL;
-    status = s80_popen(elfd, pipes, cmd, (char* const*)args);
+    if(i >= 2) {
+        args[i - 2] = (const char*)NULL;
+    }
+    status = s80_popen(elfd, pipes, cmd, (char * const*)args);
     free(args);
     if(status < 0) {
         lua_pushnil(L);
