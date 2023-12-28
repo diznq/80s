@@ -23,6 +23,9 @@
 #include <sys/stat.h>
 
 static int l_net_write(lua_State *L) {
+    if(lua_gettop(L) != 5 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TLIGHTUSERDATA || lua_type(L, 3) != LUA_TLIGHTUSERDATA || lua_type(L, 4) != LUA_TSTRING || lua_type(L, 5) != LUA_TNUMBER) {
+        return luaL_error(L, "expecting 3 arguments: elfd (lightuserdata), fd (lightuserdata), fdtype (lightuserdata), data (string), offset (integer)");
+    }
     size_t len;
     fd_t elfd = void_to_fd(lua_touserdata(L, 1));
     fd_t childfd = void_to_fd(lua_touserdata(L, 2));
@@ -41,6 +44,9 @@ static int l_net_write(lua_State *L) {
 }
 
 static int l_net_close(lua_State *L) {
+    if(lua_gettop(L) != 3 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TLIGHTUSERDATA || lua_type(L, 3) != LUA_TLIGHTUSERDATA) {
+        return luaL_error(L, "expecting 3 arguments: elfd (lightuserdata), fd (lightuserdata), fdtype (lightuserdata)");
+    }
     fd_t elfd = void_to_fd(lua_touserdata(L, 1));
     fd_t childfd = void_to_fd(lua_touserdata(L, 2));
     int fdtype = void_to_int(lua_touserdata(L, 3));
@@ -50,6 +56,9 @@ static int l_net_close(lua_State *L) {
 }
 
 static int l_net_connect(lua_State *L) {
+    if(lua_gettop(L) < 3 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TSTRING || lua_type(L, 3) != LUA_TNUMBER) {
+        return luaL_error(L, "expecting at least 3 arguments: elfd (lightuserdata), address (string), port (integer), is_udp=false (boolean)");
+    }
     fd_t elfd = void_to_fd(lua_touserdata(L, 1));
     const char *addr = (const char *)lua_tostring(L, 2);
     int portno = (int)lua_tointeger(L, 3);
@@ -66,7 +75,10 @@ static int l_net_connect(lua_State *L) {
     return 2;
 }
 
-static int l_net_sockname(lua_State *L) {
+static int l_net_sockname(lua_State *L) {    
+    if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TLIGHTUSERDATA) {
+        return luaL_error(L, "expecting 1 argument: fd (childfd)");
+    }
     char buf[500];
     int port;
     fd_t fd = void_to_fd(lua_touserdata(L, 1));
@@ -82,6 +94,28 @@ static int l_net_sockname(lua_State *L) {
 }
 
 static int l_net_mail(lua_State *L) {
+    if(lua_gettop(L) != 8 
+        || lua_type(L, 1) != LUA_TLIGHTUSERDATA 
+        || lua_type(L, 2) != LUA_TNUMBER 
+        || lua_type(L, 3) != LUA_TLIGHTUSERDATA
+        || lua_type(L, 4) != LUA_TLIGHTUSERDATA
+        || lua_type(L, 5) != LUA_TNUMBER
+        || lua_type(L, 6) != LUA_TLIGHTUSERDATA
+        || lua_type(L, 7) != LUA_TNUMBER
+        || lua_type(L, 8) != LUA_TSTRING
+    ) {
+        return luaL_error(L, 
+            "expecting 8 arguments: "
+            "reload context (lightuserdata), "
+            "sender worker id (integer), "
+            "sender elfd (lightuserdata), "
+            "sender fd (lightuserdata), "
+            "target worker id (integer), "
+            "target fd (lightuserdata), "
+            "message type (integer), "
+            "message (string)"
+        );
+    }
     size_t len;
     mailbox_message msg;
     reload_context *reload = (reload_context*)lua_touserdata(L, 1);
@@ -125,6 +159,9 @@ static int l_net_mail(lua_State *L) {
 }
 
 static int l_net_readfile(lua_State *L) {
+    if(lua_gettop(L) != 2 || lua_type(L, 1) != LUA_TSTRING || lua_type(L, 2) != LUA_TSTRING) {
+        return luaL_error(L, "expecting 2 arguments: file name (string), mode (string)");
+    }
     char buf[10000];
     dynstr dyn;
     size_t size;
@@ -185,6 +222,9 @@ static int l_net_quit(lua_State *L) {
 }
 
 static int l_net_inotify_init(lua_State *L) {
+    if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TLIGHTUSERDATA) {
+        return luaL_error(L, "expecting 1 arguments: elfd (lightuserdata)");
+    }
 #ifdef USE_INOTIFY
     int status;
     fd_t elfd, childfd;
@@ -213,6 +253,9 @@ static int l_net_inotify_init(lua_State *L) {
 }
 
 static int l_net_inotify_add(lua_State *L) {
+    if(lua_gettop(L) != 3 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TLIGHTUSERDATA || lua_type(L, 3) != LUA_TSTRING) {
+        return luaL_error(L, "expecting 3 arguments: elfd (lightuserdata), fd (childfd), file name (string)");
+    }
 #ifdef USE_INOTIFY
     int result;
     fd_t elfd, childfd, wd;
@@ -231,6 +274,9 @@ static int l_net_inotify_add(lua_State *L) {
 }
 
 static int l_net_inotify_remove(lua_State *L) {
+    if(lua_gettop(L) != 3 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TLIGHTUSERDATA || lua_type(L, 3) != LUA_TLIGHTUSERDATA) {
+        return luaL_error(L, "expecting 3 arguments: elfd (lightuserdata), fd (childfd), wd (childfd)");
+    }
 #ifdef USE_INOTIFY
     int result;
     fd_t elfd, childfd, wd;
@@ -253,6 +299,9 @@ static int l_net_inotify_remove(lua_State *L) {
 }
 
 static int l_net_inotify_read(lua_State *L) {
+    if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TSTRING) {
+        return luaL_error(L, "expecting 1 argument: data (string)");
+    }
 #ifdef USE_INOTIFY
     const char *data;
     size_t i = 0, length;
@@ -308,6 +357,9 @@ static int l_net_inotify_read(lua_State *L) {
 }
 
 static int l_net_listdir(lua_State *L) {
+    if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TSTRING) {
+        return luaL_error(L, "expecting 1 argument: directory name (string)");
+    }
     int n, i;
     char full_path[2000], buf[1000];
     const char *dir_name = lua_tostring(L, 1);
@@ -376,6 +428,9 @@ static int l_net_listdir(lua_State *L) {
 }
 
 static int l_net_mkdir(lua_State *L) {
+    if(lua_gettop(L) < 1 || lua_type(L, 1) != LUA_TSTRING) {
+        return luaL_error(L, "expecting at least 1 argument: directory name (string), permissions=0777 (int)");
+    }
     const char *dir_name = lua_tostring(L, 1);
     int permissions = 0777;
     if(lua_gettop(L) == 2 && lua_type(L, 2) == LUA_TNUMBER) permissions = lua_tointeger(L, 2);
@@ -422,6 +477,9 @@ static int l_net_clock(lua_State *L) {
 }
 
 static int l_net_partscan(lua_State *L) {
+    if(lua_gettop(L) != 3 || lua_type(L, 1) != LUA_TSTRING || lua_type(L, 2) != LUA_TSTRING || lua_type(L, 3) != LUA_TNUMBER) {
+        return luaL_error(L, "expecting 3 arguments: haystack (string), needle (string), offset (integer)");
+    }
     size_t len, pattern_len, offset;
     const char *haystack = lua_tolstring(L, 1, &len);
     const char *pattern = lua_tolstring(L, 2, &pattern_len);
@@ -434,6 +492,9 @@ static int l_net_partscan(lua_State *L) {
 }
 
 static int l_net_popen(lua_State *L) {
+    if(lua_gettop(L) < 2 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TSTRING) {
+        return luaL_error(L, "expecting at least 2 arguments: elfd (lightuserdata), executable name (string), args... (string)");
+    }
     int i, status;
     fd_t pipes[2];
     fd_t elfd = void_to_fd(lua_touserdata(L, 1));
