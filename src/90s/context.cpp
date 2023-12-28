@@ -91,6 +91,10 @@ namespace s90 {
         }
     }
 
+    void context::on_message(message_params params) {
+        
+    }
+
     aiopromise<connect_result> context::connect(const std::string& addr, dns_type record_type, int port, proto protocol) {
         fd_t fd = s80_connect(this, elfd, addr.c_str(), port, protocol == proto::udp);
         if(fd == (fd_t)-1) {
