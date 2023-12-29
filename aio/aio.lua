@@ -35,6 +35,7 @@ net = net or {}
 --- @field hmac_sha256 fun(data: string, key: string): string perform HMAC SHA256, returns bytestring with raw data
 --- @field cipher fun(data: string, key: string, iv: boolean, encrypt: boolean): result: string?, error: string perform encryption/decryption, if iv is false, iv is all zeros and not inserted to result, key must be at least 128 bits
 --- @field to64 fun(data: string): string encode to base64
+--- @field rsa_sha256 fun(privkey: string, data: string): string sign with rsa_sha256
 --- @field from64 fun(data: string): string decode from base64
 --- @field random fun(n: integer): string generate n random bytes
 --- @field ssl_new_server fun(pubkey: string, privkey: string): lightuserdata|nil initialize new global SSL context

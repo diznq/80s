@@ -360,6 +360,32 @@ static int l_crypto_random(lua_State *L) {
     return 1;
 }
 
+static int l_crypto_rsa_sha256(lua_State *L) {
+    if(lua_gettop(L) != 2 || lua_type(L, 1) != LUA_TSTRING || lua_type(L, 2) != LUA_TSTRING) {
+        return luaL_error(L, "expecting 2 arguments: privkey path (string) text (string)");
+    }
+    size_t len, target_len;
+    dynstr str;
+    int result;
+    char buffer[10000];
+    const char *error_message = NULL;
+    const char *privkey = lua_tostring(L, 1);
+    const char *data = lua_tolstring(L, 2, &len);
+
+    dynstr_init(&str, buffer, sizeof(buffer));
+    result = crypto_rsa_sha256(privkey, data, len, &str, &error_message);
+    if(result < 0) {
+        dynstr_release(&str);
+        lua_pushnil(L);
+        lua_pushstring(L, error_message);
+        return 2;
+    } else {
+        lua_pushlstring(L, str.ptr, str.length);
+        dynstr_release(&str);
+        return 1;
+    }
+}
+
 int luaopen_crypto(lua_State *L) {
     const luaL_Reg netlib[] = {
         {"sha1", l_crypto_sha1},
@@ -383,6 +409,7 @@ int luaopen_crypto(lua_State *L) {
         {"ssl_read", l_crypto_ssl_read},
         {"ssl_write", l_crypto_ssl_write},
         {"ssl_requests_io", l_crypto_ssl_requests_io},
+        {"rsa_sha256", l_crypto_rsa_sha256},
         {NULL, NULL}};
     crypto_init();
 #if LUA_VERSION_NUM > 501

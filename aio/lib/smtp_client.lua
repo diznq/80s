@@ -51,12 +51,16 @@ function smtp_client:send_mail(params)
         end
         self.tls = ssl_result
     end
+    if self.logging then print("= Submitting new mail") end
     aio:connect2({host = host, port = 25, dns_type = "MX", cname_ssl = true})(function (fd)
         if iserror(fd) then
-            resolve(fd)
+            if self.logging then print("= Failed to connect to MX " .. host .. ":25") end
+            resolve(make_error("failed to connect to SMTP server: " .. host .. ":25, reason: " .. fd.error))
             return
         end
+        if self.logging then print("= Successfuly connected to MX " .. host .. ":25") end
         aio:buffered_cor(fd, function (_)
+            if self.logging then print("= Starting the mail flow") end
             -- first line can be ignored
             local first_line = coroutine.yield("\r\n")
             -- Hello
@@ -128,11 +132,44 @@ function smtp_client:encode_message(from, recipients, headers, subject, body)
     headers["To"] = table.concat(recipients, ", ")
     headers["Subject"] = subject or "No subject"
 
+    local canon = {}
+    local header_keys = {}
+    local header_values = {}
+
     local headers_list = {}
     for key, value in pairs(headers) do
+        header_keys[#header_keys+1] = key
         headers_list[#headers_list+1] = key .. ": " .. tostring(value)
     end
-    return string.format("%s\r\n\r\n%s", table.concat(headers_list, "\r\n"), body)
+
+    local headers_str = table.concat(headers_list, "\r\n")
+
+    body = body:gsub("^([ \r\n\t]+)", ""):gsub("([ \r\n\t]+)$", "")
+
+    local result = string.format("%s\r\n\r\n%s", headers_str, body)
+
+    if self.logging then print("= E-mail payload generated") end
+    if self.dkim_domain and self.dkim_privkey and self.dkim_selector then
+        if self.logging then print("= Generating DKIM signature") end
+        local canonized = headers_str
+        local issued = os.time()
+        local valid_to = os.time() + 3600
+        local bh = crypto.to64(crypto.sha256(body .. "\r\n"))
+        local dkim_val = string.format(
+            "v=1; a=rsa-sha256; c=simple/simple; d=%s; s=%s; t=%d; x=%d; h=%s; bh=%s; b=",
+            self.dkim_domain, self.dkim_selector, issued, valid_to, table.concat(header_keys, ":"), bh
+        )
+        canonized = canonized .. "\r\nDKIM-Signature: " .. dkim_val
+        local ok, err = crypto.rsa_sha256(self.dkim_privkey, canonized)
+        if ok then
+            result = "DKIM-Signature: " .. dkim_val .. crypto.to64(ok) .. "\r\n" .. result
+            if self.logging then print("= DKIM generated successfuly") end
+        else
+            if self.logging then print("= Failed to generate DKIM: ", err) end
+        end
+    end
+
+    return result
 end
 
 --- Perform mail SMTP send mail flow
@@ -249,10 +286,13 @@ function smtp_client:generate_message_id()
 end
 
 --- Initialize SMTP client
----@param params {host: string|nil, logging: boolean|nil, ssl: boolean|nil}
+---@param params {host: string|nil, logging: boolean|nil, ssl: boolean|nil, dkim_privkey: string|nil, dkim_selector: string|nil, dkim_domain: string|nil}
 function smtp_client:init(params)
     self.host = params.host or "localhost"
     self.logging = params.logging or false
+    self.dkim_domain = params.dkim_domain
+    self.dkim_privkey = params.dkim_privkey
+    self.dkim_selector = params.dkim_selector
     if params.ssl then
         self.ssl_enforced = true
     end
