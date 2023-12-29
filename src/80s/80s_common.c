@@ -184,7 +184,7 @@ int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port) {
     union addr_common addr;
     socklen_t clientlen = sizeof(addr);
 
-    if (getsockname((sock_t)fd, (struct sockaddr *)&addr, &clientlen) < 0) {
+    if (getpeername((sock_t)fd, (struct sockaddr *)&addr, &clientlen) < 0) {
         return 0;
     }
 

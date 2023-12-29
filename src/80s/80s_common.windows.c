@@ -245,7 +245,7 @@ int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port) {
     context_holder *cx = (context_holder*)fd;
     fd = cx->fd;
 
-    if (getsockname((sock_t)fd, (struct sockaddr *)&addr, &clientlen) < 0) {
+    if (getpeername((sock_t)fd, (struct sockaddr *)&addr, &clientlen) < 0) {
         return 0;
     }
 
