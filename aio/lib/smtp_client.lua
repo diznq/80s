@@ -131,29 +131,29 @@ function smtp_client:encode_message(from, recipients, headers, subject, body)
     local canon = {}
     local header_keys = {}
     local header_values = {}
-    local bh = crypto.to64(crypto.sha256(body))
 
     local headers_list = {}
     for key, value in pairs(headers) do
-        local v = tostring(value)
-        local lk = key:lower()
-        header_keys[#header_keys+1] = lk
-        header_values[#header_values+1] = v
-        headers_list[#headers_list+1] = key .. ": " .. v
-        canon[#canon+1] = key:lower() .. ":" .. lk
+        header_keys[#header_keys+1] = key
+        headers_list[#headers_list+1] = key .. ": " .. tostring(value)
     end
 
-    local result = string.format("%s\r\n\r\n%s", table.concat(headers_list, "\r\n"), body)
+    local headers_str = table.concat(headers_list, "\r\n")
+
+    body = body:gsub("^([ \r\n\t]+)", ""):gsub("([ \r\n\t]+)$", "")
+
+    local result = string.format("%s\r\n\r\n%s", headers_str, body)
 
     if self.dkim_domain and self.dkim_privkey and self.dkim_selector then
-        local canonized = table.concat(canon, "\r\n")
+        local canonized = headers_str
         local issued = os.time()
         local valid_to = os.time() + 3600
+        local bh = crypto.to64(crypto.sha256(body) .. "\r\n")
         local dkim_val = string.format(
-            "v=1; a=rsa-sha256; c=relaxed/relaxed; d=%s; s=%s; t=%d; x=%d; h=%s; bh=%s; b=",
+            "v=1; a=rsa-sha256; c=simple/simple; d=%s; s=%s; t=%d; x=%d; h=%s; bh=%s; b=",
             self.dkim_domain, self.dkim_selector, issued, valid_to, table.concat(header_keys, ":"), bh
         )
-        canonized = canonized .. "\r\ndkim-signature:" .. dkim_val
+        canonized = canonized .. "\r\nDKIM-Signature: " .. dkim_val
         local ok, err = crypto.rsa_sha256(self.dkim_privkey, canonized)
         if ok then
             result = "DKIM-Signature: " .. dkim_val .. crypto.to64(ok) .. "\r\n" .. result
