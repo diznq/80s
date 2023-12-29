@@ -51,12 +51,16 @@ function smtp_client:send_mail(params)
         end
         self.tls = ssl_result
     end
+    if self.logging then print("= Submitting new mail") end
     aio:connect2({host = host, port = 25, dns_type = "MX", cname_ssl = true})(function (fd)
         if iserror(fd) then
-            resolve(fd)
+            if self.logging then print("= Failed to connect to MX " .. host .. ":25") end
+            resolve(make_error("failed to connect to SMTP server"))
             return
         end
+        if self.logging then print("= Successfuly connected to MX " .. host .. ":25") end
         aio:buffered_cor(fd, function (_)
+            if self.logging then print("= Starting the mail flow") end
             -- first line can be ignored
             local first_line = coroutine.yield("\r\n")
             -- Hello
@@ -144,7 +148,9 @@ function smtp_client:encode_message(from, recipients, headers, subject, body)
 
     local result = string.format("%s\r\n\r\n%s", headers_str, body)
 
+    if self.logging then print("= E-mail payload generated") end
     if self.dkim_domain and self.dkim_privkey and self.dkim_selector then
+        if self.logging then print("= Generating DKIM signature") end
         local canonized = headers_str
         local issued = os.time()
         local valid_to = os.time() + 3600
@@ -157,6 +163,9 @@ function smtp_client:encode_message(from, recipients, headers, subject, body)
         local ok, err = crypto.rsa_sha256(self.dkim_privkey, canonized)
         if ok then
             result = "DKIM-Signature: " .. dkim_val .. crypto.to64(ok) .. "\r\n" .. result
+            if self.logging then print("= DKIM generated successfuly") end
+        else
+            if self.logging then print("= Failed to generate DKIM: ", err) end
         end
     end
 
