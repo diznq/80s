@@ -55,7 +55,7 @@ function smtp_client:send_mail(params)
     aio:connect2({host = host, port = 25, dns_type = "MX", cname_ssl = true})(function (fd)
         if iserror(fd) then
             if self.logging then print("= Failed to connect to MX " .. host .. ":25") end
-            resolve(make_error("failed to connect to SMTP server"))
+            resolve(make_error("failed to connect to SMTP server: " .. host .. ":25, reason: " .. fd.error))
             return
         end
         if self.logging then print("= Successfuly connected to MX " .. host .. ":25") end
