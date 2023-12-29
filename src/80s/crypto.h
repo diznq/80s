@@ -28,6 +28,7 @@ int crypto_ssl_accept(void *bio_ctx, int *output_ok, const char **output_error_m
 int crypto_ssl_connect(void *bio_ctx, int *output_ok, const char **output_error_message);
 int crypto_ssl_requests_io(void *bio_ctx, int n);
 int crypto_random(char *buf, size_t len);
+int crypto_rsa_sha256(const char *key, const char *data, size_t data_size, dynstr *out, const char **error);
 
 #ifdef __cplusplus
 }

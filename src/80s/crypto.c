@@ -697,6 +697,71 @@ int crypto_random(char *buf, size_t len) {
     return 0;
 }
 
+int crypto_rsa_sha256(const char *key, const char *data, size_t data_size, dynstr *out, const char **error) {
+    EVP_PKEY *pkey = NULL; // use EVP_PKEY to hold the private key
+    EVP_MD_CTX *md_ctx = NULL; // use EVP_MD_CTX to hold the signing context
+    size_t sig_len = 0;
+    int status = 0;
+    FILE *f = fopen(key, "rb");
+    if(f == NULL) {
+        if(error) *error = "failed to open key file";
+        return -1;
+    }
+    
+    pkey = PEM_read_PrivateKey(f, NULL, NULL, NULL); // use PEM_read_PrivateKey to read the private key as EVP_PKEY
+    fclose(f);
+    
+    if(pkey == NULL) {
+        if(error) *error = "failed to read privkey as EVP_PKEY";
+        return -1;
+    }
+
+    if(!dynstr_check(out, EVP_PKEY_size(pkey))) { // use EVP_PKEY_size to get the maximum size of the signature
+        EVP_PKEY_free(pkey); // use EVP_PKEY_free to free the private key
+        if(error) *error = "failed to allocate enough memory";
+        return -1;
+    } else {
+        sig_len = EVP_PKEY_size(pkey);
+    }
+
+    md_ctx = EVP_MD_CTX_new(); // create a new signing context
+    if(md_ctx == NULL) {
+        EVP_PKEY_free(pkey);
+        if(error) *error = "failed to create signing context";
+        return -1;
+    }
+
+    status = EVP_DigestSignInit(md_ctx, NULL, EVP_sha256(), NULL, pkey); // initialize the signing operation with SHA-256
+    if(status != 1) {
+        EVP_PKEY_free(pkey);
+        EVP_MD_CTX_free(md_ctx); // use EVP_MD_CTX_free to free the signing context
+        if(error) *error = "signing initialization failed";
+        return -1;
+    }
+
+    status = EVP_DigestSignUpdate(md_ctx, data, data_size); // update the signing operation with the data
+    if(status != 1) {
+        EVP_PKEY_free(pkey);
+        EVP_MD_CTX_free(md_ctx);
+        if(error) *error = "signing update failed";
+        return -1;
+    }
+
+    status = EVP_DigestSignFinal(md_ctx, out->ptr, &sig_len); // finalize the signing operation and get the signature
+    if(status != 1) {
+        EVP_PKEY_free(pkey);
+        EVP_MD_CTX_free(md_ctx);
+        if(error) *error = "signing finalization failed";
+        return -1;
+    }
+
+    EVP_PKEY_free(pkey);
+    EVP_MD_CTX_free(md_ctx);
+    out->length = sig_len;
+    return 0;
+}
+
+
 int crypto_init() {
     SSL_library_init();
     OpenSSL_add_all_algorithms();

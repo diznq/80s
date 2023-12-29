@@ -249,10 +249,12 @@ function smtp_client:generate_message_id()
 end
 
 --- Initialize SMTP client
----@param params {host: string|nil, logging: boolean|nil, ssl: boolean|nil}
+---@param params {host: string|nil, logging: boolean|nil, ssl: boolean|nil, dkim_privkey: string|nil, dkim_selector: string|nil}
 function smtp_client:init(params)
     self.host = params.host or "localhost"
     self.logging = params.logging or false
+    self.dkim_privkey = params.dkim_privkey
+    self.dkim_selector = params.dkim_selector
     if params.ssl then
         self.ssl_enforced = true
     end
