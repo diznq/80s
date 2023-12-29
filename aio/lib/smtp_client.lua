@@ -148,7 +148,7 @@ function smtp_client:encode_message(from, recipients, headers, subject, body)
         local canonized = headers_str
         local issued = os.time()
         local valid_to = os.time() + 3600
-        local bh = crypto.to64(crypto.sha256(body) .. "\r\n")
+        local bh = crypto.to64(crypto.sha256(body .. "\r\n"))
         local dkim_val = string.format(
             "v=1; a=rsa-sha256; c=simple/simple; d=%s; s=%s; t=%d; x=%d; h=%s; bh=%s; b=",
             self.dkim_domain, self.dkim_selector, issued, valid_to, table.concat(header_keys, ":"), bh
