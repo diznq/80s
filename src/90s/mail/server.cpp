@@ -76,14 +76,15 @@ namespace s90 {
                 } else if(cmd->starts_with("MAIL FROM:")) {
                     if(!knowledge.hello) {
                         if(!co_await write(fd, "503 HELO or EHLO was not sent previously!\r\n")) co_return nil {};
-                    } else if(knowledge.from.size() > 0) {
+                    } else if(knowledge.from) {
                         if(!co_await write(fd, "503 MAIL FROM was already sent previously!\r\n")) co_return nil {};
                     } else {
                         auto parsed_mail = parse_smtp_address(cmd->substr(10));
-                        if(parsed_mail.size() == 0) {
+                        if(!parsed_mail) {
                             if(!co_await write(fd, "501 Invalid address\r\n")) co_return nil {};
                         } else {
                             knowledge.from = parsed_mail;
+                            knowledge.from.direction = (int)mail_direction::outbound;
                             if(!co_await write(fd, "250 OK\r\n")) co_return nil {};
                         }
                     }
@@ -92,17 +93,18 @@ namespace s90 {
                         if(!co_await write(fd, "503 HELO or EHLO was not sent previously!\r\n")) co_return nil {};
                     } else {
                         auto parsed_mail = parse_smtp_address(cmd->substr(8));
-                        if(parsed_mail.size() == 0) {
+                        if(!parsed_mail) {
                             if(!co_await write(fd, "501 Invalid address\r\n")) co_return nil {};
                         } else if(knowledge.to.size() > 50) {
                             if(!co_await write(fd, "501 Limit for number of recipients is 50\r\n")) co_return nil {};
                         } else {
                             knowledge.to.insert(parsed_mail);
+                            knowledge.from.direction = (int)mail_direction::inbound;
                             if(!co_await write(fd, "250 OK\r\n")) co_return nil {};
                         }
                     }
                 } else if(cmd->starts_with("DATA")) {
-                    if(knowledge.hello && knowledge.from.size() > 0 && knowledge.to.size() > 0) {
+                    if(knowledge.hello && knowledge.from && knowledge.to.size() > 0) {
                         if(!co_await write(fd, "354 Send message content; end with <CR><LF>.<CR><LF>\r\n")) co_return nil {};
                         auto msg = co_await read_until(fd, ("\r\n.\r\n"));
                         if(!msg) co_return nil {};
@@ -128,7 +130,7 @@ namespace s90 {
                     } else {
                         std::string errors = "503-There were following errors:";
                         if(!knowledge.hello) errors += "\r\n503- No hello has been sent";
-                        if(knowledge.from.empty()) errors += "\r\n503- MAIL FROM has been never sent";
+                        if(!knowledge.from) errors += "\r\n503- MAIL FROM has been never sent";
                         if(knowledge.to.empty()) errors += "\r\n503- There were zero recipients";
                         errors += "\r\n503 Please, fill the missing information\r\n";
                         if(!co_await write(fd, errors)) co_return nil {};
@@ -181,8 +183,8 @@ namespace s90 {
             fd->close();
         }
 
-        std::string server::parse_smtp_address(std::string_view address) {
-            return std::string(address);
+        mail_parsed_user server::parse_smtp_address(std::string_view address) {
+            return mail_parsed_user {false, std::string(address), std::string(address), ""};
         }
     }
 }

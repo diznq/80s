@@ -19,7 +19,7 @@ namespace s90 {
             void on_pre_refresh() override;
             void on_refresh() override;
 
-            std::string parse_smtp_address(std::string_view addr);
+            mail_parsed_user parse_smtp_address(std::string_view addr);
 
             aiopromise<std::expected<std::string, std::string>> handle_mail(mail_knowledge mail);
             aiopromise<read_arg> read_until(std::shared_ptr<iafd> fd, std::string&& delim);
