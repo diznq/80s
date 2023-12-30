@@ -291,11 +291,7 @@ namespace s90 {
             }
         };
 
-        class mapping {
-        public:
-            std::string name;
-            any value;
-        };
+        using mapping = std::pair<std::string, any>;
 
         class with_orm;
 
@@ -307,13 +303,18 @@ namespace s90 {
         public:
             mapper(std::initializer_list<mapping> rels) : relations(rels) {}
 
+            auto begin() { return relations.begin(); }
+            auto end() { return relations.end(); }
+            auto cbegin() { return relations.cbegin(); }
+            auto cend() { return relations.cend(); }
+
             /// @brief Transform dictionary of string keys and values to a native C++ object
             /// @param fields dictionary of keys and values
             void to_native(const dict<std::string, std::string>& fields) const {
                 for(auto& item : relations) {
-                    auto it = fields.find(item.name);
+                    auto it = fields.find(item.first);
                     if(it != fields.end()) {
-                        item.value.to_native(it->second);
+                        item.second.to_native(it->second);
                     }
                 }
             }
@@ -324,7 +325,7 @@ namespace s90 {
             dict<std::string, std::string> from_native(bool bool_as_text = false) const {
                 dict<std::string, std::string> obj;
                 for(auto& item : relations) {
-                    obj[item.name] = item.value.from_native(bool_as_text);
+                    obj[item.first] = item.second.from_native(bool_as_text);
                 }
                 return obj;
             }

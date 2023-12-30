@@ -2,12 +2,12 @@
 *.o
 bin/
 private/
-crymp/
-cppmp/
-gsemu/
+./crymp/
+./cppmp/
+./gsemu/
 *.env.sh
 /i.*
-mail/
+./mail/
 src/90s/httpd/pages/*.html.hpp
 src/90s/httpd/pages/*.html.cpp
 src/90s/httpd/pages/*.so
