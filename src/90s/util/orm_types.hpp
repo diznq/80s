@@ -88,9 +88,9 @@ namespace s90 {
                 std::tm utc_tm = *std::gmtime(&tt);
                 char buff[25];
                 if(sep != '\0') {
-                    std::sprintf(buff, "%04d%c%02d%c%02d", utc_tm.tm_hour, sep, utc_tm.tm_min, sep, utc_tm.tm_sec);
+                    std::sprintf(buff, "%02d%c%02d%c%02d", utc_tm.tm_hour, sep, utc_tm.tm_min, sep, utc_tm.tm_sec);
                 } else {
-                    std::sprintf(buff, "%04d%02d%02d", utc_tm.tm_hour, utc_tm.tm_min, utc_tm.tm_sec);
+                    std::sprintf(buff, "%02d%02d%02d", utc_tm.tm_hour, utc_tm.tm_min, utc_tm.tm_sec);
                 }
                 return buff;
             }
