@@ -20,39 +20,17 @@ namespace s90 {
 
             orm::mapper get_orm() {
                 return {
-                    {
-                        "SMTP_HOST", smtp_host
-                    },
-                    {
-                        "SV_TLS_ENABLED", sv_tls_enabled
-                    },
-                    {
-                        "SV_TLS_PRIVKEY", sv_tls_privkey
-                    },
-                    {
-                        "SV_TLS_PUBKEY", sv_tls_pubkey
-                    },
-                    {
-                        "SV_LOGGING", sv_logging
-                    },
-                    {
-                        "DB_USER", db_user
-                    },
-                    {
-                        "DB_PASSWORD", db_password
-                    },
-                    {
-                        "DB_NAME", db_name
-                    },
-                    {
-                        "DB_PORT", db_port
-                    },
-                    {
-                        "DB_HOST", db_host
-                    },
-                    {
-                        "SV_MAIL_STORAGE_DIR", sv_mail_storage_dir
-                    }
+                    { "SMTP_HOST", smtp_host },
+                    { "SV_TLS_ENABLED", sv_tls_enabled },
+                    { "SV_TLS_PRIVKEY", sv_tls_privkey },
+                    { "SV_TLS_PUBKEY", sv_tls_pubkey },
+                    { "SV_LOGGING", sv_logging },
+                    { "DB_USER", db_user },
+                    { "DB_PASSWORD", db_password },
+                    { "DB_NAME", db_name },
+                    { "DB_PORT", db_port },
+                    { "DB_HOST", db_host },
+                    { "SV_MAIL_STORAGE_DIR", sv_mail_storage_dir }
                 };
             }
         };
