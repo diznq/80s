@@ -22,6 +22,9 @@ namespace s90 {
             std::string parse_smtp_address(std::string_view addr);
 
             aiopromise<std::expected<std::string, std::string>> handle_mail(mail_knowledge mail);
+            aiopromise<read_arg> read_until(std::shared_ptr<iafd> fd, std::string&& delim);
+            aiopromise<bool> write(std::shared_ptr<iafd> fd, std::string_view data);
+            void close(std::shared_ptr<iafd> fd);
         };
     }
 }

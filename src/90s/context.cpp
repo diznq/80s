@@ -1,5 +1,5 @@
-#include "context.hpp"
 #include <80s/crypto.h>
+#include "context.hpp"
 #include "sql/mysql.hpp"
 
 namespace s90 {
@@ -232,6 +232,11 @@ namespace s90 {
 
         ssl_contexts[key] = ctx;
         return ctx;
+    }
+
+
+    node_id context::get_node_id() const {
+        return *id;
     }
     
 }

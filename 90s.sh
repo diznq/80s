@@ -151,5 +151,6 @@ else
     src/90s/90s.cpp src/90s/afd.cpp src/90s/context.cpp \
     src/90s/httpd/environment.cpp src/90s/httpd/render_context.cpp src/90s/httpd/server.cpp \
     src/90s/util/util.cpp \
-    src/90s/sql/mysql.cpp src/90s/sql/mysql_util.cpp
+    src/90s/sql/mysql.cpp src/90s/sql/mysql_util.cpp \
+    src/90s/mail/server.cpp src/90s/mail/indexed_mail_storage.cpp
 fi

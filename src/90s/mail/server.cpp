@@ -1,4 +1,6 @@
 #include "server.hpp"
+#include "mail_storage.hpp"
+#include <iostream>
 
 namespace s90 {
     namespace mail {
@@ -22,6 +24,7 @@ namespace s90 {
                     }
                 }
             }
+            storage = std::make_shared<indexed_mail_storage>(ctx, config);
         }
 
         server::~server() {
@@ -29,18 +32,18 @@ namespace s90 {
         }
 
         aiopromise<nil> server::on_accept(std::shared_ptr<iafd> fd) {
-            if(!co_await fd->write(std::format("220 {} ESMTP 90s\r\n", config.smtp_host))) co_return nil {};
+            if(!co_await write(fd, std::format("220 {} ESMTP 90s\r\n", config.smtp_host))) co_return nil {};
             mail_knowledge knowledge;
             while(true) {
-                auto cmd = co_await fd->read_until("\r\n");
+                auto cmd = co_await read_until(fd, ("\r\n"));
                 if(!cmd) co_return nil {};
 
                 if(cmd->starts_with("HELO ")) {
-                    if(!co_await fd->write(std::format("250 HELO {}\r\n", cmd->substr(5)))) co_return nil {};
+                    if(!co_await write(fd, std::format("250 HELO {}\r\n", cmd->substr(5)))) co_return nil {};
                     knowledge.hello = true;
                     knowledge.client_name = cmd->substr(5);
                 } else if(cmd->starts_with("EHLO ")) {
-                    if(!co_await fd->write(
+                    if(!co_await write(fd, 
                         std::format(
                             "250-{} is my domain name. Hello {}!\r\n"
                             "250-8BITMIME\r\n"
@@ -55,52 +58,56 @@ namespace s90 {
                     knowledge.client_name = cmd->substr(5);
                 } else if(cmd->starts_with("STARTTLS")) {
                     if(!knowledge.hello) {
-                        if(!co_await fd->write("503 HELO or EHLO was not sent previously!\r\n")) co_return nil {};
+                        if(!co_await write(fd, "503 HELO or EHLO was not sent previously!\r\n")) co_return nil {};
                     } else {
                         if(config.sv_tls_enabled) {
-                            if(!co_await fd->write("220 Go ahead!\r\n")) co_return nil {};
+                            if(!co_await write(fd, "220 Go ahead!\r\n")) co_return nil {};
                             auto ssl = co_await fd->enable_server_ssl(ssl_context);
                             if(ssl) {
                                 knowledge = mail_knowledge {};
                                 knowledge.tls = true;
                             } else {
-                                if(!co_await fd->write(std::format("501 Creating TLS session failed: {}\r\n", ssl.error_message))) co_return nil {};
+                                if(!co_await write(fd, std::format("501 Creating TLS session failed: {}\r\n", ssl.error_message))) co_return nil {};
                             }
                         } else {
-                            if(!co_await fd->write("502 Command not implemented\r\n")) co_return nil {};
+                            if(!co_await write(fd, "502 Command not implemented\r\n")) co_return nil {};
                         }
                     }
                 } else if(cmd->starts_with("MAIL FROM:")) {
-                    if(knowledge.hello) {
-                        if(!co_await fd->write("503 HELO or EHLO was not sent previously!\r\n")) co_return nil {};
+                    if(!knowledge.hello) {
+                        if(!co_await write(fd, "503 HELO or EHLO was not sent previously!\r\n")) co_return nil {};
                     } else if(knowledge.from.size() > 0) {
-                        if(!co_await fd->write("503 MAIL FROM was already sent previously!\r\n")) co_return nil {};
+                        if(!co_await write(fd, "503 MAIL FROM was already sent previously!\r\n")) co_return nil {};
                     } else {
                         auto parsed_mail = parse_smtp_address(cmd->substr(10));
                         if(parsed_mail.size() == 0) {
-                            if(!co_await fd->write("501 Invalid address\r\n")) co_return nil {};
+                            if(!co_await write(fd, "501 Invalid address\r\n")) co_return nil {};
                         } else {
                             knowledge.from = parsed_mail;
+                            if(!co_await write(fd, "250 OK\r\n")) co_return nil {};
                         }
                     }
                 } else if(cmd->starts_with("RCPT TO:")) {
-                    if(knowledge.hello) {
-                        if(!co_await fd->write("503 HELO or EHLO was not sent previously!\r\n")) co_return nil {};
+                    if(!knowledge.hello) {
+                        if(!co_await write(fd, "503 HELO or EHLO was not sent previously!\r\n")) co_return nil {};
                     } else {
                         auto parsed_mail = parse_smtp_address(cmd->substr(8));
                         if(parsed_mail.size() == 0) {
-                            if(!co_await fd->write("501 Invalid address\r\n")) co_return nil {};
+                            if(!co_await write(fd, "501 Invalid address\r\n")) co_return nil {};
+                        } else if(knowledge.to.size() > 50) {
+                            if(!co_await write(fd, "501 Limit for number of recipients is 50\r\n")) co_return nil {};
                         } else {
                             knowledge.to.insert(parsed_mail);
+                            if(!co_await write(fd, "250 OK\r\n")) co_return nil {};
                         }
                     }
                 } else if(cmd->starts_with("DATA")) {
                     if(knowledge.hello && knowledge.from.size() > 0 && knowledge.to.size() > 0) {
-                        if(!co_await fd->write("354 Send message content; end with <CR><LF>.<CR><LF>\r\n")) co_return nil {};
-                        auto msg = co_await fd->read_until("\r\n.\r\n");
+                        if(!co_await write(fd, "354 Send message content; end with <CR><LF>.<CR><LF>\r\n")) co_return nil {};
+                        auto msg = co_await read_until(fd, ("\r\n.\r\n"));
                         if(!msg) co_return nil {};
                         if(msg->empty()) {
-                            if(!co_await fd->write("500 Message is missing\r\n")) co_return nil {};
+                            if(!co_await write(fd, "500 Message is missing\r\n")) co_return nil {};
                         } else {
                             knowledge.data = msg.data;
                             std::expected<std::string, std::string> handled;
@@ -112,10 +119,10 @@ namespace s90 {
                                 knowledge = mail_knowledge {};
                                 knowledge.hello = had_hello;
                                 knowledge.tls = had_tls;
-                                if(!co_await fd->write(std::format("250 OK: Queued as {}\r\n", *handled))) co_return nil {};
+                                if(!co_await write(fd, std::format("250 OK: Queued as {}\r\n", *handled))) co_return nil {};
                             } else {
                                 knowledge.data = "";
-                                if(!co_await fd->write(std::format("451 Server failed to handle the message. Error: {}. Try again later\r\n", handled.error()))) co_return nil {};
+                                if(!co_await write(fd, std::format("451 Server failed to handle the message. Error: {}. Try again later\r\n", handled.error()))) co_return nil {};
                             }
                         }
                     } else {
@@ -124,14 +131,14 @@ namespace s90 {
                         if(knowledge.from.empty()) errors += "\r\n503- MAIL FROM has been never sent";
                         if(knowledge.to.empty()) errors += "\r\n503- There were zero recipients";
                         errors += "\r\n503 Please, fill the missing information\r\n";
-                        if(!co_await fd->write(errors)) co_return nil {};
+                        if(!co_await write(fd, errors)) co_return nil {};
                     }
                 } else if(cmd->starts_with("QUIT")) {
-                    if(!co_await fd->write("221 Bye\r\n")) co_return nil {};
-                    fd->close();
+                    if(!co_await write(fd, "221 Bye\r\n")) co_return nil {};
+                    close(fd);
                     co_return nil {};
                 } else {
-                    if(!co_await fd->write("502 Invalid command\r\n")) co_return nil {};
+                    if(!co_await write(fd, "502 Invalid command\r\n")) co_return nil {};
                 }
             }
         }
@@ -148,8 +155,34 @@ namespace s90 {
 
         }
 
+
+        aiopromise<read_arg> server::read_until(std::shared_ptr<iafd> fd, std::string&& delim) {
+            auto result = co_await fd->read_until(std::move(delim));
+            if(config.sv_logging) {
+                if(result) {
+                    std::cout << "<-- " << fd->name() << ":" << *result << std::endl;
+                } else {
+                    std::cout << "<-x " << fd->name() << std::endl;
+                }
+            }
+            co_return std::move(result);
+        }
+        aiopromise<bool> server::write(std::shared_ptr<iafd> fd, std::string_view data) {
+            if(config.sv_logging) {
+                std::cout << "--> " << fd->name() << ":" << data << std::endl;
+            }
+            return fd->write(data);
+        }
+
+        void server::close(std::shared_ptr<iafd> fd) {
+            if(config.sv_logging) {
+                std::cout << "x-- " << fd->name() << std::endl;
+            }
+            fd->close();
+        }
+
         std::string server::parse_smtp_address(std::string_view address) {
-            
+            return std::string(address);
         }
     }
 }

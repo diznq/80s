@@ -215,7 +215,6 @@ namespace s90 {
         int err;
         int want_io = 0;
         
-        dbgf("SSL decode: %d\n", bio_result);
         while(true) {
             int ssl_read = crypto_ssl_read(ssl_bio, new_data, sizeof(new_data), &want_io, &err);
             dbgf("SSL decode - read %d, want IO: %d\n", ssl_read, want_io);

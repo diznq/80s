@@ -70,6 +70,30 @@ namespace s90 {
                                                                     utc_tm.tm_hour, utc_tm.tm_min, utc_tm.tm_sec);
                 return buff;
             }
+
+            std::string ymd(char sep = '/') const {
+                std::time_t tt = std::chrono::system_clock::to_time_t(point);
+                std::tm utc_tm = *std::gmtime(&tt);
+                char buff[25];
+                if(sep != '\0') {
+                    std::sprintf(buff, "%04d%c%02d%c%02d", utc_tm.tm_year + 1900, sep, utc_tm.tm_mon + 1, sep, utc_tm.tm_mday);
+                } else {
+                    std::sprintf(buff, "%04d%02d%02d", utc_tm.tm_year + 1900, utc_tm.tm_mon + 1, utc_tm.tm_mday);
+                }
+                return buff;
+            }
+
+            std::string his(char sep = '/') const {
+                std::time_t tt = std::chrono::system_clock::to_time_t(point);
+                std::tm utc_tm = *std::gmtime(&tt);
+                char buff[25];
+                if(sep != '\0') {
+                    std::sprintf(buff, "%04d%c%02d%c%02d", utc_tm.tm_hour, sep, utc_tm.tm_min, sep, utc_tm.tm_sec);
+                } else {
+                    std::sprintf(buff, "%04d%02d%02d", utc_tm.tm_hour, utc_tm.tm_min, utc_tm.tm_sec);
+                }
+                return buff;
+            }
             
             std::string iso8601() const {
                 std::time_t tt = std::chrono::system_clock::to_time_t(point);
