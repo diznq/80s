@@ -20,7 +20,7 @@ Prerequisites:
 - Linux, FreeBSD or Windows (IOCP for Windows is supported only partially for basic tasks)
 - if building on Windows, Msys2 is recommended as building environment
 
-To compile the project, simply run `./build.sh`.
+To compile the project, simply run `./80.sh`.
 
 You can also define following environment variables before running the build to enable certain features:
 
@@ -29,7 +29,7 @@ You can also define following environment variables before running the build to 
 - `LINK=static/dynamic`: link type, if dynamic live binary reload (not just Lua) is enabled
 - `SOONLY=true`: build only .so file if LINK is dynamic for live reloads
 
-i.e. `JIT=true ./build.sh`
+i.e. `JIT=true ./80.sh`
 
 ### Using VSCode devcontainer
 
