@@ -13,6 +13,31 @@ namespace s90 {
          * Utilities
          */
 
+        /// @brief Convert text from specified charset to UTF-8
+        /// @param decoded text to be decoded
+        /// @param charset origin charset name
+        /// @return utf-8 text
+        std::string convert_charset(const std::string& decoded, const std::string& charset) {
+            iconv_t conv = iconv_open("UTF-8", charset.c_str());
+            if(conv == (iconv_t)-1) {
+                return decoded;
+            } else {
+                std::vector<char> in_buffer;
+                std::vector<char> out_buffer;
+                out_buffer.resize(decoded.length() * 8);
+                in_buffer.insert(in_buffer.end(), decoded.begin(), decoded.end());
+                char *in_ptr = in_buffer.data();
+                size_t in_left = in_buffer.size();
+                
+                char *out_ptr = out_buffer.data();
+                size_t out_left = out_buffer.size();
+                size_t status = iconv(conv, &in_ptr, &in_left, &out_ptr, &out_left);
+                iconv_close(conv);
+                if(status == -1) return decoded;
+                return std::string(out_buffer.data(), out_buffer.data() + out_buffer.size() - out_left);
+            }
+        }
+
         /// @brief Decode quote encoded string (i.e. Hello=20World -> Hello World)
         /// @param m string to be decoded
         /// @return decoded string
@@ -83,24 +108,7 @@ namespace s90 {
                     if(charset == "utf-8" || charset == "us-ascii" || charset == "ascii") {
                         return decoded;
                     } else {
-                        iconv_t conv = iconv_open("UTF-8", charset.c_str());
-                        if(conv == (iconv_t)-1) {
-                            return a;
-                        } else {
-                            std::vector<char> in_buffer;
-                            std::vector<char> out_buffer;
-                            out_buffer.resize(decoded.length() * 8);
-                            in_buffer.insert(in_buffer.end(), decoded.begin(), decoded.end());
-                            char *in_ptr = in_buffer.data();
-                            size_t in_left = in_buffer.size();
-                            
-                            char *out_ptr = out_buffer.data();
-                            size_t out_left = out_buffer.size();
-                            size_t status = iconv(conv, &in_ptr, &in_left, &out_ptr, &out_left);
-                            iconv_close(conv);
-                            if(status == -1) return decoded;
-                            return std::string(out_buffer.data(), out_buffer.data() + out_buffer.size() - out_left);
-                        }
+                        return convert_charset(decoded, charset);
                     }
                 } else {
                     return a;
