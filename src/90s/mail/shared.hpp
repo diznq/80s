@@ -16,7 +16,14 @@ namespace s90 {
             none,
             tls,
             dkim,
-            dls_tkim
+            dkim_tls
+        };
+
+        enum class mail_format {
+            none,
+            text,
+            html,
+            html_text
         };
 
         struct server_config : public orm::with_orm {
@@ -84,12 +91,33 @@ namespace s90 {
                 return user.original_email == original_email;
             }
 
+            bool operator<(const mail_parsed_user& user) const {
+                return original_email < user.original_email;
+            }
+
             orm::optional<mail_user> user;
+        };
+
+        struct mail_parsed {
+            std::string subject;
+            std::string from;
+            std::string thread_id;
+            std::string indexable_text;
+            std::string return_path;
+            std::string in_reply_to;
+            std::string dkim_domain;
+            std::string external_message_id;
+            std::set<std::string> cc;
+            std::set<std::string> bcc;
+            std::vector<std::pair<std::string, std::string>> headers;
+            int formats = 0;
+            int attachments = 0;
         };
 
         struct mail_record : public orm::with_orm {
             uint64_t user_id;
             std::string message_id;
+            std::string external_message_id;
             std::string thread_id;
             std::string in_reply_to;
             std::string return_path;
@@ -102,6 +130,7 @@ namespace s90 {
             std::string indexable_text;
             std::string dkim_domain;
             std::string sender_address;
+            std::string sender_name;
             util::datetime created_at;
             util::datetime sent_at;
             util::datetime delivered_at;
@@ -112,11 +141,14 @@ namespace s90 {
             int direction;
             int status;
             int security;
+            int attachments;
+            int formats;
 
             orm::mapper get_orm() {
                 return {
                     { "user_id", user_id },
                     { "message_id", message_id },
+                    { "ext_message_id", external_message_id },
                     { "disk_path", disk_path },
                     { "mail_from", mail_from },
                     { "parsed_from", parsed_from },
@@ -127,6 +159,7 @@ namespace s90 {
                     { "indexable_text", indexable_text },
                     { "dkim_domain", dkim_domain },
                     { "sender_address", sender_address },
+                    { "sender_name", sender_name },
                     { "created_at", created_at },
                     { "sent_at" , sent_at },
                     { "delivered_at", delivered_at },
@@ -136,7 +169,9 @@ namespace s90 {
                     { "retries", retries },
                     { "direction", direction },
                     { "status", status },
-                    { "security", security }
+                    { "security", security },
+                    { "attachments", attachments },
+                    { "formats", formats }
                 };
             }
         };
@@ -147,6 +182,7 @@ namespace s90 {
             std::string store_id;
             util::datetime created_at = util::datetime();
             std::string client_name = "";
+            std::string client_address = "";
             mail_parsed_user from;
             std::set<mail_parsed_user> to = {};
             std::string data = "";

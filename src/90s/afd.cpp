@@ -495,4 +495,8 @@ namespace s90 {
         co_return {false, ""};
     }
 
+    fd_t afd::get_fd() const {
+        return fd;
+    }
+
 }

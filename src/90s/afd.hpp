@@ -137,6 +137,10 @@ namespace s90 {
         /// @brief Set callback that gets called when read command queue becomes empty
         /// @param on_empty callback
         virtual void set_on_empty_queue(std::function<void()> on_empty) = 0;
+
+        /// @brief Get raw file descriptor handle
+        /// @return file descriptor handle
+        virtual fd_t get_fd() const = 0;
     };
 
     class afd : public iafd {
@@ -229,6 +233,8 @@ namespace s90 {
 
         aiopromise<ssl_result> enable_client_ssl(void *ssl_context, const std::string& hostname) override;
         aiopromise<ssl_result> enable_server_ssl(void *ssl_context) override;
+
+        fd_t get_fd() const override;
     };
 
 }

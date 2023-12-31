@@ -6,6 +6,7 @@ private/
 ./cppmp/
 ./gsemu/
 *.env.sh
+*.local.*
 /i.*
 ./mail/
 src/90s/httpd/pages/*.html.hpp

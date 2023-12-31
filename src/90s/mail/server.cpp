@@ -1,6 +1,7 @@
 #include "server.hpp"
 #include "mail_storage.hpp"
 #include <iostream>
+#include <cstring>
 
 namespace s90 {
     namespace mail {
@@ -34,6 +35,14 @@ namespace s90 {
         aiopromise<nil> server::on_accept(std::shared_ptr<iafd> fd) {
             if(!co_await write(fd, std::format("220 {} ESMTP 90s\r\n", config.smtp_host))) co_return nil {};
             mail_knowledge knowledge;
+            std::string peer_name = "failed to resolve";
+            char peer_name_raw[255];
+            int peer_port = 0;
+            if(s80_peername(fd->get_fd(), peer_name_raw, sizeof(peer_name_raw) - 1, &peer_port)) {
+                peer_name = peer_name_raw;
+                peer_name += ',';
+                peer_name += std::to_string(peer_port);
+            }
             while(true) {
                 auto cmd = co_await read_until(fd, ("\r\n"));
                 if(!cmd) co_return nil {};
@@ -42,6 +51,7 @@ namespace s90 {
                     if(!co_await write(fd, std::format("250 HELO {}\r\n", cmd->substr(5)))) co_return nil {};
                     knowledge.hello = true;
                     knowledge.client_name = cmd->substr(5);
+                    knowledge.client_address = peer_name;
                 } else if(cmd->starts_with("EHLO ")) {
                     if(!co_await write(fd, 
                         std::format(
@@ -56,6 +66,7 @@ namespace s90 {
                     )) co_return nil {};
                     knowledge.hello = true;
                     knowledge.client_name = cmd->substr(5);
+                    knowledge.client_address = peer_name;
                 } else if(cmd->starts_with("STARTTLS")) {
                     if(!knowledge.hello) {
                         if(!co_await write(fd, "503 HELO or EHLO was not sent previously!\r\n")) co_return nil {};
@@ -118,9 +129,12 @@ namespace s90 {
                             if(handled) {
                                 bool had_hello = knowledge.hello;
                                 bool had_tls = knowledge.tls;
+                                std::string client_name = knowledge.client_name;
                                 knowledge = mail_knowledge {};
                                 knowledge.hello = had_hello;
                                 knowledge.tls = had_tls;
+                                knowledge.client_name = client_name;
+                                knowledge.client_address = peer_name;
                                 if(!co_await write(fd, std::format("250 OK: Queued as {}\r\n", *handled))) co_return nil {};
                             } else {
                                 knowledge.data = "";
