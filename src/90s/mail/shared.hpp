@@ -102,6 +102,11 @@ namespace s90 {
             orm::optional<mail_user> user;
         };
 
+        struct mail_attachment {
+            std::string attachment_id;
+            size_t start = 0, end = 0;
+        };
+
         struct mail_parsed {
             std::string subject;
             std::string from;
@@ -116,7 +121,9 @@ namespace s90 {
             std::set<std::string> bcc;
             std::vector<std::pair<std::string, std::string>> headers;
             int formats = 0;
-            int attachments = 0;
+            size_t html_start = 0, html_end = 0;
+            size_t text_start = 0, text_end = 0;
+            std::vector<mail_attachment> attachments;
         };
 
         struct mail_record : public orm::with_orm {
@@ -146,6 +153,7 @@ namespace s90 {
             int status;
             int security;
             int attachments;
+            sql_text attachment_ids;
             int formats;
 
             orm::mapper get_orm() {
@@ -176,6 +184,7 @@ namespace s90 {
                     { "status", status },
                     { "security", security },
                     { "attachments", attachments },
+                    { "attachment_ids", attachment_ids },
                     { "formats", formats }
                 };
             }

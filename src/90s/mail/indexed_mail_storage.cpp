@@ -2,6 +2,8 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <ranges>
+#include <iostream>
 #include "../util/util.hpp"
 #include <80s/algo.h>
 #include <iconv.h>
@@ -13,11 +15,28 @@ namespace s90 {
          * Utilities
          */
 
+        std::string_view trim(std::string_view str) {
+            size_t off = 0;
+            for(char c : str) {
+                if(isblank(c)) off++;
+                else break;
+            }
+            str = str.substr(off);
+            off = 0;
+            for(size_t i = str.length() - 1; i >= 0; i--) {
+                if(isblank(str[i])) off++;
+                else break;
+            }
+            str = str.substr(0, str.length() - off);
+            return str;
+        }
+
         /// @brief Convert text from specified charset to UTF-8
         /// @param decoded text to be decoded
         /// @param charset origin charset name
         /// @return utf-8 text
         std::string convert_charset(const std::string& decoded, const std::string& charset) {
+            if(charset == "utf-8" || charset == "us-ascii" || charset == "ascii") return decoded;
             iconv_t conv = iconv_open("UTF-8", charset.c_str());
             if(conv == (iconv_t)-1) {
                 return decoded;
@@ -89,7 +108,7 @@ namespace s90 {
         /// @param a string value
         /// @return decoded value
         std::string auto_decoder(const std::string& a) {
-            auto charset_pivot = a.find_first_of('?');
+            auto charset_pivot = a.find('?');
             std::string charset = "utf-8";
             char encoding = 'Q';
             if(charset_pivot != std::string::npos) {
@@ -191,18 +210,20 @@ namespace s90 {
             return out;
         }
 
+        /// @brief Decode SMTP encoded value
+        /// @param data SMTP encoded value
+        /// @return decoded value
         std::string decode_smtp_value(std::string_view data) {
             std::string result(data);
             result = replace_between(result, "=?", "?=", auto_decoder, pass_through_decoder, false);
             return result;
         }
 
-        /// @brief Parse mail information from .eml data
-        /// @param message_id internal message ID
-        /// @param data .eml data
-        /// @return parsed email
-        mail_parsed parse_mail(std::string_view message_id, std::string_view data) {
-            mail_parsed parsed;
+        /// @brief Parse e-mail headers and return body view
+        /// @param data input data
+        /// @param headers output headers
+        /// @return body view
+        std::string_view parse_mail_headers(std::string_view data, std::vector<std::pair<std::string, std::string>>& headers) {
             enum parse_state {
                 header_key, header_value, header_value_begin, header_value_end, header_value_extend, email_body
             };
@@ -224,10 +245,13 @@ namespace s90 {
                     case '\t':
                         if(state == header_value)
                             value += c;
-                        else if(state == header_key)
-                            key += tolower(c);
-                        else if(state == header_value_end)
+                        else if(state == header_key) {
+                            if(!key.empty())
+                                key += tolower(c);
+                        } else if(state == header_value_end) {
+                            value += ' ';
                             state = header_value_extend;
+                        }
                         break;
                     case ':':
                         if(state == header_key) {
@@ -241,7 +265,7 @@ namespace s90 {
                             value += c;
                             state = header_value;
                         } else if(state == header_value_end) {
-                            parsed.headers.push_back(std::make_pair(key, value));
+                            headers.push_back(std::make_pair(key, value));
                             key = tolower(c);
                             value = "";
                             state = header_key;
@@ -254,14 +278,157 @@ namespace s90 {
                 }
             }
             if(key.length() > 0 && value.length() > 0 && (state == header_value || state == header_value_extend || state == header_value_end)) {
-                parsed.headers.push_back(std::make_pair(key, value));
+                headers.push_back(std::make_pair(key, value));
             }
+            return trim(body);
+        }
+
+        /// @brief Parse content type header
+        /// @param v header value
+        /// @return [content type, values]
+        std::tuple<std::string, dict<std::string, std::string>> parse_smtp_property(const std::string& v) {
+            std::string content_type;
+            dict<std::string, std::string> values;
+            size_t i = 0;
+            for(const auto& match : std::views::split(std::string_view{v}, std::string_view{"; "})) {
+                std::string_view word { match };
+                auto pivot = word.find('=');
+                if(pivot == std::string::npos) {
+                    if(i == 0) {
+                        content_type = word;
+                    }
+                    i++;
+                    continue;
+                }
+                auto key = word.substr(0, pivot);
+                auto value = word.substr(pivot + 1);
+                if(value.starts_with('"') && value.ends_with('"')) {
+                    value = value.substr(1, value.length() - 2);
+                }
+                values[std::string(key)] = std::string(value);
+                i++;
+            }
+            return std::make_tuple(content_type, values);
+        }
+
+        void parse_mail_alternative(mail_parsed& parsed, const char *base, std::string_view body, std::string_view boundary) {
+            for(const auto match : std::views::split(body, boundary)) {
+                if(match.size()) {
+                    std::string_view view = trim(std::string_view{match});
+                    if(view.size() == 0 || view == "--" || view == "--\r\n" || view == "--\n") {
+                        continue;
+                    }
+                    std::vector<std::pair<std::string, std::string>> headers;
+                    auto atch_body = parse_mail_headers(view, headers);
+
+                    for(auto& [k, v] : headers) {
+                        if(k == "content-type") {
+                            auto [content_type, extra] = parse_smtp_property(v);
+                            if(content_type == "text/html") {
+                                if(!(parsed.formats & (int)mail_format::html)) {
+                                    parsed.formats |= (int)mail_format::html;
+                                    parsed.html_start = (size_t)(atch_body.begin() - base);
+                                    parsed.html_end = (size_t)(atch_body.end() - base);
+                                }
+                            } else if(content_type == "text/plain") {
+                                if(!(parsed.formats & (int)mail_format::text)) {
+                                    parsed.formats |= (int)mail_format::text;
+                                    parsed.text_start = (size_t)(atch_body.begin() - base);
+                                    parsed.text_end = (size_t)(atch_body.end() - base);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        void parse_mail_body(mail_parsed& parsed, const char *base, std::string_view body, std::string_view root_content_type, const dict<std::string, std::string>& ct_values) {
+            auto boundary = ct_values.find("boundary");
+            if(root_content_type == "multipart/related" && boundary != ct_values.end()) {
+                auto attachments = "--" + boundary->second;
+                for(const auto match : std::views::split(body, attachments)) {
+                    if(match.size() > 0) {
+                        std::string_view view = trim(std::string_view{match});
+                        if(view.size() == 0 || view == "--" || view == "--\r\n" || view == "--\n") {
+                            continue;
+                        }
+
+                        bool is_attachment = false;
+                        std::string content_type, attachment_id;
+                        dict<std::string, std::string> content_type_values;
+                        std::vector<std::pair<std::string, std::string>> headers;
+                        auto atch_body = parse_mail_headers(view, headers);
+
+                        // determine if we are dealing with an attachment or alternative
+                        for(auto& [k, v] : headers) {
+                            if(k == "content-id" || k == "x-attachment-id") {
+                                if(attachment_id.size() == 0) attachment_id = parse_message_id(v);
+                                is_attachment = true;
+                            } else if(k == "content-type") {
+                                std::tie(content_type, content_type_values) = parse_smtp_property(v);
+                            }
+                        }
+
+                        if(is_attachment && attachment_id.size() > 0) {
+                            parsed.attachments.push_back(mail_attachment {
+                                attachment_id, (size_t)(match.begin() - base), (size_t)(match.end() - base)
+                            });
+                        } else if(!is_attachment) {
+                            auto boundary = content_type_values.find("boundary");
+                            if(content_type == "multipart/alternative" && boundary != content_type_values.end()) {
+                                parse_mail_alternative(parsed, base, atch_body, "--" + boundary->second);
+                            } else if(content_type == "text/html") {
+                                if(!(parsed.formats & (int)mail_format::html)) {
+                                    parsed.formats |= (int)mail_format::html;
+                                    parsed.html_start = (size_t)(atch_body.begin() - base);
+                                    parsed.html_end = (size_t)(atch_body.end() - base);
+                                }
+                            } else if(content_type == "text/plain") {
+                                if(!(parsed.formats & (int)mail_format::text)) {
+                                    parsed.formats |= (int)mail_format::text;
+                                    parsed.text_start = (size_t)(atch_body.begin() - base);
+                                    parsed.text_end = (size_t)(atch_body.end() - base);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if(root_content_type == "multipart/alternative" && boundary != ct_values.end()) {
+                parse_mail_alternative(parsed, base, body, "--" + boundary->second);
+            } else if(root_content_type == "text/html") {
+                if(!(parsed.formats & (int)mail_format::html)) {
+                    parsed.formats |= (int)mail_format::html;
+                    parsed.html_start = (size_t)(body.begin() - base);
+                    parsed.html_end = (size_t)(body.end() - base);
+                }
+            } else if(root_content_type == "text/plain" || root_content_type == "") {
+                if(!(parsed.formats & (int)mail_format::text)) {
+                    parsed.formats |= (int)mail_format::text;
+                    parsed.text_start = (size_t)(body.begin() - base);
+                    parsed.text_end = (size_t)(body.end() - base);
+                }
+            } else {
+                // ... dunno, ignore ...
+            }
+        }
+
+        /// @brief Parse mail information from .eml data
+        /// @param message_id internal message ID
+        /// @param data .eml data
+        /// @return parsed email
+        mail_parsed parse_mail(std::string_view message_id, std::string_view data) {
+            mail_parsed parsed;
+            
             parsed.thread_id = message_id;
-            //parsed.indexable_text = body;
+            auto body = parse_mail_headers(data, parsed.headers);
 
             for(auto& [k ,v] : parsed.headers) {
                 v = decode_smtp_value(v);
             }
+
+            std::string content_type;
+            dict<std::string, std::string> content_type_values;
 
             for(auto& [k, v] : parsed.headers) {
                 if(k == "subject") parsed.subject = v;
@@ -271,7 +438,27 @@ namespace s90 {
                 else if(k == "return-path") parsed.return_path = v;
                 else if(k == "thread-id") parsed.thread_id = v;
                 else if(k == "message-id") parsed.external_message_id = parse_message_id(v);
+                else if(k == "content-type") {
+                    std::tie(content_type, content_type_values) = parse_smtp_property(v);
+                }
             }
+
+            parse_mail_body(parsed, data.begin(), body, content_type, content_type_values);
+
+            if(parsed.formats & (int)mail_format::text) {
+                auto sv = std::string_view(data.begin() + parsed.text_start, data.begin() + parsed.text_end);
+                auto contains_replies = sv.find("\r\n>");
+                if(contains_replies != std::string::npos) {
+                    sv = sv.substr(0, contains_replies);
+                    auto line_before = sv.rfind("\r\n");
+                    if(line_before != std::string::npos)
+                        sv = sv.substr(0, line_before);
+                    parsed.indexable_text = sv;
+                } else {
+                    parsed.indexable_text = sv;
+                }
+            }
+
             return parsed;
         }
 
@@ -348,13 +535,32 @@ namespace s90 {
                 if(!std::filesystem::exists(fs_path)) {
                     std::filesystem::create_directories(fs_path);
                 }
-                FILE *f = fopen((path + "/raw.eml").c_str(), "wb");
-                if(f) {
-                    fwrite(mail.data.data(), mail.data.size(), 1, f);
-                    fclose(f);
-                    stored_to_disk++;
-                } else {
-                    co_return std::unexpected("failed to store e-mail on storage");
+            
+                std::vector<std::tuple<std::string, const char*, size_t>> to_save = {
+                    {"/raw.eml", mail.data.data(), mail.data.size()}
+                };
+
+                if(parsed.formats & (int)mail_format::html) {
+                    to_save.push_back({"/raw.html", mail.data.data() + parsed.html_start, parsed.html_end - parsed.html_start});
+                }
+
+                if(parsed.formats & (int)mail_format::text) {
+                    to_save.push_back({"/raw.txt", mail.data.data() + parsed.text_start, parsed.text_end - parsed.text_start});
+                }
+
+                for(auto& attachment : parsed.attachments) {
+                    to_save.push_back({"/" + util::to_hex(util::sha256(attachment.attachment_id)) + ".bin", mail.data.data() + attachment.start, attachment.end - attachment.start });
+                }
+
+                for(auto& [file_name, data_ptr, data_size] : to_save) {
+                    FILE *f = fopen((path + file_name).c_str(), "wb");
+                    if(f) {
+                        fwrite(data_ptr, data_size, 1, f);
+                        fclose(f);
+                        stored_to_disk++;
+                    } else {
+                        co_return std::unexpected("failed to store e-mail on storage");
+                    }
                 }
             }
 
@@ -365,7 +571,8 @@ namespace s90 {
                                     "mail_from, rcpt_to, parsed_from, folder, subject, indexable_text, "
                                     "dkim_domain, sender_address, sender_name, "
                                     "created_at, sent_at, delivered_at, seen_at, "
-                                    "size, direction, status, security, attachments, formats) VALUES";
+                                    "size, direction, status, security, "
+                                    "attachments, attachment_ids, formats) VALUES";
 
             std::string outbounding_query = 
                                 "INSERT INTO mail_outgoing_queue("
@@ -373,6 +580,13 @@ namespace s90 {
                                     "disk_path, status, last_retried_at, retries, "
                                     "session_id, locked) VALUES";
             size_t outgoing_count = 0;
+
+            std::string attachment_ids = "";
+            for(size_t i = 0; i < parsed.attachments.size(); i++) {
+                attachment_ids += parsed.attachments[i].attachment_id;
+                if(i != parsed.attachments.size() - 1)
+                    attachment_ids += ";";
+            }
 
             // create a large query
             for(auto& user : mail.to) {
@@ -434,7 +648,8 @@ namespace s90 {
                     .direction = user.direction,
                     .status = (int)mail_status::delivered,
                     .security = (int)mail_security::none,
-                    .attachments = parsed.attachments,
+                    .attachments = (int)parsed.attachments.size(),
+                    .attachment_ids = attachment_ids,
                     .formats = parsed.formats
                 };
 
@@ -451,14 +666,14 @@ namespace s90 {
                                         "'{}', '{}', '{}', "
                                         "'{}', '{}', '{}', '{}',"
                                         "'{}', '{}', '{}', '{}',"
-                                        "'{}', '{}'"
+                                        "'{}', '{}', '{}'"
                                     ")",
                                     db->escape(record.user_id), db->escape(record.message_id), db->escape(record.external_message_id), db->escape(record.thread_id), db->escape(record.in_reply_to), db->escape(record.return_path), db->escape(record.reply_to), db->escape(record.disk_path),
                                     db->escape(record.mail_from), db->escape(record.rcpt_to), db->escape(record.parsed_from), db->escape(record.folder), db->escape(record.subject), db->escape(record.indexable_text),
                                     db->escape(record.dkim_domain), db->escape(record.sender_address), db->escape(record.sender_name),
                                     db->escape(record.created_at), db->escape(record.sent_at), db->escape(record.delivered_at), db->escape(record.seen_at),
                                     db->escape(record.size), db->escape(record.direction), db->escape(record.status), db->escape(record.security),
-                                    db->escape(record.attachments), db->escape(record.formats)
+                                    db->escape(record.attachments), db->escape(record.attachment_ids), db->escape(record.formats)
                                     ) + ",";
                 
                 stored_to_db++;
