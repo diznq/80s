@@ -105,6 +105,7 @@ namespace s90 {
             std::string indexable_text;
             std::string return_path;
             std::string in_reply_to;
+            std::string reply_to;
             std::string dkim_domain;
             std::string external_message_id;
             std::set<std::string> cc;
@@ -121,6 +122,7 @@ namespace s90 {
             std::string thread_id;
             std::string in_reply_to;
             std::string return_path;
+            std::string reply_to;
             std::string disk_path;
             std::string mail_from;
             std::string rcpt_to;
@@ -149,13 +151,16 @@ namespace s90 {
                     { "user_id", user_id },
                     { "message_id", message_id },
                     { "ext_message_id", external_message_id },
+                    { "thread_id", thread_id },
+                    { "in_reply_to", in_reply_to },
+                    { "return_path", return_path },
+                    { "reply_to", reply_to },
                     { "disk_path", disk_path },
                     { "mail_from", mail_from },
-                    { "parsed_from", parsed_from },
                     { "rcpt_to", rcpt_to },
+                    { "parsed_from", parsed_from },
                     { "folder", folder },
                     { "subject", subject },
-                    { "thread_id", thread_id },
                     { "indexable_text", indexable_text },
                     { "dkim_domain", dkim_domain },
                     { "sender_address", sender_address },

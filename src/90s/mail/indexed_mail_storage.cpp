@@ -258,7 +258,8 @@ namespace s90 {
             for(auto& [k, v] : parsed.headers) {
                 if(k == "subject") parsed.subject = v;
                 else if(k == "from") parsed.from = v;
-                else if(k == "in-reply-to") parsed.in_reply_to = v;
+                else if(k == "reply-to") parsed.reply_to = v;
+                else if(k == "in-reply-to") parsed.thread_id = parsed.in_reply_to = parse_message_id(v);
                 else if(k == "return-path") parsed.return_path = v;
                 else if(k == "thread-id") parsed.thread_id = v;
                 else if(k == "message-id") parsed.external_message_id = parse_message_id(v);
@@ -340,7 +341,7 @@ namespace s90 {
 
             // save the data to the db!
             std::string query = "INSERT INTO mail_indexed("
-                                    "user_id, message_id, ext_message_id, thread_id, in_reply_to, return_path, disk_path, "
+                                    "user_id, message_id, ext_message_id, thread_id, in_reply_to, return_path, reply_to, disk_path, "
                                     "mail_from, rcpt_to, parsed_from, folder, subject, indexable_text, "
                                     "dkim_domain, sender_address, sender_name, "
                                     "created_at, sent_at, delivered_at, seen_at, last_retried_at, "
@@ -355,11 +356,13 @@ namespace s90 {
                 }
 
                 mail_record record {
-                    .user_id = 0,
+                    .user_id = found_user->second.user_id,
                     .message_id = msg_id,
+                    .external_message_id = parsed.external_message_id,
                     .thread_id = parsed.thread_id,
                     .in_reply_to = parsed.in_reply_to,
                     .return_path = parsed.return_path,
+                    .reply_to = parsed.reply_to,
                     .disk_path = std::format("{}/{}/{}", config.sv_mail_storage_dir, user.email, msg_id),
                     .mail_from = mail.from.original_email,
                     .rcpt_to = user.original_email,
@@ -389,14 +392,14 @@ namespace s90 {
                 }
 
                 query += std::format("("
-                                        "'{}', '{}', '{}', '{}', '{}', '{}', '{}',"
+                                        "'{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}',"
                                         "'{}', '{}', '{}', '{}', '{}', '{}',"
                                         "'{}', '{}', '{}', "
                                         "'{}', '{}', '{}', '{}', '{}',"
                                         "'{}', '{}', '{}', '{}', '{}',"
                                         "'{}', '{}'"
                                     ")",
-                                    db->escape(record.user_id), db->escape(record.message_id), db->escape(record.external_message_id), db->escape(record.thread_id), db->escape(record.in_reply_to), db->escape(record.return_path), db->escape(record.disk_path),
+                                    db->escape(record.user_id), db->escape(record.message_id), db->escape(record.external_message_id), db->escape(record.thread_id), db->escape(record.in_reply_to), db->escape(record.return_path), db->escape(record.reply_to), db->escape(record.disk_path),
                                     db->escape(record.mail_from), db->escape(record.rcpt_to), db->escape(record.parsed_from), db->escape(record.folder), db->escape(record.subject), db->escape(record.indexable_text),
                                     db->escape(record.dkim_domain), db->escape(record.sender_address), db->escape(record.sender_name),
                                     db->escape(record.created_at), db->escape(record.sent_at), db->escape(record.delivered_at), db->escape(record.seen_at), db->escape(record.last_retried_at),

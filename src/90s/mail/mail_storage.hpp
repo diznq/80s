@@ -21,5 +21,7 @@ namespace s90 {
             aiopromise<std::shared_ptr<sql::isql>> get_db();
             aiopromise<std::expected<std::string, std::string>> store_mail(mail_knowledge mail) override;
         };
+
+        mail_parsed parse_mail(std::string_view message_id, std::string_view data);
     }
 }
