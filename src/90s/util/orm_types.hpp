@@ -125,6 +125,19 @@ namespace s90 {
             using std::string::string;
             constexpr size_t get_max_size() { return N; }
 
+            varstr(const std::string& s) : std::string(s.length() > N ? s.substr(0, N) : s) {}
+            varstr(std::string&& s) : std::string(s.length() > N ? std::move(s.substr(0, N)) : std::move(s)) {}
+
+            varstr& operator=(const std::string& str) {
+                assign(str.length() > N ? str.substr(0, N) : str);
+                return *this;
+            }
+
+            varstr& operator=(std::string&& str) {
+                assign(str.length() > N ? std::move(str.substr(0, N)) : std::move(str));
+                return *this;
+            }
+
             auto length() const {
                 auto parent_length = std::string::length();
                 return parent_length > N ? N : parent_length;
@@ -138,6 +151,8 @@ namespace s90 {
                 return length() > N ? std::string_view(begin(), begin() + N) : std::string_view(begin(), end());
             }
         };
+
+        using sql_text = varstr<32000>;
     }
 }
 

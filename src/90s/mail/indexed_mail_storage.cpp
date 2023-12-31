@@ -359,16 +359,54 @@ namespace s90 {
             }
 
             // save the data to the db!
-            std::string query = "INSERT INTO mail_indexed("
+            std::string query = 
+                                "INSERT INTO mail_indexed("
                                     "user_id, message_id, ext_message_id, thread_id, in_reply_to, return_path, reply_to, disk_path, "
                                     "mail_from, rcpt_to, parsed_from, folder, subject, indexable_text, "
                                     "dkim_domain, sender_address, sender_name, "
-                                    "created_at, sent_at, delivered_at, seen_at, last_retried_at, "
-                                    "size, retries, direction, status, security, attachments, formats) VALUES";
+                                    "created_at, sent_at, delivered_at, seen_at, "
+                                    "size, direction, status, security, attachments, formats) VALUES";
+
+            std::string outbounding_query = 
+                                "INSERT INTO mail_outgoing_queue("
+                                    "user_id, message_id, target_email, target_server, "
+                                    "disk_path, status, last_retried_at, retries, "
+                                    "session_id, locked) VALUES";
+            size_t outgoing_count = 0;
 
             // create a large query
             for(auto& user : mail.to) {
                 auto found_user = users.find(user.email);
+                if(found_user == users.end()) {
+                    if(outbounding && user.direction == (int)mail_direction::inbound && mail.from.user) {
+                        mail_outgoing_record outgoing_record = {
+                            .user_id = mail.from.user->user_id,
+                            .message_id = msg_id,
+                            .target_email= user.original_email,
+                            .target_server = user.original_email_server,
+                            .disk_path = std::format("{}/{}/{}", config.sv_mail_storage_dir, mail.from.email, msg_id),
+                            .status = (int)mail_status::sent,
+                            .last_retried_at = util::datetime(),
+                            .retries = 0,
+                            .session_id = 0,
+                            .locked = 0
+                        };
+
+                        outbounding_query += std::format(
+                            "("
+                            "'{}', '{}', '{}', '{}', "
+                            "'{}', '{}', '{}', '{}', "
+                            "'{}', '{}'"
+                            "),",
+                            db->escape(outgoing_record.user_id), db->escape(outgoing_record.message_id), db->escape(outgoing_record.target_email), db->escape(outgoing_record.target_server),
+                            db->escape(outgoing_record.disk_path), db->escape(outgoing_record.status), db->escape(outgoing_record.last_retried_at), db->escape(outgoing_record.retries),
+                            db->escape(outgoing_record.session_id), db->escape(outgoing_record.locked)
+                        );
+
+                        outgoing_count++;
+                    }
+                    continue;
+                }
 
                 mail_record record {
                     .user_id = found_user->second.user_id,
@@ -392,9 +430,7 @@ namespace s90 {
                     .sent_at = mail.created_at,
                     .delivered_at = util::datetime(),
                     .seen_at = util::datetime(),
-                    .last_retried_at = util::datetime(),
                     .size = mail.data.length(),
-                    .retries = 0,
                     .direction = user.direction,
                     .status = (int)mail_status::delivered,
                     .security = (int)mail_security::none,
@@ -413,25 +449,34 @@ namespace s90 {
                                         "'{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}',"
                                         "'{}', '{}', '{}', '{}', '{}', '{}',"
                                         "'{}', '{}', '{}', "
-                                        "'{}', '{}', '{}', '{}', '{}',"
-                                        "'{}', '{}', '{}', '{}', '{}',"
+                                        "'{}', '{}', '{}', '{}',"
+                                        "'{}', '{}', '{}', '{}',"
                                         "'{}', '{}'"
                                     ")",
                                     db->escape(record.user_id), db->escape(record.message_id), db->escape(record.external_message_id), db->escape(record.thread_id), db->escape(record.in_reply_to), db->escape(record.return_path), db->escape(record.reply_to), db->escape(record.disk_path),
                                     db->escape(record.mail_from), db->escape(record.rcpt_to), db->escape(record.parsed_from), db->escape(record.folder), db->escape(record.subject), db->escape(record.indexable_text),
                                     db->escape(record.dkim_domain), db->escape(record.sender_address), db->escape(record.sender_name),
-                                    db->escape(record.created_at), db->escape(record.sent_at), db->escape(record.delivered_at), db->escape(record.seen_at), db->escape(record.last_retried_at),
-                                    db->escape(record.size), db->escape(record.retries), db->escape(record.direction), db->escape(record.status), db->escape(record.security),
+                                    db->escape(record.created_at), db->escape(record.sent_at), db->escape(record.delivered_at), db->escape(record.seen_at),
+                                    db->escape(record.size), db->escape(record.direction), db->escape(record.status), db->escape(record.security),
                                     db->escape(record.attachments), db->escape(record.formats)
                                     ) + ",";
                 
                 stored_to_db++;
             }
 
+            // index the e-mails to the DB
             if(stored_to_db > 0) {
                 auto write_status = co_await db->exec(query.substr(0, query.length() - 1));
                 if(!write_status) {
                     co_return std::unexpected(std::format("failed to index the e-mail"));
+                }
+            }
+
+            // submit the e-mails to the outgoing queue
+            if(outbounding && outgoing_count > 0) {
+                auto write_status = co_await db->exec(outbounding_query.substr(0, outbounding_query.length() - 1));
+                if(!write_status) {
+                    co_return std::unexpected(std::format("failed to submit e-mails to the outgoing queue"));
                 }
             }
             

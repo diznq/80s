@@ -4,6 +4,9 @@
 namespace s90 {
     namespace mail {
 
+        using util::varstr;
+        using util::sql_text;
+
         enum class mail_direction {
             inbound, outbound
         };
@@ -81,6 +84,7 @@ namespace s90 {
         struct mail_parsed_user {
             bool error = true;
             std::string original_email;
+            std::string original_email_server;
             std::string email;
             std::string folder;
             int direction = (int)mail_direction::inbound;
@@ -117,29 +121,27 @@ namespace s90 {
 
         struct mail_record : public orm::with_orm {
             uint64_t user_id;
-            std::string message_id;
-            std::string external_message_id;
-            std::string thread_id;
-            std::string in_reply_to;
-            std::string return_path;
-            std::string reply_to;
-            std::string disk_path;
-            std::string mail_from;
-            std::string rcpt_to;
-            std::string parsed_from;
-            std::string folder;
-            std::string subject;
-            std::string indexable_text;
-            std::string dkim_domain;
-            std::string sender_address;
-            std::string sender_name;
+            varstr<64> message_id;
+            sql_text external_message_id;
+            varstr<64> thread_id;
+            varstr<64> in_reply_to;
+            varstr<64> return_path;
+            varstr<64> reply_to;
+            sql_text disk_path;
+            sql_text mail_from;
+            sql_text rcpt_to;
+            sql_text parsed_from;
+            varstr<32> folder;
+            sql_text subject;
+            sql_text indexable_text;
+            sql_text dkim_domain;
+            sql_text sender_address;
+            sql_text sender_name;
             util::datetime created_at;
             util::datetime sent_at;
             util::datetime delivered_at;
             util::datetime seen_at;
-            util::datetime last_retried_at;
             uint64_t size;
-            int retries;
             int direction;
             int status;
             int security;
@@ -169,14 +171,39 @@ namespace s90 {
                     { "sent_at" , sent_at },
                     { "delivered_at", delivered_at },
                     { "seen_at", seen_at },
-                    { "last_retried_at", last_retried_at },
                     { "size", size },
-                    { "retries", retries },
                     { "direction", direction },
                     { "status", status },
                     { "security", security },
                     { "attachments", attachments },
                     { "formats", formats }
+                };
+            }
+        };
+
+        struct mail_outgoing_record : public orm::with_orm {
+            size_t user_id;
+            varstr<64> message_id;
+            varstr<64> target_email;
+            varstr<48> target_server;
+            sql_text disk_path;
+            int status;
+            util::datetime last_retried_at;
+            int retries;
+            size_t session_id;
+            int locked;
+
+            orm::mapper get_orm() {
+                return {
+                    { "user_id", user_id },
+                    { "message_id", message_id },
+                    { "target_email", target_email },
+                    { "disk_path", disk_path },
+                    { "status", status },
+                    { "last_retried_at", last_retried_at },
+                    { "retries", retries },
+                    { "session_id", session_id },
+                    { "locked", locked }
                 };
             }
         };

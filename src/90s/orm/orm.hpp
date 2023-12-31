@@ -56,7 +56,7 @@ namespace s90 {
                 return value_;
             }
 
-            T* operator->() const {
+            T* operator->() {
                 return &value_;
             }
 

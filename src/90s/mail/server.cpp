@@ -2,6 +2,7 @@
 #include "mail_storage.hpp"
 #include <iostream>
 #include <cstring>
+#include <regex>
 
 namespace s90 {
     namespace mail {
@@ -110,7 +111,6 @@ namespace s90 {
                             if(!co_await write(fd, "501 Limit for number of recipients is 50\r\n")) co_return nil {};
                         } else {
                             knowledge.to.insert(parsed_mail);
-                            knowledge.from.direction = (int)mail_direction::inbound;
                             if(!co_await write(fd, "250 OK\r\n")) co_return nil {};
                         }
                     }
@@ -198,7 +198,13 @@ namespace s90 {
         }
 
         mail_parsed_user server::parse_smtp_address(std::string_view address) {
-            return mail_parsed_user {false, std::string(address), std::string(address), ""};
+            std::string original_email(address);
+            std::string original_email_server;
+            std::string email = original_email;
+            auto at_pos = address.find('@');
+            if(at_pos == std::string::npos) return mail_parsed_user { true };
+            original_email_server = address.substr(at_pos + 1);
+            return mail_parsed_user {false, original_email, original_email_server, email, ""};
         }
     }
 }
