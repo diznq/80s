@@ -6,7 +6,7 @@ namespace s90 {
     namespace mail {
         struct mail_storage {
         public:
-            virtual aiopromise<std::expected<std::string, std::string>> store_mail(mail_knowledge mail) = 0;
+            virtual aiopromise<std::expected<std::string, std::string>> store_mail(mail_knowledge mail, bool outbounding = false) = 0;
         };
 
         class indexed_mail_storage : public mail_storage {
@@ -19,7 +19,7 @@ namespace s90 {
             indexed_mail_storage(icontext *ctx, server_config cfg);
             ~indexed_mail_storage();
             aiopromise<std::shared_ptr<sql::isql>> get_db();
-            aiopromise<std::expected<std::string, std::string>> store_mail(mail_knowledge mail) override;
+            aiopromise<std::expected<std::string, std::string>> store_mail(mail_knowledge mail, bool outbounding = false) override;
         };
 
         mail_parsed parse_mail(std::string_view message_id, std::string_view data);

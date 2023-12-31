@@ -295,10 +295,10 @@ namespace s90 {
             co_return db;
         }
 
-        aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::store_mail(mail_knowledge mail) {
+        aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::store_mail(mail_knowledge mail, bool outbounding) {
             auto db = co_await get_db();
             size_t  stored_to_disk = 0, stored_to_db = 0,
-                    users_outside = 0, users_total = mail.to.size();
+                    users_total = mail.to.size();
             node_id id = global_context->get_node_id();
             auto folder = mail.created_at.ymd('/');
             auto msg_id = std::format("{}/{}-{}-{}", folder, mail.created_at.his('.'), id.id, counter++);
@@ -309,6 +309,7 @@ namespace s90 {
 
             // first try to get the users from DB
             dict<std::string, mail_user> users;
+            std::vector<mail_parsed_user> users_outside;
             std::set<std::string> user_lookup = {mail.from.email};
             for(auto& user : mail.to) user_lookup.insert(user.email);
 
@@ -322,15 +323,25 @@ namespace s90 {
             auto found_from = users.find(mail.from.email);
             if(found_from != users.end()) {
                 mail.from.user = found_from->second;
-                // if sender was found, it means it's an outbound e-mail coming from us
-                // so save it so we resolve this one as well
-                mail.to.insert(mail.from);
+                if(outbounding) {
+                    // if sender was found, it means it's an outbound e-mail coming from us
+                    // so save it so we resolve this one as well
+                    mail.to.insert(mail.from);
+                }
             }
 
             // save the data to the disk!
             for(auto& user : mail.to) {
                 auto found_user = users.find(user.email);
-                if(found_user == users.end()) continue;
+
+                if(found_user == users.end()) {
+                    // if the user is outside of our internal DB, record it
+                    // so we later know if it is 100% delivered internally
+                    // or not
+                    if(user.direction == (int)mail_direction::inbound)
+                        users_outside.push_back(user);
+                    continue;
+                }
 
                 auto path = std::format("{}/{}/{}", config.sv_mail_storage_dir, user.email, msg_id);
                 auto fs_path = std::filesystem::path(path);
@@ -355,13 +366,9 @@ namespace s90 {
                                     "created_at, sent_at, delivered_at, seen_at, last_retried_at, "
                                     "size, retries, direction, status, security, attachments, formats) VALUES";
 
+            // create a large query
             for(auto& user : mail.to) {
                 auto found_user = users.find(user.email);
-                if(found_user == users.end()) {
-                    if(user.direction == (int)mail_direction::inbound)
-                        users_outside++;
-                    continue;
-                }
 
                 mail_record record {
                     .user_id = found_user->second.user_id,
@@ -395,7 +402,10 @@ namespace s90 {
                     .formats = parsed.formats
                 };
 
-                if(user.direction == (int)mail_direction::outbound && users_outside > 0) {
+                // determine the correct status for outbound mail
+                if(user.direction == (int)mail_direction::outbound && users_outside.size() > 0) {
+                    // if at least one of the users is outside of the internal DB
+                    // set the status to sent, as it is not yet 100% delivered
                     record.status = (int)mail_status::sent;
                 }
 
@@ -425,7 +435,7 @@ namespace s90 {
                 }
             }
             
-            co_return  msg_id;
+            co_return std::move(msg_id);
         }
     }
 }
