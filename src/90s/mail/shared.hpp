@@ -121,6 +121,10 @@ namespace s90 {
             std::set<std::string> bcc;
             std::vector<std::pair<std::string, std::string>> headers;
             int formats = 0;
+            std::string html_charset = "utf-8";
+            std::string text_charset = "utf-8";
+            std::vector<std::pair<std::string, std::string>> html_headers;
+            std::vector<std::pair<std::string, std::string>> text_headers;
             size_t html_start = 0, html_end = 0;
             size_t text_start = 0, text_end = 0;
             std::vector<mail_attachment> attachments;

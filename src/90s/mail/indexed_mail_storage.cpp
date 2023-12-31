@@ -36,7 +36,8 @@ namespace s90 {
         /// @param charset origin charset name
         /// @return utf-8 text
         std::string convert_charset(const std::string& decoded, const std::string& charset) {
-            if(charset == "utf-8" || charset == "us-ascii" || charset == "ascii") return decoded;
+            if(charset == "utf-8" || charset == "us-ascii" || charset == "ascii"
+            || charset == "UTF-8" || charset == "US-ASCII" || charset == "ASCII") return decoded;
             iconv_t conv = iconv_open("UTF-8", charset.c_str());
             if(conv == (iconv_t)-1) {
                 return decoded;
@@ -61,13 +62,33 @@ namespace s90 {
         /// @param m string to be decoded
         /// @return decoded string
         std::string q_decoder(const std::string& m) {
-            std::string new_data;
+            std::string new_str, new_data;
+
+            // phase1: if line on quoted printable ends with =, it means text continues on the next line
+            // and = has to be dropped
             for(size_t i = 0; i < m.length(); i++) {
                 char c = m[i];
+                if(c == '=' && i + 1 < m.length()) {
+                    char nc = m[i + 1];
+                    if(nc == '\n') {
+                        i++;
+                        continue;
+                    } else if(nc == '\r' && i + 2 < m.length() && m[i + 2] == '\n') {
+                        i += 2;
+                        continue;
+                    } else {
+                        new_str += c;
+                    }
+                } else {
+                    new_str += c;
+                }
+            }
+            for(size_t i = 0; i < new_str.length(); i++) {
+                char c = new_str[i];
                 if(c == '=') {
-                    if(i + 2 < m.length()) {
-                        char b1 = m[i + 1];
-                        char b2 = m[i + 2];
+                    if(i + 2 < new_str.length()) {
+                        char b1 = new_str[i + 1];
+                        char b2 = new_str[i + 2];
                         if(b1 >= '0' && b1 <= '9') b1 = b1 - '0';
                         else if(b1 >= 'a' && b1 <= 'f') b1 = b1 - 'a' + 10;
                         else if(b1 >= 'A' && b1 <= 'F') b1 = b1 - 'A' + 10;
@@ -327,12 +348,18 @@ namespace s90 {
                             if(content_type == "text/html") {
                                 if(!(parsed.formats & (int)mail_format::html)) {
                                     parsed.formats |= (int)mail_format::html;
+                                    auto charset = extra.find("charset");
+                                    if(charset != extra.end()) parsed.html_charset = charset->second;
+                                    parsed.html_headers = headers;
                                     parsed.html_start = (size_t)(atch_body.begin() - base);
                                     parsed.html_end = (size_t)(atch_body.end() - base);
                                 }
                             } else if(content_type == "text/plain") {
                                 if(!(parsed.formats & (int)mail_format::text)) {
                                     parsed.formats |= (int)mail_format::text;
+                                    auto charset = extra.find("charset");
+                                    if(charset != extra.end()) parsed.html_charset = charset->second;
+                                    parsed.text_headers = headers;
                                     parsed.text_start = (size_t)(atch_body.begin() - base);
                                     parsed.text_end = (size_t)(atch_body.end() - base);
                                 }
@@ -343,7 +370,7 @@ namespace s90 {
             }
         }
 
-        void parse_mail_body(mail_parsed& parsed, const char *base, std::string_view body, std::string_view root_content_type, const dict<std::string, std::string>& ct_values) {
+        void parse_mail_body(mail_parsed& parsed, const char *base, std::string_view body, std::string_view root_content_type, const dict<std::string, std::string>& ct_values, const std::vector<std::pair<std::string, std::string>>& headers) {
             auto boundary = ct_values.find("boundary");
             if(root_content_type == "multipart/related" && boundary != ct_values.end()) {
                 auto attachments = "--" + boundary->second;
@@ -381,12 +408,20 @@ namespace s90 {
                             } else if(content_type == "text/html") {
                                 if(!(parsed.formats & (int)mail_format::html)) {
                                     parsed.formats |= (int)mail_format::html;
+                                    auto charset = content_type_values.find("charset");
+                                    if(charset != content_type_values.end()) parsed.html_charset = charset->second;
+
+                                    parsed.html_headers = headers;
                                     parsed.html_start = (size_t)(atch_body.begin() - base);
                                     parsed.html_end = (size_t)(atch_body.end() - base);
                                 }
                             } else if(content_type == "text/plain") {
                                 if(!(parsed.formats & (int)mail_format::text)) {
                                     parsed.formats |= (int)mail_format::text;
+                                    auto charset = content_type_values.find("charset");
+                                    if(charset != content_type_values.end()) parsed.html_charset = charset->second;
+
+                                    parsed.text_headers = headers;
                                     parsed.text_start = (size_t)(atch_body.begin() - base);
                                     parsed.text_end = (size_t)(atch_body.end() - base);
                                 }
@@ -399,12 +434,20 @@ namespace s90 {
             } else if(root_content_type == "text/html") {
                 if(!(parsed.formats & (int)mail_format::html)) {
                     parsed.formats |= (int)mail_format::html;
+                    auto charset = ct_values.find("charset");
+                    if(charset != ct_values.end()) parsed.html_charset = charset->second;
+
+                    parsed.html_headers = headers;
                     parsed.html_start = (size_t)(body.begin() - base);
                     parsed.html_end = (size_t)(body.end() - base);
                 }
             } else if(root_content_type == "text/plain" || root_content_type == "") {
                 if(!(parsed.formats & (int)mail_format::text)) {
                     parsed.formats |= (int)mail_format::text;
+                    auto charset = ct_values.find("charset");
+                    if(charset != ct_values.end()) parsed.html_charset = charset->second;
+
+                    parsed.text_headers = headers;
                     parsed.text_start = (size_t)(body.begin() - base);
                     parsed.text_end = (size_t)(body.end() - base);
                 }
@@ -443,7 +486,7 @@ namespace s90 {
                 }
             }
 
-            parse_mail_body(parsed, data.begin(), body, content_type, content_type_values);
+            parse_mail_body(parsed, data.begin(), body, content_type, content_type_values, parsed.headers);
 
             if(parsed.formats & (int)mail_format::text) {
                 auto sv = std::string_view(data.begin() + parsed.text_start, data.begin() + parsed.text_end);
@@ -456,6 +499,21 @@ namespace s90 {
                     parsed.indexable_text = sv;
                 } else {
                     parsed.indexable_text = sv;
+                }
+                if(parsed.indexable_text.length() > 0) {
+                    std::string encoding = "";
+                    for(auto& [k, v] : parsed.text_headers) {
+                        if(k == "content-transfer-encoding") {
+                            encoding = v;
+                            break;
+                        }
+                    }
+                    if(encoding == "quoted-printable") {
+                        parsed.indexable_text = q_decoder(parsed.indexable_text);
+                    } else if(encoding == "base64") {
+                        parsed.indexable_text = b_decoder(parsed.indexable_text);
+                    }
+                    parsed.indexable_text = convert_charset(parsed.indexable_text, parsed.text_charset);
                 }
             }
 
