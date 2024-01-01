@@ -17,16 +17,26 @@ namespace s90 {
             }
 
             void escape(std::stringstream& out, const orm::any& a) const {
-                if(!a.is_present()) {
-                    out << "null";
-                } else if(a.is_array()) {
-                    escape_array(out, a);
-                } else if(a.is_object()) {
-                    escape_object(out, a.get_orm());
-                } else if(a.is_string()) {
-                    json_encode(out, a.from_native(true));
+                if(a.is_present()) {
+                    switch(a.get_type()) {
+                        case orm::reftype::arr:
+                            escape_array(out, a);
+                            break;
+                        case orm::reftype::obj:
+                            escape_object(out, a.get_orm());
+                            break;
+                        case orm::reftype::str:
+                        case orm::reftype::cstr:
+                        case orm::reftype::vstr:
+                        case orm::reftype::dt:
+                            json_encode(out, a.from_native(true));
+                            break;
+                        default:
+                            out << a.from_native(true);
+                            break;
+                    }
                 } else {
-                    out << a.from_native(true);
+                    out << "null";
                 }
             }
 

@@ -111,7 +111,7 @@ namespace s90 {
         class any {
             void *ref = nullptr;
             reftype type = reftype::empty;
-            std::shared_ptr<any_internals> internals;
+            any_internals internals;
 
             uintptr_t success_wb = 0;
             size_t template_arg = 0;
@@ -196,12 +196,6 @@ namespace s90 {
             /// @return value reference
             inline void* get_ref() const { return ref; }
 
-            /// @brief Get shared pointer to object utilities internals
-            /// @return object utilities
-            inline std::shared_ptr<any_internals> get_internals() const {
-                return internals;
-            }
-
             /// @brief Determine if `any` holds a value
             /// @return true if `any` is not an optional or if it is an optional and holds a value
             inline bool is_present() const {
@@ -235,7 +229,7 @@ namespace s90 {
 
             inline std::vector<std::pair<orm_key_t, any>> get_orm() const {
                 static std::vector<std::pair<orm_key_t, any>> empty_orm = {};
-                if(internals; auto fn = internals->get_orm) return fn(ref);
+                if(auto fn = internals.get_orm) return fn(ref);
                 return empty_orm;
             }
 
@@ -425,20 +419,20 @@ namespace s90 {
             /// @param index item index
             /// @return n-th item
             inline any operator[](size_t index) const {
-                if(internals; auto fn = internals->get_item) return fn(ref, index);
+                if(auto fn = internals.get_item) return fn(ref, index);
                 return {};
             }
             
             /// @brief Push an item to the underlying array
             /// @param v item to be pushed
             void push_back(const any& v) const {
-                if(internals; auto fn = internals->push_back) return fn(ref, v);
+                if(auto fn = internals.push_back) return fn(ref, v);
             }
 
             /// @brief Get size of the underlyig array
             /// @return size of the array
             inline size_t size() const {
-                if(internals; auto fn = internals->size) return fn(ref);
+                if(auto fn = internals.size) return fn(ref);
                 return 0;
             }
         };
@@ -554,8 +548,8 @@ namespace s90 {
         template<class T>
         requires with_orm_trait<T>
         inline any::any(T& obj) : type(reftype::obj), ref((void*)&obj) {
-            internals = internals ? internals : std::make_shared<any_internals>();
-            internals->get_orm = [](void *r) -> std::vector<std::pair<orm_key_t, any>> {
+            //internals = internals ? internals : std::make_shared<any_internals>();
+            internals.get_orm = [](void *r) -> std::vector<std::pair<orm_key_t, any>> {
                 auto tr = (std::remove_cv_t<T>*)r;
                 return tr->get_orm();
             };
@@ -563,16 +557,16 @@ namespace s90 {
 
         template<class T>
         any::any(std::vector<T>& vec) : type(reftype::arr), ref((void*)&vec) {
-            internals = internals ? internals : std::make_shared<any_internals>();
-            internals->push_back = [](void *ref, const any& value) {
+            //internals = internals ? internals : std::make_shared<any_internals>();
+            internals.push_back = [](void *ref, const any& value) {
                 std::vector<T> *tr = (std::vector<T>*)ref;
                 tr->push_back(*(T*)value.get_ref());
             };
-            internals->get_item = [](const void *ref, size_t index) -> auto {
+            internals.get_item = [](const void *ref, size_t index) -> auto {
                 const std::vector<T> *tr = (const std::vector<T>*)ref;
                 return any(tr->at(index));
             };
-            internals->size = [](const void *ref) -> auto {
+            internals.size = [](const void *ref) -> auto {
                 const std::vector<T> *tr = (const std::vector<T>*)ref;
                 return tr->size();
             };
