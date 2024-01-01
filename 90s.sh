@@ -27,7 +27,7 @@ if [ "$(uname -o)" = "Msys" ]; then
   SO_EXT="dll"
   EXE_EXT=".exe"
   LIBS=$(echo "$LIBS" | sed "s/-ldl//g")
-  LIBS="$LIBS -lws2_32 -lmswsock -lcrypt32"
+  LIBS="$LIBS -lws2_32 -lmswsock -lcrypt32 -liconv"
 fi
 
 if [ "$DEBUG" = "true" ]; then
