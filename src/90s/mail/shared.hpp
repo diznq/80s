@@ -102,9 +102,23 @@ namespace s90 {
             orm::optional<mail_user> user;
         };
 
-        struct mail_attachment {
+        struct mail_attachment : public orm::with_orm {
             std::string attachment_id;
             size_t start = 0, end = 0;
+            std::string name;
+            std::string file_name;
+            std::string disposition;
+            std::string mime;
+
+            orm::mapper get_orm() {
+                return {
+                    { "attachment_id", attachment_id },
+                    { "name", name },
+                    { "file_name", file_name },
+                    { "disposition", disposition },
+                    { "mime", mime }
+                };
+            }
         };
 
         struct mail_parsed {

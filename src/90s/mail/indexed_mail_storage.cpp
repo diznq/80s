@@ -322,9 +322,10 @@ namespace s90 {
                     continue;
                 }
                 auto key = word.substr(0, pivot);
-                auto value = word.substr(pivot + 1);
+                std::string value { word.substr(pivot + 1) };
                 if(value.starts_with('"') && value.ends_with('"')) {
-                    value = value.substr(1, value.length() - 2);
+                    std::stringstream ss; ss<<value;
+                    ss >> std::quoted(value);
                 }
                 values[std::string(key)] = std::string(value);
                 i++;
@@ -387,20 +388,35 @@ namespace s90 {
                         std::vector<std::pair<std::string, std::string>> headers;
                         auto atch_body = parse_mail_headers(view, headers);
 
+                        mail_attachment attachment;
+
                         // determine if we are dealing with an attachment or alternative
                         for(auto& [k, v] : headers) {
                             if(k == "content-id" || k == "x-attachment-id") {
                                 if(attachment_id.size() == 0) attachment_id = parse_message_id(v);
+                                attachment.attachment_id = attachment_id;
                                 is_attachment = true;
                             } else if(k == "content-type") {
                                 std::tie(content_type, content_type_values) = parse_smtp_property(v);
+                                attachment.mime = content_type;
+                                auto name = content_type_values.find("name");
+                                if(name != content_type_values.end()) {
+                                    attachment.name = name->second;
+                                }
+                            } else if(k == "content-disposition") {
+                                auto [disp, extra] = parse_smtp_property(v);
+                                attachment.disposition = disp;
+                                auto filename = extra.find("filename");
+                                if(filename != extra.end()) {
+                                    attachment.file_name = filename->second;
+                                }
                             }
                         }
 
                         if(is_attachment && attachment_id.size() > 0) {
-                            parsed.attachments.push_back(mail_attachment {
-                                attachment_id, (size_t)(match.begin() - base), (size_t)(match.end() - base)
-                            });
+                            attachment.start = (size_t)(match.begin() - base);
+                            attachment.end = (size_t)(match.end() - base);
+                            parsed.attachments.push_back(std::move(attachment));
                         } else if(!is_attachment) {
                             auto boundary = content_type_values.find("boundary");
                             if(content_type == "multipart/alternative" && boundary != content_type_values.end()) {

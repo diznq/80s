@@ -7,6 +7,7 @@
 #include <concepts>
 #include <format>
 #include <cstdint>
+#include <type_traits>
 #include "../shared.hpp"
 #include "../util/orm_types.hpp"
 
@@ -81,23 +82,82 @@ namespace s90 {
 
         };
 
+        enum class reftype {
+            empty, 
+            vstr, str, cstr, 
+            i1, i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, f80, ts, dt,
+            obj, arr
+        };
+
+        class with_orm;
+
+        template <class T>
+        concept with_orm_trait = std::is_base_of<with_orm, T>::value;
+
         class any {
-            enum class reftype {
-                empty, vstr, str, cstr, i1, i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, f80, ts, dt
-            };
             reftype type = reftype::empty;
             size_t reserved = 0;
             uintptr_t success_wb = 0;
             void *ref = nullptr;
+
+            std::function<std::vector<std::pair<std::string, any>>(void *)> internal_get_orm = nullptr;
+
+            std::function<void(void*, const any&)> internal_push_back = nullptr;
+            std::function<size_t(const void*)> internal_size = nullptr;
+            std::function<any(const void*, size_t)> internal_get_item = nullptr;
+
+            class iterator {
+                const any* parent;
+                size_t index;
+            public:
+                iterator(const any* parent, size_t index) : parent(parent), index(index) {}
+
+                any operator*() {
+                    return (*parent)[index];
+                }
+
+                iterator& operator++() { index++; return *this; }  
+                iterator operator++(int) { iterator tmp = *this; ++(*this); return tmp; }
+
+                bool operator==(const iterator& it) const {
+                    return parent == it.parent && index == it.index;
+                }
+
+                bool operator!=(const iterator& it) const {
+                    return parent != it.parent || index != it.index;
+                }
+            };
+
         public:
             any() : type(reftype::empty), ref(nullptr), reserved(0) {}
-            any(const any& a) : type(a.type), ref(a.ref), reserved(a.reserved), success_wb(a.success_wb) {}
-            any& operator=(const any& a) { type = a.type; ref = a.ref; reserved = a.reserved; success_wb = a.success_wb; return *this; }
+            any(const any& a) : 
+                type(a.type), ref(a.ref), reserved(a.reserved), 
+                success_wb(a.success_wb), 
+                internal_get_orm(a.internal_get_orm),
+                internal_get_item(a.internal_get_item), internal_push_back(a.internal_push_back), internal_size(a.internal_size) {}
+            any& operator=(const any& a) { 
+                type = a.type;
+                ref = a.ref;
+                reserved = a.reserved;
+                success_wb = a.success_wb;
+                internal_get_orm = a.internal_get_orm;
+                internal_get_item = a.internal_get_item;
+                internal_push_back = a.internal_push_back;
+                internal_size = a.internal_size;
+                return *this; 
+            }
 
             template<class T>
             any(optional<T>& opt) : any(opt.value_) {
                 success_wb = (uintptr_t)&opt.is_set;
             }
+
+            template<class T>
+            requires with_orm_trait<T>
+            any(T& obj);
+
+            template<class T>
+            any(std::vector<T>& vec);
 
             template<size_t N>
             any(util::varstr<N>& value) : ref((void*)&value), type(reftype::vstr), reserved(value.get_max_size()) {}
@@ -119,6 +179,36 @@ namespace s90 {
             any(double& value) : ref((void*)&value), type(reftype::f64) {}
             any(long double& value) : ref((void*)&value), type(reftype::f80) {}
             any(bool& value) : ref((void*)&value), type(reftype::i1) {}
+
+            reftype get_type() const { return type; }
+            void* get_ref() const { return ref; }
+
+            bool is_present() const {
+                if(!success_wb) return true;
+                return *(bool*)success_wb;
+            }
+
+            bool is_string() const {
+                return !is_array() && type == reftype::str || type == reftype::cstr || type == reftype::vstr || type == reftype::dt;
+            }
+
+            bool is_numeric() const {
+                return !is_string() && !is_object() && !is_array();
+            }
+
+            bool is_object() const {
+                return type == reftype::obj;
+            }
+
+            bool is_array() const {
+                return (bool)internal_get_item;
+            }
+
+            std::vector<std::pair<std::string, any>> get_orm() const {
+                static std::vector<std::pair<std::string, any>> empty_orm = {};
+                if(internal_get_orm) return internal_get_orm(ref);
+                return empty_orm;
+            }
 
             /// @brief Transform string form to the underlying native form
             /// @param value string form
@@ -289,24 +379,47 @@ namespace s90 {
                         break;
                 }
             }
+
+            iterator begin() const {
+                return iterator(this, 0);
+            }
+
+            iterator end() const {
+                return iterator(this, size());
+            }
+
+            any operator[](size_t index) const {
+                if(internal_get_item) return internal_get_item(ref, index);
+                return {};
+            }
+
+            void push_back(const any& v) const {
+                if(internal_push_back) internal_push_back(ref, v);
+            }
+
+            size_t size() const {
+                if(internal_size) return internal_size(ref);
+                return 0;
+            }
         };
 
         using mapping = std::pair<std::string, any>;
-
-        class with_orm;
-
-        template <class T>
-        concept with_orm_trait = std::is_base_of<with_orm, T>::value;
 
         class mapper {
             std::vector<mapping> relations;
         public:
             mapper(std::initializer_list<mapping> rels) : relations(rels) {}
+            mapper(std::vector<mapping> &&rels) : relations(std::move(rels)) {}
+            mapper(const std::vector<mapping>& rels) : relations(rels) {}
 
             auto begin() { return relations.begin(); }
             auto end() { return relations.end(); }
             auto cbegin() { return relations.cbegin(); }
             auto cend() { return relations.cend(); }
+
+            std::vector<mapping> get_relations() {
+                return relations;
+            }
 
             /// @brief Transform dictionary of string keys and values to a native C++ object
             /// @param fields dictionary of keys and values
@@ -411,5 +524,30 @@ namespace s90 {
         public:
             mapper get_orm();
         };
+
+        template<class T>
+        requires with_orm_trait<T>
+        inline any::any(T& obj) : type(reftype::obj), ref((void*)&obj) {
+            internal_get_orm = [](void *r) -> std::vector<std::pair<std::string, any>> {
+                auto tr = (std::remove_cv_t<T>*)r;
+                return tr->get_orm().get_relations();
+            };
+        }
+
+        template<class T>
+        any::any(std::vector<T>& vec) : any(*(T*)&vec) {
+            internal_push_back = [](void *ref, const any& value) {
+                std::vector<T> *tr = (std::vector<T>*)ref;
+                tr->push_back(*(T*)value.get_ref());
+            };
+            internal_get_item = [](const void *ref, size_t index) -> auto {
+                const std::vector<T> *tr = (const std::vector<T>*)ref;
+                return any(tr->at(index));
+            };
+            internal_size = [](const void *ref) -> auto {
+                const std::vector<T> *tr = (const std::vector<T>*)ref;
+                return tr->size();
+            };
+        }
     }
 }
