@@ -16,6 +16,8 @@ namespace s90 {
 
         class any;
 
+        /// @brief Optional class for ORM types
+        /// @tparam T underlying type, must be a plain simple object
         template<class T>
         class optional {
             bool is_set = false;
@@ -82,6 +84,7 @@ namespace s90 {
 
         };
 
+        /// @brief Type of the object held by `any`
         enum class reftype {
             empty, 
             vstr, str, cstr, 
@@ -94,17 +97,22 @@ namespace s90 {
         template <class T>
         concept with_orm_trait = std::is_base_of<with_orm, T>::value;
 
+        /// @brief Object utilities for `any` in case it holds either object or an array
+        struct any_internals {
+            std::function<std::vector<std::pair<std::string, any>>(void *)> get_orm = nullptr;
+            std::function<void(void*, const any&)> push_back = nullptr;
+            std::function<size_t(const void*)> size = nullptr;
+            std::function<any(const void*, size_t)> get_item = nullptr;
+        };
+
+        /// @brief Any class, can hold any type
         class any {
             reftype type = reftype::empty;
-            size_t reserved = 0;
+            size_t template_arg = 0;
             uintptr_t success_wb = 0;
             void *ref = nullptr;
 
-            std::function<std::vector<std::pair<std::string, any>>(void *)> internal_get_orm = nullptr;
-
-            std::function<void(void*, const any&)> internal_push_back = nullptr;
-            std::function<size_t(const void*)> internal_size = nullptr;
-            std::function<any(const void*, size_t)> internal_get_item = nullptr;
+            std::shared_ptr<any_internals> internals;
 
             class iterator {
                 const any* parent;
@@ -129,21 +137,19 @@ namespace s90 {
             };
 
         public:
-            any() : type(reftype::empty), ref(nullptr), reserved(0) {}
+            any() : type(reftype::empty), ref(nullptr), template_arg(0) {}
+
             any(const any& a) : 
-                type(a.type), ref(a.ref), reserved(a.reserved), 
+                type(a.type), ref(a.ref), template_arg(a.template_arg), 
                 success_wb(a.success_wb), 
-                internal_get_orm(a.internal_get_orm),
-                internal_get_item(a.internal_get_item), internal_push_back(a.internal_push_back), internal_size(a.internal_size) {}
+                internals(a.internals) {}
+
             any& operator=(const any& a) { 
                 type = a.type;
                 ref = a.ref;
-                reserved = a.reserved;
+                template_arg = a.template_arg;
                 success_wb = a.success_wb;
-                internal_get_orm = a.internal_get_orm;
-                internal_get_item = a.internal_get_item;
-                internal_push_back = a.internal_push_back;
-                internal_size = a.internal_size;
+                internals = a.internals;
                 return *this; 
             }
 
@@ -160,7 +166,7 @@ namespace s90 {
             any(std::vector<T>& vec);
 
             template<size_t N>
-            any(util::varstr<N>& value) : ref((void*)&value), type(reftype::vstr), reserved(value.get_max_size()) {}
+            any(util::varstr<N>& value) : ref((void*)&value), type(reftype::vstr), template_arg(value.get_max_size()) {}
             any(std::string& value) : ref((void*)&value), type(reftype::str) {}
             any(const char*& value) : ref((void*)&value), type(reftype::cstr) {}
             any(util::datetime& value) : ref((void*)&value), type(reftype::dt) {}
@@ -180,33 +186,54 @@ namespace s90 {
             any(long double& value) : ref((void*)&value), type(reftype::f80) {}
             any(bool& value) : ref((void*)&value), type(reftype::i1) {}
 
+            /// @brief Get type that is held by `any`
+            /// @return referenced type
             reftype get_type() const { return type; }
+
+            /// @brief Get pointer reference to the underyling value
+            /// @return value reference
             void* get_ref() const { return ref; }
 
+            /// @brief Get shared pointer to object utilities internals
+            /// @return object utilities
+            std::shared_ptr<any_internals> get_internals() const {
+                return internals;
+            }
+
+            /// @brief Determine if `any` holds a value
+            /// @return true if `any` is not an optional or if it is an optional and holds a value
             bool is_present() const {
                 if(!success_wb) return true;
                 return *(bool*)success_wb;
             }
 
+            /// @brief Determine if `any` holds a string
+            /// @return true if `any` holds a string
             bool is_string() const {
                 return !is_array() && type == reftype::str || type == reftype::cstr || type == reftype::vstr || type == reftype::dt;
             }
 
+            /// @brief Determine if `any` holds a number
+            /// @return true if `any` holds a number
             bool is_numeric() const {
                 return !is_string() && !is_object() && !is_array();
             }
 
+            /// @brief Determine if `any` holds an object that has get_orm method
+            /// @return true if `any` holds an object
             bool is_object() const {
                 return type == reftype::obj;
             }
 
+            /// @brief Determine if `any` holds an array
+            /// @return true if `any` holds an array
             bool is_array() const {
-                return (bool)internal_get_item;
+                return internals && (bool)internals->get_item;
             }
 
             std::vector<std::pair<std::string, any>> get_orm() const {
                 static std::vector<std::pair<std::string, any>> empty_orm = {};
-                if(internal_get_orm) return internal_get_orm(ref);
+                if(internals; auto fn = internals->get_orm) return fn(ref);
                 return empty_orm;
             }
 
@@ -321,8 +348,8 @@ namespace s90 {
                         return std::string(*(const char**)ref);
                         break;
                     case reftype::vstr:
-                        if(((std::string*)ref)->length() > reserved) {
-                            return ((std::string*)ref)->substr(0, reserved);
+                        if(((std::string*)ref)->length() > template_arg) {
+                            return ((std::string*)ref)->substr(0, template_arg);
                         } else {
                             return *(std::string*)ref;
                         }
@@ -380,25 +407,36 @@ namespace s90 {
                 }
             }
 
+            /// @brief Return iterator to the beginning of the underlying array
+            /// @return begin iterator
             iterator begin() const {
                 return iterator(this, 0);
             }
 
+            /// @brief Return iterator to the end of the underlying array
+            /// @return end iterator
             iterator end() const {
                 return iterator(this, size());
             }
 
+            /// @brief Get n-th item in the underlying array
+            /// @param index item index
+            /// @return n-th item
             any operator[](size_t index) const {
-                if(internal_get_item) return internal_get_item(ref, index);
+                if(internals; auto fn = internals->get_item) return fn(ref, index);
                 return {};
             }
-
+            
+            /// @brief Push an item to the underlying array
+            /// @param v item to be pushed
             void push_back(const any& v) const {
-                if(internal_push_back) internal_push_back(ref, v);
+                if(internals; auto fn = internals->push_back) return fn(ref, v);
             }
 
+            /// @brief Get size of the underlyig array
+            /// @return size of the array
             size_t size() const {
-                if(internal_size) return internal_size(ref);
+                if(internals; auto fn = internals->size) return fn(ref);
                 return 0;
             }
         };
@@ -528,7 +566,8 @@ namespace s90 {
         template<class T>
         requires with_orm_trait<T>
         inline any::any(T& obj) : type(reftype::obj), ref((void*)&obj) {
-            internal_get_orm = [](void *r) -> std::vector<std::pair<std::string, any>> {
+            internals = internals ? internals : std::make_shared<any_internals>();
+            internals->get_orm = [](void *r) -> std::vector<std::pair<std::string, any>> {
                 auto tr = (std::remove_cv_t<T>*)r;
                 return tr->get_orm().get_relations();
             };
@@ -536,15 +575,16 @@ namespace s90 {
 
         template<class T>
         any::any(std::vector<T>& vec) : any(*(T*)&vec) {
-            internal_push_back = [](void *ref, const any& value) {
+            internals = internals ? internals : std::make_shared<any_internals>();
+            internals->push_back = [](void *ref, const any& value) {
                 std::vector<T> *tr = (std::vector<T>*)ref;
                 tr->push_back(*(T*)value.get_ref());
             };
-            internal_get_item = [](const void *ref, size_t index) -> auto {
+            internals->get_item = [](const void *ref, size_t index) -> auto {
                 const std::vector<T> *tr = (const std::vector<T>*)ref;
                 return any(tr->at(index));
             };
-            internal_size = [](const void *ref) -> auto {
+            internals->size = [](const void *ref) -> auto {
                 const std::vector<T> *tr = (const std::vector<T>*)ref;
                 return tr->size();
             };
