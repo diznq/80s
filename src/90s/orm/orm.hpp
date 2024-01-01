@@ -16,6 +16,8 @@ namespace s90 {
 
         class any;
 
+        using orm_key_t = const char*;
+
         /// @brief Optional class for ORM types
         /// @tparam T underlying type, must be a plain simple object
         template<class T>
@@ -99,7 +101,7 @@ namespace s90 {
 
         /// @brief Object utilities for `any` in case it holds either object or an array
         struct any_internals {
-            std::function<std::vector<std::pair<std::string, any>>(void *)> get_orm = nullptr;
+            std::function<std::vector<std::pair<orm_key_t, any>>(void *)> get_orm = nullptr;
             std::function<void(void*, const any&)> push_back = nullptr;
             std::function<size_t(const void*)> size = nullptr;
             std::function<any(const void*, size_t)> get_item = nullptr;
@@ -107,12 +109,12 @@ namespace s90 {
 
         /// @brief Any class, can hold any type
         class any {
-            reftype type = reftype::empty;
-            size_t template_arg = 0;
-            uintptr_t success_wb = 0;
             void *ref = nullptr;
-
+            reftype type = reftype::empty;
             std::shared_ptr<any_internals> internals;
+
+            uintptr_t success_wb = 0;
+            size_t template_arg = 0;
 
             class iterator {
                 const any* parent;
@@ -188,51 +190,51 @@ namespace s90 {
 
             /// @brief Get type that is held by `any`
             /// @return referenced type
-            reftype get_type() const { return type; }
+            inline reftype get_type() const { return type; }
 
             /// @brief Get pointer reference to the underyling value
             /// @return value reference
-            void* get_ref() const { return ref; }
+            inline void* get_ref() const { return ref; }
 
             /// @brief Get shared pointer to object utilities internals
             /// @return object utilities
-            std::shared_ptr<any_internals> get_internals() const {
+            inline std::shared_ptr<any_internals> get_internals() const {
                 return internals;
             }
 
             /// @brief Determine if `any` holds a value
             /// @return true if `any` is not an optional or if it is an optional and holds a value
-            bool is_present() const {
+            inline bool is_present() const {
                 if(!success_wb) return true;
                 return *(bool*)success_wb;
             }
 
             /// @brief Determine if `any` holds a string
             /// @return true if `any` holds a string
-            bool is_string() const {
-                return !is_array() && type == reftype::str || type == reftype::cstr || type == reftype::vstr || type == reftype::dt;
+            inline bool is_string() const {
+                return type == reftype::str || type == reftype::cstr || type == reftype::vstr || type == reftype::dt;
             }
 
             /// @brief Determine if `any` holds a number
             /// @return true if `any` holds a number
-            bool is_numeric() const {
+            inline bool is_numeric() const {
                 return !is_string() && !is_object() && !is_array();
             }
 
             /// @brief Determine if `any` holds an object that has get_orm method
             /// @return true if `any` holds an object
-            bool is_object() const {
+            inline bool is_object() const {
                 return type == reftype::obj;
             }
 
             /// @brief Determine if `any` holds an array
             /// @return true if `any` holds an array
-            bool is_array() const {
-                return internals && (bool)internals->get_item;
+            inline bool is_array() const {
+                return type == reftype::arr;
             }
 
-            std::vector<std::pair<std::string, any>> get_orm() const {
-                static std::vector<std::pair<std::string, any>> empty_orm = {};
+            inline std::vector<std::pair<orm_key_t, any>> get_orm() const {
+                static std::vector<std::pair<orm_key_t, any>> empty_orm = {};
                 if(internals; auto fn = internals->get_orm) return fn(ref);
                 return empty_orm;
             }
@@ -240,7 +242,7 @@ namespace s90 {
             /// @brief Transform string form to the underlying native form
             /// @param value string form
             /// @return true if conversion was successful
-            bool to_native(std::string_view value) const {
+            inline bool to_native(std::string_view value) const {
                 int32_t below_32 = 0;
                 uint32_t below_32u = 0;
                 bool success = true;
@@ -338,7 +340,7 @@ namespace s90 {
             /// @brief Transform from native form to string form
             /// @param bool_as_text if true, bools are treated as "true" / "false", otherwise "1" / "0"
             /// @return string form
-            std::string from_native(bool bool_as_text = false) const {
+            inline std::string from_native(bool bool_as_text = false) const {
                 if(success_wb && !*(bool*)success_wb) return "";
                 switch(type) {
                     case reftype::str:
@@ -409,20 +411,20 @@ namespace s90 {
 
             /// @brief Return iterator to the beginning of the underlying array
             /// @return begin iterator
-            iterator begin() const {
+            inline iterator begin() const {
                 return iterator(this, 0);
             }
 
             /// @brief Return iterator to the end of the underlying array
             /// @return end iterator
-            iterator end() const {
+            inline iterator end() const {
                 return iterator(this, size());
             }
 
             /// @brief Get n-th item in the underlying array
             /// @param index item index
             /// @return n-th item
-            any operator[](size_t index) const {
+            inline any operator[](size_t index) const {
                 if(internals; auto fn = internals->get_item) return fn(ref, index);
                 return {};
             }
@@ -435,146 +437,132 @@ namespace s90 {
 
             /// @brief Get size of the underlyig array
             /// @return size of the array
-            size_t size() const {
+            inline size_t size() const {
                 if(internals; auto fn = internals->size) return fn(ref);
                 return 0;
             }
         };
 
-        using mapping = std::pair<std::string, any>;
+        // Utilities
 
-        class mapper {
-            std::vector<mapping> relations;
-        public:
-            mapper(std::initializer_list<mapping> rels) : relations(rels) {}
-            mapper(std::vector<mapping> &&rels) : relations(std::move(rels)) {}
-            mapper(const std::vector<mapping>& rels) : relations(rels) {}
-
-            auto begin() { return relations.begin(); }
-            auto end() { return relations.end(); }
-            auto cbegin() { return relations.cbegin(); }
-            auto cend() { return relations.cend(); }
-
-            std::vector<mapping> get_relations() {
-                return relations;
-            }
-
-            /// @brief Transform dictionary of string keys and values to a native C++ object
-            /// @param fields dictionary of keys and values
-            void to_native(const dict<std::string, std::string>& fields) const {
-                for(auto& item : relations) {
-                    auto it = fields.find(item.first);
-                    if(it != fields.end()) {
-                        item.second.to_native(it->second);
-                    }
-                }
-            }
-
-            /// @brief Transform a native C++ object into dictionary of keys and values
-            /// @param bool_as_text true if booleans are treated as "true" / "false", otherwise "1" / "0"
-            /// @return dictionary
-            dict<std::string, std::string> from_native(bool bool_as_text = false) const {
-                dict<std::string, std::string> obj;
-                for(auto& item : relations) {
-                    obj[item.first] = item.second.from_native(bool_as_text);
-                }
-                return obj;
-            }
-
-            /// @brief Transform an array of dictionaries to array of native C++ objects
-            /// @tparam T object type
-            /// @param items array of dictionaries to be transformed
-            /// @return transformed result
-            template<class T>
-            requires with_orm_trait<T>
-            static std::vector<T> transform(std::span<dict<std::string, std::string>> items) {
-                std::vector<T> result;
-                std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [](const dict<std::string, std::string>& item) -> auto {
-                    T new_item;
-                    new_item.get_orm().to_native(item);
-                    return new_item;
-                });
-                return result;
-            }
-
-            /// @brief Transform an array of dictionaries to array of native C++ objects
-            /// @tparam T object type
-            /// @param items array of dictionaries to be transformed
-            /// @return transformed result
-            template<class T>
-            requires with_orm_trait<T>
-            static std::vector<T> transform(std::vector<dict<std::string, std::string>>&& items) {
-                std::vector<T> result;
-                std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [](const dict<std::string, std::string>& item) -> auto {
-                    T new_item;
-                    new_item.get_orm().to_native(item);
-                    return new_item;
-                });
-                return result;
-            }
-            
-            /// @brief Transform an array of native C++ objects into an array of dictionaries
-            /// @tparam T object type
-            /// @param items array of native objects to be transformed
-            /// @return transformed result
-            template<class T>
-            requires with_orm_trait<T>
-            static std::vector<dict<std::string,std::string>> transform(std::span<T> items, bool bool_as_text = false) {
-                std::vector<dict<std::string,std::string>> result;
-                std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text](T& item) -> auto {
-                    return item.get_orm().from_native(bool_as_text);
-                });
-                return result;
-            }
-
-            /// @brief Transform an array of native C++ objects into an array of dictionaries
-            /// @tparam T object type
-            /// @param items array of native objects to be transformed
-            /// @return transformed result
-            template<class T>
-            requires with_orm_trait<T>
-            static std::vector<dict<std::string,std::string>> transform(std::vector<T>&& items, bool bool_as_text = false) {
-                std::vector<dict<std::string,std::string>> result;
-                std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text](T& item) -> auto {
-                    return item.get_orm().from_native(bool_as_text);
-                });
-                return result;
-            }
-
-            /// @brief Transform a shared array of dictionaries to a shared array of native C++ objects
-            /// @tparam T object type
-            /// @param items shared array of dictionaries
-            /// @return transformed result
-            template<class T>
-            requires with_orm_trait<T>
-            static std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<dict<std::string, std::string>>>&& items) {
-                auto result = std::make_shared<std::vector<T>>();
-                std::transform(items->cbegin(), items->cend(), std::back_inserter(*result), [](const dict<std::string, std::string>& item) -> auto {
-                    T new_item;
-                    new_item.get_orm().to_native(item);
-                    return new_item;
-                });
-                return result;
-            }
-        };
-
+        using mapping = std::pair<orm_key_t, any>;
+        using mapper = std::vector<mapping>;
+        
         class with_orm {
         public:
             mapper get_orm();
         };
 
+        /// @brief Transform dictionary of string keys and values to a native C++ object
+        /// @param fields dictionary of keys and values
+        static void to_native(const mapper& self, const dict<std::string, std::string>& fields) {
+            for(auto& item : self) {
+                auto it = fields.find(std::string(item.first));
+                if(it != fields.end()) {
+                    item.second.to_native(it->second);
+                }
+            }
+        }
+
+        /// @brief Transform a native C++ object into dictionary of keys and values
+        /// @param bool_as_text true if booleans are treated as "true" / "false", otherwise "1" / "0"
+        /// @return dictionary
+        static dict<std::string, std::string> from_native(const mapper& self, bool bool_as_text = false) {
+            dict<std::string, std::string> obj;
+            for(auto& item : self) {
+                obj[std::string(item.first)] = item.second.from_native(bool_as_text);
+            }
+            return obj;
+        }
+
+        /// @brief Transform an array of dictionaries to array of native C++ objects
+        /// @tparam T object type
+        /// @param items array of dictionaries to be transformed
+        /// @return transformed result
+        template<class T>
+        requires with_orm_trait<T>
+        inline std::vector<T> transform(std::span<dict<std::string, std::string>> items) {
+            std::vector<T> result;
+            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [](const dict<std::string, std::string>& item) -> auto {
+                T new_item;
+                to_native(new_item.get_orm(), item);
+                return new_item;
+            });
+            return result;
+        }
+
+        /// @brief Transform an array of dictionaries to array of native C++ objects
+        /// @tparam T object type
+        /// @param items array of dictionaries to be transformed
+        /// @return transformed result
+        template<class T>
+        requires with_orm_trait<T>
+        inline std::vector<T> transform(std::vector<dict<std::string, std::string>>&& items) {
+            std::vector<T> result;
+            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [](const dict<std::string, std::string>& item) -> auto {
+                T new_item;
+                to_native(new_item.get_orm(), item);
+                return new_item;
+            });
+            return result;
+        }
+        
+        /// @brief Transform an array of native C++ objects into an array of dictionaries
+        /// @tparam T object type
+        /// @param items array of native objects to be transformed
+        /// @return transformed result
+        template<class T>
+        requires with_orm_trait<T>
+        inline std::vector<dict<std::string,std::string>> transform(std::span<T> items, bool bool_as_text = false) {
+            std::vector<dict<std::string,std::string>> result;
+            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text](T& item) -> auto {
+                return from_native(item.get_orm(), bool_as_text);
+            });
+            return result;
+        }
+
+        /// @brief Transform an array of native C++ objects into an array of dictionaries
+        /// @tparam T object type
+        /// @param items array of native objects to be transformed
+        /// @return transformed result
+        template<class T>
+        requires with_orm_trait<T>
+        inline std::vector<dict<std::string,std::string>> transform(std::vector<T>&& items, bool bool_as_text = false) {
+            std::vector<dict<std::string,std::string>> result;
+            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text](T& item) -> auto {
+                return from_native(item.get_orm(), bool_as_text);
+            });
+            return result;
+        }
+
+        /// @brief Transform a shared array of dictionaries to a shared array of native C++ objects
+        /// @tparam T object type
+        /// @param items shared array of dictionaries
+        /// @return transformed result
+        template<class T>
+        requires with_orm_trait<T>
+        inline std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<dict<std::string, std::string>>>&& items) {
+            auto result = std::make_shared<std::vector<T>>();
+            std::transform(items->cbegin(), items->cend(), std::back_inserter(*result), [](const dict<std::string, std::string>& item) -> auto {
+                T new_item;
+                to_native(new_item.get_orm(), item);
+                return new_item;
+            });
+            return result;
+        }
+
         template<class T>
         requires with_orm_trait<T>
         inline any::any(T& obj) : type(reftype::obj), ref((void*)&obj) {
             internals = internals ? internals : std::make_shared<any_internals>();
-            internals->get_orm = [](void *r) -> std::vector<std::pair<std::string, any>> {
+            internals->get_orm = [](void *r) -> std::vector<std::pair<orm_key_t, any>> {
                 auto tr = (std::remove_cv_t<T>*)r;
-                return tr->get_orm().get_relations();
+                return tr->get_orm();
             };
         }
 
         template<class T>
-        any::any(std::vector<T>& vec) : any(*(T*)&vec) {
+        any::any(std::vector<T>& vec) : type(reftype::arr), ref((void*)&vec) {
             internals = internals ? internals : std::make_shared<any_internals>();
             internals->push_back = [](void *ref, const any& value) {
                 std::vector<T> *tr = (std::vector<T>*)ref;

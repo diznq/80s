@@ -74,6 +74,94 @@ namespace s90 {
             return result;
         }
 
+        std::string json_encode(std::string_view data) {
+            std::string out;
+            const char *value = data.data();
+            size_t value_len = data.length();
+
+            out.resize(3 + data.length() * 4);
+            char *ptr = out.data();
+            *ptr = '"'; ptr++;
+            
+            while (value_len--) {
+                switch (*value) {
+                case '\r':
+                    *ptr = '\\'; ptr++; *ptr = 'r'; ptr++;
+                    break;
+                case '\n':
+                    *ptr = '\\'; ptr++; *ptr = 'n'; ptr++;
+                    break;
+                case '\t':
+                    *ptr = '\\'; ptr++; *ptr = 't'; ptr++;
+                    break;
+                case '"':
+                    *ptr = '\\'; ptr++; *ptr = '"'; ptr++;
+                    break;
+                case '\\':
+                    *ptr = '\\'; ptr++; *ptr = '\\'; ptr++;
+                    break;
+                case '\0':
+                    *ptr = '\\'; ptr++; *ptr = '0'; ptr++;
+                    break;
+                default:
+                    if(*value < 32 && *value > 0) {
+                        *ptr = '\\'; ptr++; *ptr = 'x'; ptr++;
+                        *ptr = "0123456789ABCDEF"[(*value >> 4) & 15]; ptr++;
+                        *ptr = "0123456789ABCDEF"[(*value) & 15]; ptr++;
+                    } else {
+                        *ptr = *value; ptr++;
+                    }
+                    break;
+                }
+                value++;
+            }
+            *ptr = '"'; ptr++;
+            out.resize(ptr - out.data());
+            return out;
+        }
+
+        
+        void json_encode(std::stringstream &out, std::string_view data) {
+            const char *value = data.data();
+            size_t value_len = data.length();
+
+            out << '"';
+            
+            while (value_len--) {
+                switch (*value) {
+                case '\r':
+                    out << '\\'; out << 'r';
+                    break;
+                case '\n':
+                    out << '\\'; out << 'n';
+                    break;
+                case '\t':
+                    out << '\\'; out << 't';
+                    break;
+                case '"':
+                    out << '\\'; out << '"';
+                    break;
+                case '\\':
+                    out << '\\'; out << '\\';
+                    break;
+                case '\0':
+                    out << '\\'; out << '0';
+                    break;
+                default:
+                    if(*value < 32 && *value > 0) {
+                        out << '\\'; out << 'x';
+                        out << "0123456789ABCDEF"[(*value >> 4) & 15];
+                        out << "0123456789ABCDEF"[(*value) & 15];
+                    } else {
+                        out << *value;
+                    }
+                    break;
+                }
+                value++;
+            }
+            out << '"';
+        }
+
         std::string to_hex(std::string_view data) {
             std::string result;
             result.resize(data.size() * 2);

@@ -176,7 +176,7 @@ namespace s90 {
                 if(result.error) {
                     co_return sql_result<T>::with_error(result.error_message);
                 } else {
-                    co_return sql_result<T>::with_rows(orm::mapper::transform<T>(std::move(result.rows)));
+                    co_return sql_result<T>::with_rows(orm::transform<T>(std::move(result.rows)));
                 }
             }
 
@@ -193,7 +193,7 @@ namespace s90 {
                 if(result.error) {
                     co_return sql_result<T>::with_error(result.error_message);
                 } else {
-                    co_return sql_result<T>::with_rows(orm::mapper::transform<T>(std::move(result.rows)));
+                    co_return sql_result<T>::with_rows(orm::transform<T>(std::move(result.rows)));
                 }
             }
 

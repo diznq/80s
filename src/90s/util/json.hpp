@@ -5,62 +5,69 @@
 #include <iomanip>
 #include <format>
 #include "../orm/orm.hpp"
+#include "../util/util.hpp"
 
 namespace s90 {
     namespace util {
         class json_encoder {
-            std::string escape_string(std::string_view view) const {
-                std::stringstream ss; ss << std::quoted(view);
-                return ss.str();
-            }
             #include "../escape_mixin.hpp.inc"
 
-            std::string escape(const orm::any& a) const {
-                if(a.is_array()) {
-                    return escape_array(a);
+            std::string escape_string(std::string_view sv) const {
+                return json_encode(sv);
+            }
+
+            void escape(std::stringstream& out, const orm::any& a) const {
+                if(!a.is_present()) {
+                    out << "null";
+                } else if(a.is_array()) {
+                    escape_array(out, a);
                 } else if(a.is_object()) {
-                    return escape_object(a.get_orm());
+                    escape_object(out, a.get_orm());
                 } else if(a.is_string()) {
-                    return escape_string(a.from_native(true));
+                    json_encode(out, a.from_native(true));
                 } else {
-                    return a.from_native(true);
+                    out << a.from_native(true);
                 }
             }
 
-            std::string escape_array(const orm::any& a) const {
-                std::string out = "[";
-                for(size_t i = 0, j = a.size(); i < j; i++) {
-                    out += escape(a[i]);
-                    if(i != j - 1) out += ',';
+            void escape_array(std::stringstream& out,  const orm::any& a) const {
+                out << '[';
+                const size_t j = a.size();
+                for(size_t i = 0; i < j; i++) {
+                    escape(out, a[i]);
+                    if(i != j - 1) out << ',';
                 }
-                out += ']';
-                return out;
+                out << ']';
             }
 
-            std::string escape_object(const std::vector<std::pair<std::string, orm::any>>& pairs) const {
-                std::string out = "{";
-                for(size_t i = 0, j = pairs.size(); i < j; i++) {
-                    out += '"';
-                    out += pairs[i].first;
-                    out += "\":";
-                    out += std::format("{}", escape(pairs[i].second));
-                    if(i != j - 1) out += ',';
+            void escape_object(std::stringstream& out, const std::vector<std::pair<orm::orm_key_t, orm::any>>& pairs) const {
+                out << '{';
+                const size_t j = pairs.size();
+                for(size_t i = 0; i < j; i++) {
+                    out << '"';
+                    out << pairs[i].first;
+                    out << "\":";
+                    escape(out, pairs[i].second);
+                    if(i != j - 1) out << ',';
                 }
-                out += '}';
-                return out;
+                out << '}';
             }
         public:
             template<class T>
             requires orm::with_orm_trait<T>
             std::string encode(T& obj) {
+                std::stringstream ss;
                 orm::any a(obj);
-                return escape(a);
+                escape(ss, a);
+                return ss.str();
             }
 
             template<class T>
             std::string encode(std::vector<T>& obj) {
+                std::stringstream ss;
                 orm::any a(obj);
-                return escape(a);
+                escape(ss, a);
+                return ss.str();
             }
         };
     }

@@ -3,6 +3,7 @@
 #include "../aiopromise.hpp"
 #include <string>
 #include <string_view>
+#include <sstream>
 #include <expected>
 #include <charconv>
 
@@ -10,6 +11,9 @@ namespace s90 {
     namespace util {
         std::string url_decode(std::string_view text);
         std::string url_encode(std::string_view text);
+
+        std::string json_encode(std::string_view data);
+        void json_encode(std::stringstream& out, std::string_view data);
 
         std::string sha1(std::string_view text);
         std::string sha256(std::string_view text);
