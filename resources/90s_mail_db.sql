@@ -39,9 +39,7 @@ CREATE TABLE `mail_indexed` (
   `sent_at` datetime DEFAULT NULL,
   `delivered_at` datetime DEFAULT NULL,
   `seen_at` datetime DEFAULT NULL,
-  `last_retried_at` datetime DEFAULT NULL,
   `size` bigint(20) DEFAULT NULL,
-  `retries` int(11) DEFAULT NULL,
   `direction` int(11) DEFAULT NULL,
   `status` int(11) DEFAULT NULL,
   `security` int(11) DEFAULT NULL,
@@ -52,18 +50,10 @@ CREATE TABLE `mail_indexed` (
   `ext_message_id` text DEFAULT NULL,
   `sender_name` text DEFAULT NULL,
   `reply_to` varchar(64) DEFAULT NULL,
+  `attachment_ids` text DEFAULT NULL,
   PRIMARY KEY (`user_id`,`message_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `mail_indexed`
---
-
-LOCK TABLES `mail_indexed` WRITE;
-/*!40000 ALTER TABLE `mail_indexed` DISABLE KEYS */;
-/*!40000 ALTER TABLE `mail_indexed` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `mail_outgoing_queue`
@@ -88,15 +78,6 @@ CREATE TABLE `mail_outgoing_queue` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Dumping data for table `mail_outgoing_queue`
---
-
-LOCK TABLES `mail_outgoing_queue` WRITE;
-/*!40000 ALTER TABLE `mail_outgoing_queue` DISABLE KEYS */;
-/*!40000 ALTER TABLE `mail_outgoing_queue` ENABLE KEYS */;
-UNLOCK TABLES;
-
---
 -- Table structure for table `mail_users`
 --
 
@@ -111,7 +92,7 @@ CREATE TABLE `mail_users` (
   `used_space` bigint(20) DEFAULT NULL,
   `quota` bigint(20) DEFAULT NULL,
   PRIMARY KEY (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -124,4 +105,4 @@ CREATE TABLE `mail_users` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2023-12-31 18:22:38
+-- Dump completed on 2024-01-01 19:44:01
