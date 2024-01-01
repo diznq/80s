@@ -1,11 +1,12 @@
+#include <80s/algo.h>
 #include "mail_storage.hpp"
+#include "../util/util.hpp"
+#include "../util/json.hpp"
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <ranges>
 #include <iostream>
-#include "../util/util.hpp"
-#include <80s/algo.h>
 #include <iconv.h>
 
 namespace s90 {
@@ -558,6 +559,7 @@ namespace s90 {
 
         aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::store_mail(mail_knowledge mail, bool outbounding) {
             auto db = co_await get_db();
+            util::json_encoder encoder;
             size_t  stored_to_disk = 0, stored_to_db = 0,
                     users_total = mail.to.size();
             node_id id = global_context->get_node_id();
@@ -590,6 +592,8 @@ namespace s90 {
                     mail.to.insert(mail.from);
                 }
             }
+
+            size_t size_on_disk = 0;
 
             // save the data to the disk!
             for(auto& user : mail.to) {
@@ -624,6 +628,10 @@ namespace s90 {
 
                 for(auto& attachment : parsed.attachments) {
                     to_save.push_back({"/" + util::to_hex(util::sha256(attachment.attachment_id)) + ".bin", mail.data.data() + attachment.start, attachment.end - attachment.start });
+                }
+
+                for(auto& [file_name, data_ptr, data_size] : to_save) {
+                    size_on_disk += data_size;
                 }
 
                 for(auto& [file_name, data_ptr, data_size] : to_save) {
@@ -718,12 +726,12 @@ namespace s90 {
                     .sent_at = mail.created_at,
                     .delivered_at = util::datetime(),
                     .seen_at = util::datetime(),
-                    .size = mail.data.length(),
+                    .size = size_on_disk,
                     .direction = user.direction,
                     .status = (int)mail_status::delivered,
                     .security = (int)mail_security::none,
                     .attachments = (int)parsed.attachments.size(),
-                    .attachment_ids = attachment_ids,
+                    .attachment_ids = encoder.encode(parsed.attachments),
                     .formats = parsed.formats
                 };
 
