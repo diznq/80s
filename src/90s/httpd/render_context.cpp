@@ -23,11 +23,9 @@ namespace s90 {
             if(disabled) return;
             est_length += text.length();
             if(blocks.size() > 0 && blocks.back().type == output_type::text) {
-                blocks.back().text << std::move(text);
+                blocks.back().text += std::move(text);
             } else {
-                std::stringstream ss;
-                ss << std::move(text);
-                blocks.push_back(output_block {output_type::text, std::move(ss)});
+                blocks.push_back(output_block {output_type::text, std::move(text)});
             }
         }
 
@@ -37,9 +35,9 @@ namespace s90 {
             auto text = enc.encode(any);
             est_length += text.length();
             if(blocks.size() > 0 && blocks.back().type == output_type::text) {
-                blocks.back().text << std::move(text);
+                blocks.back().text += std::move(text);
             } else {
-                blocks.emplace_back(output_block {output_type::text, std::stringstream(std::move(text))});
+                blocks.emplace_back(output_block {output_type::text, std::move(text)});
             }
         }
 
@@ -85,25 +83,25 @@ namespace s90 {
                 auto ss = std::move(blocks.back().text);
                 est_length = 0;
                 blocks.clear();
-                co_return ss.str();
+                co_return std::move(ss);
             }
-            std::stringstream ss;
+            std::string ss;
             bool first = true;
             for(auto& it : blocks) {
                 if(it.type == output_type::text) {
                     if(first) {
                         ss = std::move(it.text);
                     } else {
-                        ss << it.text.rdbuf();
+                        ss += std::move(it.text);
                     }
                 } else {
-                    ss << co_await it.block->finalize();
+                    ss += std::move(co_await it.block->finalize());
                 }
                 first = false;
             }
             est_length = 0;
             blocks.clear();
-            co_return ss.str();
+            co_return ss;
         }
     }
 }

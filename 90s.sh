@@ -106,11 +106,11 @@ xmake() {
 }
 
 echo "Compiling lib80s"
-xmake "$CC" "$FLAGS $DEFINES" "$LIBS" "-" "bin/lib80s.a" \
+xmake "$CC" "$FLAGS -fPIC $DEFINES" "$LIBS" "-" "bin/lib80s.a" \
     src/80s/80s.c src/80s/80s_common.c src/80s/80s_common.windows.c src/80s/dynstr.c src/80s/algo.c src/80s/crypto.c \
     src/80s/serve.epoll.c src/80s/serve.kqueue.c src/80s/serve.iocp.c
 
-FLAGS="$FLAGS -std=c++23 -Isrc/ -fcoroutines"
+FLAGS="$FLAGS -std=c++23 -Isrc/ -fPIC -fcoroutines"
 
 echo "Compiling template compiler"
 xmake "$CXX" "$FLAGS" "$LIBS" "bin/lib80s.a" "bin/template$EXE_EXT" src/90s/httpd/template_compiler.cpp
@@ -119,7 +119,7 @@ if [ "$arg" = "pages" ]; then
   # Detect all .htmls in webroot and compile them into separate .so/.dlls
   echo "Compiling webpages"
   WEB_ROOT="${WEB_ROOT:-src/90s/httpd/pages/}"
-  FLAGS="$FLAGS $DEFINES -fPIC -shared"
+  FLAGS="$FLAGS $DEFINES -shared"
 
   to_translate=$(find "$WEB_ROOT" -name *.html -type f | grep -v .priv.html)
   for file in $to_translate; do

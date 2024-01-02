@@ -61,7 +61,7 @@ namespace s90 {
 
             struct output_block {
                 output_type type;
-                std::stringstream text;
+                std::string text;
                 std::shared_ptr<render_context> block;
             };
 
