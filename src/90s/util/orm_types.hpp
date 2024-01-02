@@ -62,6 +62,10 @@ namespace s90 {
                 return std::to_string(std::chrono::duration_cast<std::chrono::seconds>(point.time_since_epoch()).count());
             }
 
+            void from_native(std::ostream& out) const {
+                out << std::chrono::duration_cast<std::chrono::seconds>(point.time_since_epoch()).count();
+            }
+
             std::string ymdhis() const {
                 std::time_t tt = std::chrono::system_clock::to_time_t(point);
                 std::tm utc_tm = *std::gmtime(&tt);
@@ -116,6 +120,10 @@ namespace s90 {
 
             std::string from_native() const {
                 return ymdhis();
+            }
+
+            void from_native(std::ostream& out) const {
+                out << ymdhis();
             }
         };
 

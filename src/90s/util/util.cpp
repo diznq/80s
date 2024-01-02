@@ -121,39 +121,42 @@ namespace s90 {
         }
 
         
-        void json_encode(std::stringstream &out, std::string_view data) {
+        void json_encode(std::ostream &out, std::string_view data) {
             const char *value = data.data();
             size_t value_len = data.length();
 
             out << '"';
+
+            char x_fill[4];
             
             while (value_len--) {
-                switch (*value) {
+                char c = *value;
+                switch (c) {
                 case '\r':
-                    out << '\\'; out << 'r';
+                    out.write("\\r", 2);
                     break;
                 case '\n':
-                    out << '\\'; out << 'n';
+                    out.write("\\n", 2);
                     break;
                 case '\t':
-                    out << '\\'; out << 't';
+                    out.write("\\t", 2);
                     break;
                 case '"':
-                    out << '\\'; out << '"';
+                    out.write("\\\"", 2);
                     break;
                 case '\\':
-                    out << '\\'; out << '\\';
+                    out.write("\\\\", 2);
                     break;
                 case '\0':
-                    out << '\\'; out << '0';
+                    out.write("\\0", 2);
                     break;
                 default:
-                    if(*value < 32 && *value > 0) {
-                        out << '\\'; out << 'x';
-                        out << "0123456789ABCDEF"[(*value >> 4) & 15];
-                        out << "0123456789ABCDEF"[(*value) & 15];
+                    if(c < 32 && c > 0) {
+                        x_fill[2] = "0123456789ABCDEF"[(c >> 4) & 15];
+                        x_fill[3] = "0123456789ABCDEF"[(c) & 15];
+                        out.write(x_fill, 4);
                     } else {
-                        out << *value;
+                        out << c;
                     }
                     break;
                 }

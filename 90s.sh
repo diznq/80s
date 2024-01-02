@@ -105,19 +105,15 @@ xmake() {
   fi
 }
 
-if [ ! -f "bin/lib80s.a" ]; then
-  echo "Compiling lib80s"
-  xmake "$CC" "$FLAGS $DEFINES" "$LIBS" "-" "bin/lib80s.a" \
-      src/80s/80s.c src/80s/80s_common.c src/80s/80s_common.windows.c src/80s/dynstr.c src/80s/algo.c src/80s/crypto.c \
-      src/80s/serve.epoll.c src/80s/serve.kqueue.c src/80s/serve.iocp.c
-fi
+echo "Compiling lib80s"
+xmake "$CC" "$FLAGS $DEFINES" "$LIBS" "-" "bin/lib80s.a" \
+    src/80s/80s.c src/80s/80s_common.c src/80s/80s_common.windows.c src/80s/dynstr.c src/80s/algo.c src/80s/crypto.c \
+    src/80s/serve.epoll.c src/80s/serve.kqueue.c src/80s/serve.iocp.c
 
 FLAGS="$FLAGS -std=c++23 -Isrc/ -fcoroutines"
 
-if [ ! -f "bin/template$EXE_EXT" ]; then
-  echo "Compiling template compiler"
-  xmake "$CXX" "$FLAGS" "$LIBS" "bin/lib80s.a" "bin/template$EXE_EXT" src/90s/httpd/template_compiler.cpp
-fi
+echo "Compiling template compiler"
+xmake "$CXX" "$FLAGS" "$LIBS" "bin/lib80s.a" "bin/template$EXE_EXT" src/90s/httpd/template_compiler.cpp
 
 if [ "$arg" = "pages" ]; then
   # Detect all .htmls in webroot and compile them into separate .so/.dlls
@@ -135,14 +131,14 @@ if [ "$arg" = "pages" ]; then
   to_compile=$(find "$WEB_ROOT" -name "*.html.cpp" -type f)
   for file in $to_compile; do
     outname=$(echo "$file" | sed s/\\.cpp$/.$SO_EXT/g)
-    xmake "$CXX" "$FLAGS" "$LIBS" "-" "$outname" "$file"
+    xmake "$CXX" "$FLAGS" "$LIBS" "bin/obj/src/90s/util/util.o bin/lib80s.a" "$outname" "$file"
   done
 
   # Detect all .cpps that aren't generated from .htmls and compile main lib
   to_compile=$(find "$WEB_ROOT" -name "*.cpp" -type f | grep -v ".html.cpp")
   if [ ! -z "$to_compile" ]; then
     echo "Compiling main.$SO_EXT"
-    xmake "$CXX" "$FLAGS" "$LIBS" "bin/lib80s.a" "${WEB_ROOT}main.$SO_EXT" $to_compile
+    xmake "$CXX" "$FLAGS" "$LIBS" "bin/obj/src/90s/util/util.o bin/lib80s.a" "${WEB_ROOT}main.$SO_EXT" $to_compile
   fi
 else
   echo "Compiling 90s web server"

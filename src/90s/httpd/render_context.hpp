@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 #include <format>
+#include "../orm/orm.hpp"
 #include "../aiopromise.hpp"
 #include "../util/orm_types.hpp"
 
@@ -35,6 +36,10 @@ namespace s90 {
             /// @param text text to be written
             virtual void write(std::string&& text) = 0;
 
+            /// @brief Write JSON to the context
+            /// @param any value to be written
+            virtual void write_json(const orm::any& any) = 0;
+
             /// @brief Write text to the context
             /// @tparam ...Args format type args
             /// @param fmt format base
@@ -56,7 +61,7 @@ namespace s90 {
 
             struct output_block {
                 output_type type;
-                std::string text;
+                std::stringstream text;
                 std::shared_ptr<render_context> block;
             };
 
@@ -66,6 +71,7 @@ namespace s90 {
 
         public:
             using irender_context::escape;
+            render_context();
 
             void disable() override;
             void clear() override;
@@ -73,6 +79,7 @@ namespace s90 {
             aiopromise<std::string> finalize() override;
             
             void write(std::string&& text) override;
+            void write_json(const orm::any& any) override;
 
             std::string escape_string(std::string_view view) const override;
         };

@@ -63,6 +63,25 @@ int dynstr_putg(dynstr *self, double num) {
     return 1;
 }
 
+int dynstr_putfmt(dynstr *self, const char *fmt, ...) {
+    va_list args;
+    size_t buf_size = self->size - self->length;
+    va_start(args, fmt);
+    int written = vsnprintf(self->ptr + self->length, buf_size, fmt, args);
+    va_end( args );
+    if (written < buf_size) {
+        self->length += written;
+        return 1;
+    }
+    if (!dynstr_check(self, (size_t)written))
+        return 0;
+    buf_size = self->size - self->length;
+    va_start(args, fmt);
+    self->length += vsnprintf(self->ptr + self->length, buf_size, fmt, args);
+    va_end(args);
+    return 1;
+}
+
 void dynstr_init(dynstr *self, char *stkData, size_t size) {
     self->ptr = stkData;
     self->length = 0;
