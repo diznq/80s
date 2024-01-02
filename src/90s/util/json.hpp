@@ -135,25 +135,105 @@ namespace s90 {
         class json_decoder {
             dict<uintptr_t, dict<orm::orm_key_t, orm::any>> mappers;
 
+            std::istream& read_next_c(std::istream& in, char& c) const {
+                return in >> std::ws >> c >> std::noskipws;
+            }
+
+            std::istream& read_str(std::istream& in, std::string& out, std::string& err) const {
+                out.clear();
+                err.clear();
+                char c = 0, a = -1, b = -1;
+                read_next_c(in, c);
+                if(!in) [[unlikely]] {
+                    err = "unexpected EOF";
+                    return in;
+                }
+                if(c != '"') [[unlikely]] {
+                    err = "expected string to begin with \"";
+                    in.setstate(std::ios::failbit);
+                    return in;
+                }
+                bool is_backslash = false;
+                while(in >> c) {
+                    if(is_backslash) {
+                        switch(c) {
+                            case 'n':
+                                out += '\n';
+                                break;
+                            case 'r':
+                                out += '\n';
+                                break;
+                            case 't':
+                                out += '\t';
+                                break;
+                            case 'b':
+                                out += '\b';
+                                break;
+                            case 'v':
+                                out += '\v';
+                                break;
+                            case 'a':
+                                out += '\a';
+                                break;
+                            case '0':
+                                out += '\0';
+                                break;
+                            case 'x':
+                                {
+                                    if(!(in >> a >> b)) {
+                                        err = "failed to read two bytes after \\x";
+                                        return in;
+                                    }
+                                    if(a >= '0' && a <= '9') a = a - '0';
+                                    else if(a >= 'A' && a <= 'f') a = a - 'a' + 10;
+                                    else if(a >= 'A' && a <= 'F') a = a - 'A' + 10;
+                                    if(b >= '0' && b <= '9') b = b - '0';
+                                    else if(b >= 'A' && b <= 'f') b = b - 'a' + 10;
+                                    else if(b >= 'A' && b <= 'F') b = b - 'A' + 10;
+                                    if(a >= 0 && a <= 15 && b >= 0 && b <= 15) {
+                                        out += (char)((a << 4) | (b));
+                                    } else {
+                                        err = "provided \\x value is not valid";
+                                        in.setstate(std::ios::failbit);
+                                        return in;
+                                    }
+                                }
+                                break;
+                        }
+                        is_backslash = false;
+                    } else if(c == '\\') {
+                        is_backslash = true;
+                    } else if(c == '"') {
+                        return in;
+                    } else [[likely]] {
+                        out += c;
+                    }
+                }
+                in.setstate(std::ios::failbit);
+                err = "unexpected parse error";
+                return in;
+            }
+
             std::string decode(std::istream& in, const orm::any& a, uintptr_t offset) {
-                std::string helper, key;
+                std::string helper, key, err;
                 char c;
                 switch(a.get_type()) {
                     case orm::reftype::arr:
                         {
-                            c = (in >> std::ws).get();
-                            if(c == '[') {
+                            if(read_next_c(in, c) && c == '[') {
                                 while(true) {
-                                    c = (in >> std::ws).get();
-                                    if(c == ']') {
+                                    if(read_next_c(in, c) && c == ']') {
                                         return "";
-                                    } else {
+                                    } else if(!in) [[unlikely]]  {
+                                        return "unexpected EOF on array";
+                                    } else [[likely]] {
                                         in.seekg(-1, std::ios_base::cur);
                                         orm::any el = a.push_back({}, offset);
                                         auto res = decode(in, el, el.get_ref());
                                         if(res.length() > 0) return res;
-                                        c = (in >> std::ws).get();
-                                        if(c == ']') return "";
+                                        read_next_c(in, c);
+                                        if(!in) return "unexpected EOF on reading next array item";
+                                        else if(c == ']') return "";
                                         else if(c == ',') continue;
                                         else return "expected either ] or ,";
                                     }
@@ -165,11 +245,10 @@ namespace s90 {
                         break;
                     case orm::reftype::obj:
                         {
-                            c = (in >> std::ws).get();
-                            if(c == '{') {
-                                while(in >> std::quoted(key)) {
-                                    c = (in >> std::ws).get();
-                                    if(c != ':') return "expected : after key";
+                            if(read_next_c(in, c) && c == '{') {
+                                while(read_str(in, key, err)) {
+                                    if(read_next_c(in, c) && c != ':') [[unlikely]] return "expected : after key";
+                                    if(!in) [[unlikely]]  return "unexpected EOF on object key";
                                     auto orm_id = a.get_orm_id();
                                     auto it = mappers.find(orm_id);
                                     if(it == mappers.end()) {
@@ -180,15 +259,19 @@ namespace s90 {
                                         it = mappers.emplace(std::make_pair(orm_id, std::move(m))).first;
                                     }
                                     auto ref = it->second.find(std::string_view(key));
-                                    if(ref != it->second.end()) {
+                                    if(ref != it->second.end()) [[likely]] {
                                         auto res = decode(in, ref->second, a.get_ref());
                                         if(res.length() > 0) return res;
                                     }
-                                    c = (in >> std::ws).get();
-                                    if(c == ',') continue;
-                                    else if(c == '}') break;
+                                    read_next_c(in, c);
+                                    if(!in) return "unexpected EOF after reading key, value pair";
+                                    if(c == ',') [[likely]] continue;
+                                    else if(c == '}') [[likely]] break;
                                     else return "expected either , or }";
                                 }
+                                if(!in) [[unlikely]]  return err;
+                            } else if(!in) {
+                                return "unexpected EOF on reading object";
                             } else {
                                 return "expeted object to begin with {";
                             }
@@ -199,24 +282,24 @@ namespace s90 {
                     case orm::reftype::dt:
                     case orm::reftype::cstr:
                         helper = "";
-                        if(in >> std::quoted(helper)) {
-                            if(!a.to_native(helper, offset)) {
+                        if(read_str(in, helper, err)) [[likely]] {
+                            if(!a.to_native(helper, offset)) [[unlikely]] {
                                 return "failed to parse value \"" + helper + "\" as a " + (a.get_type() == orm::reftype::dt ? "datetime" : "string");
                             }
                         } else {
-                            return "expected string value";
+                            return err;
                         }
                         break;
                     default:
                         helper = "";
-                        while(in >> std::ws >> c) {
-                            if(c == ']' || c == '}' || c == ',') {
+                        while(read_next_c(in, c)) {
+                            if(c == ']' || c == '}' || c == ',') [[unlikely]] {
                                 break;
                             }
                             helper += c;
                         }
-                        if(helper.length() > 0) {
-                            if(!a.to_native(helper, offset)) return "failed to parse value \"" + helper + "\" as a number";
+                        if(helper.length() > 0) [[likely]] {
+                            if(!a.to_native(helper, offset)) [[unlikely]] return "failed to parse value \"" + helper + "\" as a number";
                             in.seekg(-1, std::ios_base::cur);
                         } else {
                             return "failed to read value for numeric field";
@@ -235,7 +318,9 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 auto err = decode(ss, a, a.get_ref());
-                if(err.length() > 0) return std::unexpected(err);
+                if(err.length() > 0) [[unlikely]] {
+                    return std::unexpected(err);
+                }
                 return obj;
             }
 
@@ -249,7 +334,9 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 auto err = decode(ss, a, 0);
-                if(err.length() > 0) return std::unexpected(err);
+                if(err.length() > 0) [[unlikely]] {
+                    return std::unexpected(err);
+                }
                 return obj;
             }
         };
