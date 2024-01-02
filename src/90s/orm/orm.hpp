@@ -8,7 +8,15 @@
 #include <format>
 #include <cstdint>
 #include <type_traits>
+#ifdef S90_SHARED_ORM
 #include "../shared.hpp"
+#else
+#include <unordered_map>
+namespace s90 {
+    template<class A, class B>
+    using dict = std::unordered_map<A, B>;
+}
+#endif
 #include "types.hpp"
 
 namespace s90 {
@@ -209,9 +217,9 @@ namespace s90 {
 
             /// @brief Determine if `any` holds a value
             /// @return true if `any` is not an optional or if it is an optional and holds a value
-            inline bool is_present() const {
+            inline bool is_present(size_t offset = 0) const {
                 if(!success_wb) return true;
-                return *(bool*)success_wb;
+                return *(bool*)(offset + success_wb);
             }
 
             /// @brief Determine if `any` holds an optional
@@ -357,7 +365,7 @@ namespace s90 {
             /// @param offset offset from the relative base
             /// @return string form
             inline std::string from_native(bool bool_as_text = false, uintptr_t offset = 0) const {
-                if(success_wb && !*(bool*)success_wb) return "";
+                if(success_wb && !*(bool*)(offset + success_wb)) return "";
                 uintptr_t addr = ref + offset;
                 switch(type) {
                     case reftype::str:

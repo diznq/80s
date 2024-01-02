@@ -20,7 +20,7 @@ CC="${CC:-$DEFAULT_C_COMPILER}"
 mkdir -p bin
 mkdir -p bin/obj
 
-DEFINES=""
+DEFINES="-DS90_SHARED_ORM"
 LIBS="-lm -ldl -lpthread -lcrypto -lssl"
 
 if [ "$(uname -o)" = "Msys" ]; then

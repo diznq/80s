@@ -6,7 +6,7 @@
 #include <format>
 #include <type_traits>
 #include <expected>
-#include "../orm/orm.hpp"
+#include "orm.hpp"
 
 namespace s90 {
     namespace orm {
@@ -84,7 +84,7 @@ namespace s90 {
                 dict<uintptr_t, orm::mapper>::iterator it;
                 uintptr_t orm_id;
                 // only encode non-optionals or present optionals
-                if(a.is_present()) [[likely]] {
+                if(a.is_present(offset)) [[likely]] {
                     switch(a.get_type()) {
                         case orm::reftype::arr:
                             escape_array(out, a, offset);
@@ -154,6 +154,15 @@ namespace s90 {
                 std::stringstream ss;
                 escape(ss, obj, 0);
                 return ss.str();
+            }
+
+            /// @brief Encode `any` to JSON string
+            /// @param stream output stream
+            /// @param obj object or vector of objects to be encoded
+            /// @return JSON string
+            std::ostream& encode(std::ostream& stream, const orm::any& obj) {
+                escape(stream, obj, 0);
+                return stream;
             }
         };
 
