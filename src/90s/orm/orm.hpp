@@ -175,8 +175,8 @@ namespace s90 {
             any(orm::varstr<N>& value) : ref((uintptr_t)&value), type(reftype::vstr), template_arg(value.get_max_size()) {}
             any(std::string& value) : ref((uintptr_t)&value), type(reftype::str) {}
             any(const char*& value) : ref((uintptr_t)&value), type(reftype::cstr) {}
-            any(orm::datetime value) : ref((uintptr_t)&value), type(reftype::dt) {}
-            any(orm::timestamp value) : ref((uintptr_t)&value), type(reftype::ts) {}
+            any(orm::datetime& value) : ref((uintptr_t)&value), type(reftype::dt) {}
+            any(orm::timestamp& value) : ref((uintptr_t)&value), type(reftype::ts) {}
             
             any(int8_t& value) : ref((uintptr_t)&value), type(reftype::i8) {}
             any(int16_t& value) : ref((uintptr_t)&value), type(reftype::i16) {}

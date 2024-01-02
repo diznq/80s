@@ -9,7 +9,7 @@
 #include "../orm/orm.hpp"
 
 namespace s90 {
-    namespace json {
+    namespace orm {
         class json_encoder {
             #include "../escape_mixin.hpp.inc"
             dict<uintptr_t, orm::mapper> mappers;

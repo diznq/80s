@@ -1,7 +1,7 @@
 #include <80s/algo.h>
 #include "mail_storage.hpp"
 #include "../util/util.hpp"
-#include "../json/json.hpp"
+#include "../orm/json.hpp"
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -559,7 +559,7 @@ namespace s90 {
 
         aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::store_mail(mail_knowledge mail, bool outbounding) {
             auto db = co_await get_db();
-            json::json_encoder encoder;
+            orm::json_encoder encoder;
             size_t  stored_to_disk = 0, stored_to_db = 0,
                     users_total = mail.to.size();
             node_id id = global_context->get_node_id();

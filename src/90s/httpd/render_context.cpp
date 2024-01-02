@@ -1,5 +1,5 @@
 #include "render_context.hpp"
-#include "../json/json.hpp"
+#include "../orm/json.hpp"
 #include <cstring>
 #include <sstream>
 
@@ -31,7 +31,7 @@ namespace s90 {
 
         void render_context::write_json(const orm::any& any) {
             if(disabled) return;
-            json::json_encoder enc;
+            orm::json_encoder enc;
             auto text = enc.encode(any);
             est_length += text.length();
             if(blocks.size() > 0 && blocks.back().type == output_type::text) {
