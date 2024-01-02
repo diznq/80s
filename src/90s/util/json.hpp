@@ -17,44 +17,46 @@ namespace s90 {
                 const char *value = data.data();
                 size_t value_len = data.length();
 
-                out << '"';
+                out.put('"');
 
                 char x_fill[4];
                 
                 while (value_len--) {
                     char c = *value;
-                    switch (c) {
-                    case '\r':
-                        out.write("\\r", 2);
-                        break;
-                    case '\n':
-                        out.write("\\n", 2);
-                        break;
-                    case '\t':
-                        out.write("\\t", 2);
-                        break;
-                    case '"':
-                        out.write("\\\"", 2);
-                        break;
-                    case '\\':
-                        out.write("\\\\", 2);
-                        break;
-                    case '\0':
-                        out.write("\\0", 2);
-                        break;
-                    default:
-                        if(c < 32 && c > 0) {
+
+                    if(c >= 32 || c <= 127) [[likely]] {
+                        out.put(c);
+                    } else {
+                        switch (c) {
+                        case '\r':
+                            out.write("\\r", 2);
+                            break;
+                        case '\n': [[likely]]
+                            out.write("\\n", 2);
+                            break;
+                        case '\t':
+                            out.write("\\t", 2);
+                            break;
+                        case '"': [[likely]]
+                            out.write("\\\"", 2);
+                            break;
+                        case '\\':
+                            out.write("\\\\", 2);
+                            break;
+                        case '\0': [[unlikely]]
+                            out.write("\\0", 2);
+                            break;
+                        default: [[likely]]
                             x_fill[2] = "0123456789ABCDEF"[(c >> 4) & 15];
                             x_fill[3] = "0123456789ABCDEF"[(c) & 15];
                             out.write(x_fill, 4);
-                        } else {
-                            out << c;
+                            break;
                         }
-                        break;
+                        value++;
                     }
-                    value++;
                 }
-                out << '"';
+
+                out.put('"');
             }
 
             std::string escape_string(std::string_view sv) const {
@@ -66,20 +68,20 @@ namespace s90 {
             void escape(std::ostream& out, const orm::any& a, uintptr_t offset = 0) {
                 dict<uintptr_t, orm::mapper>::iterator it;
                 uintptr_t orm_id;
-                if(a.is_present()) {
+                if(a.is_present()) [[likely]] {
                     switch(a.get_type()) {
                         case orm::reftype::arr:
                             escape_array(out, a, offset);
                             break;
-                        case orm::reftype::obj:
+                        case orm::reftype::obj: [[likely]]
                             orm_id = a.get_orm_id();
-                            if(orm_id) {
+                            if(orm_id) [[likely]] { 
                                 it = mappers.find(a.get_orm_id());
-                                if(it == mappers.end()) {
+                                if(it == mappers.end()) [[unlikely]] {
                                     it = mappers.emplace(std::make_pair(a.get_orm_id(), a.get_orm(true))).first;
                                 }
                                 escape_object(out, it->second, a.get_ref());
-                            } else {
+                            } else  [[unlikely]] {
                                 out << "{\"error\":\"invalid class, object must contain WITH_ID!\"}";
                             }
                             break;
@@ -104,7 +106,7 @@ namespace s90 {
                 for(size_t i = 0; i < j; i++) {
                     auto item = a.at(i, offset);
                     escape(out, item, (uintptr_t)&item);
-                    if(i != j - 1) out << ',';
+                    if(i != j - 1) [[unlikely]] out << ',';
                 }
                 out << ']';
             }
@@ -113,11 +115,9 @@ namespace s90 {
                 out << '{';
                 const size_t j = pairs.size();
                 for(size_t i = 0; i < j; i++) {
-                    out << '"';
-                    out << pairs[i].first;
-                    out << "\":";
+                    out << '"' << pairs[i].first << "\":";
                     escape(out, pairs[i].second, offset);
-                    if(i != j - 1) out << ',';
+                    if(i != j - 1) [[unlikely]] out << ',';
                 }
                 out << '}';
             }

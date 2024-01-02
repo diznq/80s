@@ -29,12 +29,6 @@ namespace s90 {
         do {
             std::vector<char> decoded;
 
-            if(!cycle) {
-                dbg_infof("%s; on_data(%zu -> %zu, current offset: %zu)\n", name().c_str(), data.length(), read_buffer.size() + data.length(), read_offset);
-            } else {
-                dbg_infof("%s; force cycle(current offset: %zu, size: %zu, new: %zu)\n", name().c_str(), read_offset, read_buffer.size(), data.length());
-            }
-
             // SSL layer
             if(data.length() > 0 && (ssl_status == ssl_state::client_ready || ssl_status == ssl_state::server_ready)) {
                 int bio_result = crypto_ssl_bio_write(ssl_bio, data.data(), data.length());
@@ -43,31 +37,31 @@ namespace s90 {
                 data = std::string_view(decoded.data(), decoded.data() + decoded.size());
             }
 
-            if(is_closed()) {
+            if(is_closed()) [[unlikely]] {
                 break;
             }
             
             kmp_result part;
             bool iterate = true;
             
-            if(!cycle && read_commands.empty() && on_command_queue_empty) {
+            if(!cycle && read_commands.empty() && on_command_queue_empty) [[unlikely]] {
                 // if there is zero ocmmands, call the on empty callback to fill the queue
                 // with some, this helps against recursion somewhat in cyclical protocols
                 on_command_queue_empty();
             }
 
-            if(!cycle && data.empty()) {
+            if(!cycle && data.empty()) [[unlikely]] {
                 return;
             }
             
             //dbg_infof("on_data, read_commands: %zu, read_buffer: %zu, read_offset: %zu, data: %zu, cycle: %d\n", read_commands.size(), read_buffer.size(), read_offset, data.size(), cycle);
 
-            if((!buffering && read_commands.empty()) || (read_buffer.size() + data.size() - read_offset) == 0) {
+            if((!buffering && read_commands.empty()) || (read_buffer.size() + data.size() - read_offset) == 0) [[unlikely]] {
                 // if read buffer + incoming data is empty, no point in resolving the promises
                 return;
             }
             
-            if(data.size() > 0) {
+            if(data.size() > 0) [[likely]] {
                 // extend the read buffer with new data and clear the current data so future
                 // loops won't extend it again
                 read_buffer.insert(read_buffer.end(), data.begin(), data.end());
@@ -76,7 +70,7 @@ namespace s90 {
 
             // select a read_buffer window based on where we ended up last time
             std::string_view arg;
-            while(iterate && !read_commands.empty()) {
+            while(iterate && !read_commands.empty()) [[likely]] {
                 std::string_view window(read_buffer.data() + read_offset, read_buffer.size() - read_offset);
                 if(window.empty()) break;
                 auto it = read_commands.front();
@@ -85,7 +79,7 @@ namespace s90 {
                 auto command_delim_length = it.delimiter.size();
                 // handle different read command types differently
                 switch(it.type) {
-                    case read_command_type::any:
+                    case read_command_type::any: [[unlikely]]
                         //dbg_infof("READ ANY\n");
                         // any is fulfilled whenever any data comes in, no matter the size
                         read_offset += window.size();
@@ -110,7 +104,7 @@ namespace s90 {
                                 aiopromise(ptr).resolve({false, std::move(arg)});
                         }
                         break;
-                    case read_command_type::until:
+                    case read_command_type::until: [[likely]]
                         // until is fulfilled until a delimiter appears, this implemenation makes use of specially optimized partial
                         // search based on Knuth-Morris-Pratt algorithm, so it's O(n)
                         part = kmp(window.data(), window.length(), it.delimiter.c_str() + delim_state.match, command_delim_length - delim_state.match, delim_state.offset);
@@ -142,7 +136,7 @@ namespace s90 {
                 }
             }
 
-            if(read_offset == read_buffer.size() || (!buffering && read_commands.empty())) {
+            if(read_offset == read_buffer.size() || (!buffering && read_commands.empty())) [[unlikely]] {
                 // if everything was executed, clear the read buffer
                 dbg_infof("%s; reset read offset to 0\n", name().c_str());
                 read_offset = 0;
@@ -150,7 +144,7 @@ namespace s90 {
                 break;
             }
 
-            if(read_buffer.size() == 0) {
+            if(read_buffer.size() == 0) [[unlikely]] {
                 break;
             }
             
@@ -158,7 +152,7 @@ namespace s90 {
     }
 
     void afd::on_write(size_t written_bytes) {
-        if(is_closed()) return;
+        if(is_closed()) [[unlikely]] return;
         for(;;) {
 
             int do_write = written_bytes == 0;
@@ -167,7 +161,7 @@ namespace s90 {
             // make sure we iterate over every promise to check the fullfilment
             while(!write_back_buffer_info.empty()) {
                 auto promise = write_back_buffer_info.front();
-                if(promise.sent + written_bytes >= promise.length) {
+                if(promise.sent + written_bytes >= promise.length) [[likely]] {
                     written_bytes -= promise.length - promise.sent;
                     promise.sent = promise.length;
                     write_back_buffer_info.pop();
@@ -184,7 +178,7 @@ namespace s90 {
                 }
             }
             
-            if(write_back_offset < write_back_buffer.size() && do_write) {
+            if(write_back_offset < write_back_buffer.size() && do_write) [[likely]] {
                 // perform any outstanding writes
                 auto [ok, _] = perform_write();
                 if(ok < 0) {
@@ -197,7 +191,7 @@ namespace s90 {
             }
         }
 
-        if(write_back_buffer_info.size() == 0) {
+        if(write_back_buffer_info.size() == 0) [[unlikely]] {
             write_back_buffer.clear();
             write_back_offset = 0;
         }
@@ -219,7 +213,7 @@ namespace s90 {
             int ssl_read = crypto_ssl_read(ssl_bio, new_data, sizeof(new_data), &want_io, &err);
             dbgf("SSL decode - read %d, want IO: %d\n", ssl_read, want_io);
 
-            if(want_io) {
+            if(want_io) [[likely]] {
                 while(true) {
                     int ssl_write = crypto_ssl_bio_read(ssl_bio, new_data, sizeof(new_data));
                     dbgf("SSL decode - write %d\n", ssl_write);
@@ -230,7 +224,7 @@ namespace s90 {
                 }
             }
 
-            if(ssl_read > 0) {
+            if(ssl_read > 0) [[likely]] {
                 decoded.insert(decoded.end(), new_data, new_data + ssl_read);
             } else {
                 break;
@@ -277,7 +271,7 @@ namespace s90 {
 
     aiopromise<read_arg> afd::read_any() {
         auto promise = aiopromise<read_arg>();
-        if(is_closed()) {
+        if(is_closed()) [[unlikely]] {
             promise.resolve({true, ""});
         } else {
             read_commands.emplace(read_command(promise.weak(), read_command_type::any, 0, ""));
@@ -289,7 +283,7 @@ namespace s90 {
 
     aiopromise<read_arg> afd::read_n(size_t n_bytes) {
         auto promise = aiopromise<read_arg>();
-        if(is_closed()) {
+        if(is_closed()) [[unlikely]] {
             promise.resolve({true, ""});
         } else {
             dbg_infof("%s; Insert READ %zu bytes command (%zu, %zu | %zu)\n", name().c_str(), n_bytes, read_buffer.size(), read_offset, read_commands.size());
@@ -302,7 +296,7 @@ namespace s90 {
 
     aiopromise<read_arg> afd::read_until(std::string&& delim) {
         auto promise = aiopromise<read_arg>();
-        if(is_closed()) {
+        if(is_closed()) [[unlikely]] {
             promise.resolve({true, ""});
         } else {
             read_commands.emplace(read_command(promise.weak(), read_command_type::until, 0, std::move(delim)));
@@ -319,7 +313,7 @@ namespace s90 {
         if(ok < 0) {
             close(true);
             return std::make_tuple(ok, false);
-        } else {
+        } else [[likely]] {
             return std::make_tuple(ok, (size_t)ok == to_write);
         }
     }
@@ -347,7 +341,7 @@ namespace s90 {
         
         dbgf("WRITE DATA: %zu\n", data.length());
 
-        if(is_closed()) {
+        if(is_closed()) [[unlikely]] {
             promise.resolve(false);
             return promise;
         }
@@ -356,7 +350,7 @@ namespace s90 {
         write_back_buffer.insert(write_back_buffer.end(), data.begin(), data.end());
         write_back_buffer_info.emplace(back_buffer(promise.weak(), data.size(), 0));
         
-        if(write_back_buffer_info.size() == 1) {
+        if(write_back_buffer_info.size() == 1) [[likely]] {
             // if the item we added is the only single item in the queue, force the write immediately
             auto [ok, _] = perform_write();
             if(ok > 0) {
