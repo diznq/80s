@@ -12,6 +12,7 @@ using namespace s90::cache;
 using namespace s90::sql;
 
 struct post : with_orm {
+    WITH_ID;
     int id;
     std::string author;
     std::string text;

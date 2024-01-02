@@ -412,8 +412,8 @@ namespace s90 {
                 }
             }
 
-            /// @brief Transform from native form to string form
-            /// @param output stream
+            /// @brief Transform from native form to output stream
+            /// @param output output stream
             /// @param bool_as_text if true, bools are treated as "true" / "false", otherwise "1" / "0"
             /// @param offset offset from the relative base
             /// @return string form
@@ -533,11 +533,17 @@ namespace s90 {
 
         // Utilities
 
+        /// @brief ORM relation between key and referenced value
         using mapping = std::pair<orm_key_t, any>;
+
+        /// @brief ORM definition
         using mapper = std::vector<mapping>;
 
+        /// @brief A required trait if nested entity encoding / decoding is required.
         #define WITH_ID static uintptr_t get_orm_id() { return (uintptr_t)(&get_orm_id); }
         
+        /// @brief Class trait for having ORM functionalities, all with_orm classes
+        /// should also either implement get_orm_id or use WITH_ID; at beginning
         class with_orm {
         public:
             WITH_ID;
