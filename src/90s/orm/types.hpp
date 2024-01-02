@@ -7,7 +7,7 @@
 #include <ctime>
 
 namespace s90 {
-    namespace util {
+    namespace orm {
 
         struct timestamp {
             std::chrono::system_clock::time_point point = std::chrono::system_clock::now();
@@ -168,34 +168,34 @@ namespace s90 {
 }
 
 template <size_t N>
-struct std::formatter<s90::util::varstr<N>> {
+struct std::formatter<s90::orm::varstr<N>> {
     constexpr auto parse(std::format_parse_context& ctx) {
         return ctx.begin();
     }
 
-    auto format(const s90::util::varstr<N>& obj, std::format_context& ctx) const {
+    auto format(const s90::orm::varstr<N>& obj, std::format_context& ctx) const {
         return std::format_to(ctx.out(), "{}", (std::string_view)obj);
     }
 };
 
 template <>
-struct std::formatter<s90::util::datetime> {
+struct std::formatter<s90::orm::datetime> {
     constexpr auto parse(std::format_parse_context& ctx) {
         return ctx.begin();
     }
 
-    auto format(const s90::util::datetime& obj, std::format_context& ctx) const {
+    auto format(const s90::orm::datetime& obj, std::format_context& ctx) const {
         return std::format_to(ctx.out(), "{}", obj.from_native());
     }
 };
 
 template <>
-struct std::formatter<s90::util::timestamp> {
+struct std::formatter<s90::orm::timestamp> {
     constexpr auto parse(std::format_parse_context& ctx) {
         return ctx.begin();
     }
 
-    auto format(const s90::util::datetime& obj, std::format_context& ctx) const {
+    auto format(const s90::orm::datetime& obj, std::format_context& ctx) const {
         return std::format_to(ctx.out(), "{}", obj.from_native());
     }
 };

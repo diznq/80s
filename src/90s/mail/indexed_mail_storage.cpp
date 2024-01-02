@@ -1,7 +1,7 @@
 #include <80s/algo.h>
 #include "mail_storage.hpp"
 #include "../util/util.hpp"
-#include "../util/json.hpp"
+#include "../json/json.hpp"
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -559,7 +559,7 @@ namespace s90 {
 
         aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::store_mail(mail_knowledge mail, bool outbounding) {
             auto db = co_await get_db();
-            util::json_encoder encoder;
+            json::json_encoder encoder;
             size_t  stored_to_disk = 0, stored_to_db = 0,
                     users_total = mail.to.size();
             node_id id = global_context->get_node_id();
@@ -682,7 +682,7 @@ namespace s90 {
                             .target_server = user.original_email_server,
                             .disk_path = std::format("{}/{}/{}", config.sv_mail_storage_dir, mail.from.email, msg_id),
                             .status = (int)mail_status::sent,
-                            .last_retried_at = util::datetime(),
+                            .last_retried_at = orm::datetime(),
                             .retries = 0,
                             .session_id = 0,
                             .locked = 0
@@ -724,8 +724,8 @@ namespace s90 {
                     .sender_name = mail.client_name,
                     .created_at = mail.created_at,
                     .sent_at = mail.created_at,
-                    .delivered_at = util::datetime(),
-                    .seen_at = util::datetime(),
+                    .delivered_at = orm::datetime(),
+                    .seen_at = orm::datetime(),
                     .size = size_on_disk,
                     .direction = user.direction,
                     .status = (int)mail_status::delivered,

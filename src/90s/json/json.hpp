@@ -7,10 +7,9 @@
 #include <type_traits>
 #include <expected>
 #include "../orm/orm.hpp"
-#include "../util/util.hpp"
 
 namespace s90 {
-    namespace util {
+    namespace json {
         class json_encoder {
             #include "../escape_mixin.hpp.inc"
             dict<uintptr_t, orm::mapper> mappers;

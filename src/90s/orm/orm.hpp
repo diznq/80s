@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <type_traits>
 #include "../shared.hpp"
-#include "../util/orm_types.hpp"
+#include "types.hpp"
 
 namespace s90 {
     namespace orm {
@@ -172,11 +172,11 @@ namespace s90 {
             any(std::vector<T>& vec);
 
             template<size_t N>
-            any(util::varstr<N>& value) : ref((uintptr_t)&value), type(reftype::vstr), template_arg(value.get_max_size()) {}
+            any(orm::varstr<N>& value) : ref((uintptr_t)&value), type(reftype::vstr), template_arg(value.get_max_size()) {}
             any(std::string& value) : ref((uintptr_t)&value), type(reftype::str) {}
             any(const char*& value) : ref((uintptr_t)&value), type(reftype::cstr) {}
-            any(util::datetime& value) : ref((uintptr_t)&value), type(reftype::dt) {}
-            any(util::timestamp& value) : ref((uintptr_t)&value), type(reftype::ts) {}
+            any(orm::datetime value) : ref((uintptr_t)&value), type(reftype::dt) {}
+            any(orm::timestamp value) : ref((uintptr_t)&value), type(reftype::ts) {}
             
             any(int8_t& value) : ref((uintptr_t)&value), type(reftype::i8) {}
             any(int16_t& value) : ref((uintptr_t)&value), type(reftype::i16) {}
@@ -326,10 +326,10 @@ namespace s90 {
                         break;
                     // dates
                     case reftype::dt:
-                        success = ((util::datetime*)addr)->to_native(value);
+                        success = ((orm::datetime*)addr)->to_native(value);
                         break;
                     case reftype::ts:
-                        success = ((util::timestamp*)addr)->to_native(value);
+                        success = ((orm::timestamp*)addr)->to_native(value);
                         break;
                     default:
                         success = false;
@@ -404,10 +404,10 @@ namespace s90 {
                         break;
                     // dates
                     case reftype::dt:
-                        return ((util::datetime*)addr)->from_native();
+                        return ((orm::datetime*)addr)->from_native();
                         break;
                     case reftype::ts:
-                        return ((util::timestamp*)addr)->from_native();
+                        return ((orm::timestamp*)addr)->from_native();
                         break;
                     default:
                         return "";
@@ -482,10 +482,10 @@ namespace s90 {
                         break;
                     // dates
                     case reftype::dt:
-                        ((util::datetime*)addr)->from_native(out);
+                        ((orm::datetime*)addr)->from_native(out);
                         break;
                     case reftype::ts:
-                        ((util::timestamp*)addr)->from_native(out);
+                        ((orm::timestamp*)addr)->from_native(out);
                         break;
                     default:
                         break;

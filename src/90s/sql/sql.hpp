@@ -3,7 +3,7 @@
 #include "../shared.hpp"
 #include "../aiopromise.hpp"
 #include "../orm/orm.hpp"
-#include "../util/orm_types.hpp"
+#include "../orm/types.hpp"
 
 namespace s90 {
     namespace sql {

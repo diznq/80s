@@ -4,8 +4,8 @@
 namespace s90 {
     namespace mail {
 
-        using util::varstr;
-        using util::sql_text;
+        using orm::varstr;
+        using orm::sql_text;
 
         enum class mail_direction {
             inbound, outbound
@@ -64,7 +64,7 @@ namespace s90 {
             uint64_t user_id;
             std::string email;
             std::string password;
-            util::datetime created_at;
+            orm::datetime created_at;
             size_t used_space = 0;
             size_t quota = 100000000;
 
@@ -162,10 +162,10 @@ namespace s90 {
             sql_text dkim_domain;
             sql_text sender_address;
             sql_text sender_name;
-            util::datetime created_at;
-            util::datetime sent_at;
-            util::datetime delivered_at;
-            util::datetime seen_at;
+            orm::datetime created_at;
+            orm::datetime sent_at;
+            orm::datetime delivered_at;
+            orm::datetime seen_at;
             uint64_t size;
             int direction;
             int status;
@@ -215,7 +215,7 @@ namespace s90 {
             varstr<48> target_server;
             sql_text disk_path;
             int status;
-            util::datetime last_retried_at;
+            orm::datetime last_retried_at;
             int retries;
             size_t session_id;
             int locked;
@@ -239,7 +239,7 @@ namespace s90 {
             bool hello = false;
             bool tls = false;
             std::string store_id;
-            util::datetime created_at = util::datetime();
+            orm::datetime created_at = orm::datetime();
             std::string client_name = "";
             std::string client_address = "";
             mail_parsed_user from;

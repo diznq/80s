@@ -131,14 +131,14 @@ if [ "$arg" = "pages" ]; then
   to_compile=$(find "$WEB_ROOT" -name "*.html.cpp" -type f)
   for file in $to_compile; do
     outname=$(echo "$file" | sed s/\\.cpp$/.$SO_EXT/g)
-    xmake "$CXX" "$FLAGS" "$LIBS" "bin/obj/src/90s/util/util.o bin/lib80s.a" "$outname" "$file"
+    xmake "$CXX" "$FLAGS" "$LIBS" "bin/lib80s.a" "$outname" "$file"
   done
 
   # Detect all .cpps that aren't generated from .htmls and compile main lib
   to_compile=$(find "$WEB_ROOT" -name "*.cpp" -type f | grep -v ".html.cpp")
   if [ ! -z "$to_compile" ]; then
     echo "Compiling main.$SO_EXT"
-    xmake "$CXX" "$FLAGS" "$LIBS" "bin/obj/src/90s/util/util.o bin/lib80s.a" "${WEB_ROOT}main.$SO_EXT" $to_compile
+    xmake "$CXX" "$FLAGS" "$LIBS" "bin/lib80s.a" "${WEB_ROOT}main.$SO_EXT" $to_compile
   fi
 else
   echo "Compiling 90s web server"
