@@ -1,8 +1,14 @@
 #include "render_context.hpp"
+#include "../orm/json.hpp"
 #include <cstring>
+#include <sstream>
 
 namespace s90 {
     namespace httpd {
+        
+        render_context::render_context() {     
+        }
+
         void render_context::disable() {
             disabled = true;
         }
@@ -16,20 +22,29 @@ namespace s90 {
         void render_context::write(std::string&& text) {
             if(disabled) return;
             est_length += text.length();
-            //if(blocks.size() > 0 && blocks.back().type == output_type::text) {
-            //    blocks.back().text += text;
-            //} else {
-                output_block blk { output_type::text, std::move(text) };
-                blocks.emplace_back(std::move(blk));
-            //}
+            if(blocks.size() > 0 && blocks.back().type == output_type::text) {
+                blocks.back().text += std::move(text);
+            } else {
+                blocks.push_back(output_block {output_type::text, std::move(text)});
+            }
+        }
+
+        void render_context::write_json(const orm::any& any) {
+            if(disabled) return;
+            orm::json_encoder enc;
+            auto text = enc.encode(any);
+            est_length += text.length();
+            if(blocks.size() > 0 && blocks.back().type == output_type::text) {
+                blocks.back().text += std::move(text);
+            } else {
+                blocks.emplace_back(output_block {output_type::text, std::move(text)});
+            }
         }
 
         std::shared_ptr<irender_context> render_context::append_context() {
             auto ctx = std::make_shared<render_context>();
-            output_block blk { output_type::block, "", ctx };
-            blocks.emplace_back(std::move(blk));
-            if(disabled)
-                ctx->disable();
+            blocks.emplace_back(output_block { output_type::block, {}, ctx });
+            if(disabled) ctx->disable();
             return static_pointer_cast<irender_context>(ctx);
         }
 
@@ -64,22 +79,29 @@ namespace s90 {
         }
         
         aiopromise<std::string> render_context::finalize() {
-            std::string output;
-            output.reserve(est_length + 1);
             if(blocks.size() == 1 && blocks.back().type == output_type::text) {
-                output = std::move(blocks.back().text);
-            } else {
-                for(auto& it : blocks) {
-                    if(it.type == output_type::text) {
-                        output += it.text;
+                auto ss = std::move(blocks.back().text);
+                est_length = 0;
+                blocks.clear();
+                co_return std::move(ss);
+            }
+            std::string ss;
+            bool first = true;
+            for(auto& it : blocks) {
+                if(it.type == output_type::text) {
+                    if(first) {
+                        ss = std::move(it.text);
                     } else {
-                        output += co_await it.block->finalize();
+                        ss += std::move(it.text);
                     }
+                } else {
+                    ss += std::move(co_await it.block->finalize());
                 }
+                first = false;
             }
             est_length = 0;
             blocks.clear();
-            co_return std::move(output);
+            co_return ss;
         }
     }
 }

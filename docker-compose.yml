@@ -1,9 +1,0 @@
-services:
-  server:
-    build:
-      context: .
-    environment:
-      - LUA_LIB_PATH=/usr/lua5.4/lib/liblua.a
-      - LUA_INC_PATH=/usr/lua5.4/include
-      - LUA_JIT_LIB_PATH=/usr/lib/libluajit-5.1.a
-      - LUA_JIT_INC_PATH=/usr/include/luajit-2.1/

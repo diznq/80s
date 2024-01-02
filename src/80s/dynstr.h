@@ -1,6 +1,7 @@
 #ifndef __80S_DYNSTR_H__
 #define __80S_DYNSTR_H__
 #include <stdlib.h>
+#include <stdarg.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -17,6 +18,7 @@ typedef struct dynstr_ {
 int dynstr_check(dynstr *self, size_t space);
 int dynstr_putc(dynstr *self, char c);
 int dynstr_puts(dynstr *self, const char *data, size_t len);
+int dynstr_putfmt(dynstr *self, const char *fmt, ...);
 int dynstr_putsz(dynstr *self, const char *data);
 int dynstr_putg(dynstr *self, double num);
 void dynstr_init(dynstr *self, char *stkData, size_t size);

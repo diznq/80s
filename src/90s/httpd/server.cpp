@@ -304,18 +304,18 @@ namespace s90 {
                 arg = co_await fd->read_until("\r\n\r\n");
                 if(arg.error) co_return {};
 
-                pivot = arg.data.find_first_of("\r\n");
+                pivot = arg.data.find("\r\n");
                 std::string_view remaining(arg.data);
                 std::string_view status(arg.data);
                 if(pivot == std::string::npos) co_return {};
                 status = std::string_view(arg.data.begin(), arg.data.begin() + pivot);
-                pivot = status.find_first_of(' ');
+                pivot = status.find(' ');
                 
                 // parse the status line
                 if(pivot != std::string::npos) {
                     env.write_method(std::string(status.substr(0, pivot)));
                     status = status.substr(pivot + 1);
-                    pivot = status.find_first_of(' ');
+                    pivot = status.find(' ');
                     if(pivot != std::string::npos) {
                         script = status.substr(0, pivot);
                     } else {
@@ -328,9 +328,9 @@ namespace s90 {
                 // parse header keys values
                 remaining = remaining.substr(pivot + 2);
                 while(true) {
-                    pivot = remaining.find_first_of("\r\n");
+                    pivot = remaining.find("\r\n");
                     std::string_view header_line = remaining.substr(0, pivot);
-                    auto mid_key = header_line.find_first_of(": ");
+                    auto mid_key = header_line.find(": ");
                     if(mid_key != std::string::npos) {
                         env.write_header(
                             std::string(header_line.substr(0, mid_key)),

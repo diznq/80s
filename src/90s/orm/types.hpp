@@ -7,7 +7,7 @@
 #include <ctime>
 
 namespace s90 {
-    namespace util {
+    namespace orm {
 
         struct timestamp {
             std::chrono::system_clock::time_point point = std::chrono::system_clock::now();
@@ -28,7 +28,7 @@ namespace s90 {
                 return point < v.point;
             }
 
-            void to_native(std::string_view value) {
+            bool to_native(std::string_view value) {
                 if(value.length() >= 19 && value[4] == '-') {
                     std::string_view Y = value.substr(0, 4);
                     std::string_view M = value.substr(5, 2);
@@ -51,15 +51,22 @@ namespace s90 {
                     time.tm_min = i;
                     time.tm_sec = s;
                     point = std::chrono::system_clock::time_point(std::chrono::seconds(std::mktime(&time)));
+                    return true;
                 } else {
                     size_t secs = 0;
-                    std::from_chars(value.begin(), value.end(), secs, 10);
+                    auto res = std::from_chars(value.begin(), value.end(), secs, 10);
+                    if(res.ec != std::errc() || res.ptr != value.end()) return false;
                     point = std::chrono::system_clock::time_point(std::chrono::seconds(secs));
+                    return true;
                 }
             }
 
             std::string from_native() const {
                 return std::to_string(std::chrono::duration_cast<std::chrono::seconds>(point.time_since_epoch()).count());
+            }
+
+            void from_native(std::ostream& out) const {
+                out << std::chrono::duration_cast<std::chrono::seconds>(point.time_since_epoch()).count();
             }
 
             std::string ymdhis() const {
@@ -68,6 +75,30 @@ namespace s90 {
                 char buff[25];
                 std::sprintf(buff, "%04d-%02d-%02d %02d:%02d:%02d", utc_tm.tm_year + 1900, utc_tm.tm_mon + 1, utc_tm.tm_mday,
                                                                     utc_tm.tm_hour, utc_tm.tm_min, utc_tm.tm_sec);
+                return buff;
+            }
+
+            std::string ymd(char sep = '/') const {
+                std::time_t tt = std::chrono::system_clock::to_time_t(point);
+                std::tm utc_tm = *std::gmtime(&tt);
+                char buff[25];
+                if(sep != '\0') {
+                    std::sprintf(buff, "%04d%c%02d%c%02d", utc_tm.tm_year + 1900, sep, utc_tm.tm_mon + 1, sep, utc_tm.tm_mday);
+                } else {
+                    std::sprintf(buff, "%04d%02d%02d", utc_tm.tm_year + 1900, utc_tm.tm_mon + 1, utc_tm.tm_mday);
+                }
+                return buff;
+            }
+
+            std::string his(char sep = '/') const {
+                std::time_t tt = std::chrono::system_clock::to_time_t(point);
+                std::tm utc_tm = *std::gmtime(&tt);
+                char buff[25];
+                if(sep != '\0') {
+                    std::sprintf(buff, "%02d%c%02d%c%02d", utc_tm.tm_hour, sep, utc_tm.tm_min, sep, utc_tm.tm_sec);
+                } else {
+                    std::sprintf(buff, "%02d%02d%02d", utc_tm.tm_hour, utc_tm.tm_min, utc_tm.tm_sec);
+                }
                 return buff;
             }
             
@@ -93,6 +124,10 @@ namespace s90 {
             std::string from_native() const {
                 return ymdhis();
             }
+
+            void from_native(std::ostream& out) const {
+                out << ymdhis();
+            }
         };
 
         template<size_t N>
@@ -100,6 +135,19 @@ namespace s90 {
         public:
             using std::string::string;
             constexpr size_t get_max_size() { return N; }
+
+            varstr(const std::string& s) : std::string(s.length() > N ? s.substr(0, N) : s) {}
+            varstr(std::string&& s) : std::string(s.length() > N ? std::move(s.substr(0, N)) : std::move(s)) {}
+
+            varstr& operator=(const std::string& str) {
+                assign(str.length() > N ? str.substr(0, N) : str);
+                return *this;
+            }
+
+            varstr& operator=(std::string&& str) {
+                assign(str.length() > N ? std::move(str.substr(0, N)) : std::move(str));
+                return *this;
+            }
 
             auto length() const {
                 auto parent_length = std::string::length();
@@ -114,38 +162,40 @@ namespace s90 {
                 return length() > N ? std::string_view(begin(), begin() + N) : std::string_view(begin(), end());
             }
         };
+
+        using sql_text = varstr<32000>;
     }
 }
 
 template <size_t N>
-struct std::formatter<s90::util::varstr<N>> {
+struct std::formatter<s90::orm::varstr<N>> {
     constexpr auto parse(std::format_parse_context& ctx) {
         return ctx.begin();
     }
 
-    auto format(const s90::util::varstr<N>& obj, std::format_context& ctx) const {
+    auto format(const s90::orm::varstr<N>& obj, std::format_context& ctx) const {
         return std::format_to(ctx.out(), "{}", (std::string_view)obj);
     }
 };
 
 template <>
-struct std::formatter<s90::util::datetime> {
+struct std::formatter<s90::orm::datetime> {
     constexpr auto parse(std::format_parse_context& ctx) {
         return ctx.begin();
     }
 
-    auto format(const s90::util::datetime& obj, std::format_context& ctx) const {
+    auto format(const s90::orm::datetime& obj, std::format_context& ctx) const {
         return std::format_to(ctx.out(), "{}", obj.from_native());
     }
 };
 
 template <>
-struct std::formatter<s90::util::timestamp> {
+struct std::formatter<s90::orm::timestamp> {
     constexpr auto parse(std::format_parse_context& ctx) {
         return ctx.begin();
     }
 
-    auto format(const s90::util::datetime& obj, std::format_context& ctx) const {
+    auto format(const s90::orm::datetime& obj, std::format_context& ctx) const {
         return std::format_to(ctx.out(), "{}", obj.from_native());
     }
 };

@@ -105,6 +105,10 @@ namespace s90 {
         /// @param privkey Private key (or NULL)
         /// @return SSL context oe error
         virtual std::expected<void*, std::string> new_ssl_server_context(const char *pubkey = NULL, const char *privkey = NULL) = 0;
+
+        /// @brief Get node info
+        /// @return node info
+        virtual node_id get_node_id() const = 0;
     };
 
     class context : public icontext {
@@ -150,5 +154,7 @@ namespace s90 {
 
         std::expected<void*, std::string> new_ssl_client_context(const char *ca_file = NULL, const char *ca_path = NULL, const char *pubkey = NULL, const char *privkey = NULL) override;
         std::expected<void*, std::string> new_ssl_server_context(const char *pubkey = NULL, const char *privkey = NULL) override;
+
+        node_id get_node_id() const override;
     };
 }

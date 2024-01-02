@@ -27,7 +27,7 @@ if [ "$(uname -o)" = "Msys" ]; then
   SO_EXT="dll"
   EXE_EXT=".exe"
   LIBS=$(echo "$LIBS" | sed "s/-ldl//g")
-  LIBS="$LIBS -lws2_32 -lmswsock -lcrypt32"
+  LIBS="$LIBS -lws2_32 -lmswsock -lcrypt32 -liconv"
 fi
 
 if [ "$DEBUG" = "true" ]; then
@@ -105,25 +105,21 @@ xmake() {
   fi
 }
 
-if [ ! -f "bin/lib80s.a" ]; then
-  echo "Compiling lib80s"
-  xmake "$CC" "$FLAGS $DEFINES" "$LIBS" "-" "bin/lib80s.a" \
-      src/80s/80s.c src/80s/80s_common.c src/80s/80s_common.windows.c src/80s/dynstr.c src/80s/algo.c src/80s/crypto.c \
-      src/80s/serve.epoll.c src/80s/serve.kqueue.c src/80s/serve.iocp.c
-fi
+echo "Compiling lib80s"
+xmake "$CC" "$FLAGS -fPIC $DEFINES" "$LIBS" "-" "bin/lib80s.a" \
+    src/80s/80s.c src/80s/80s_common.c src/80s/80s_common.windows.c src/80s/dynstr.c src/80s/algo.c src/80s/crypto.c \
+    src/80s/serve.epoll.c src/80s/serve.kqueue.c src/80s/serve.iocp.c
 
-FLAGS="$FLAGS -std=c++23 -Isrc/ -fcoroutines"
+FLAGS="$FLAGS -std=c++23 -Isrc/ -fPIC -fcoroutines"
 
-if [ ! -f "bin/template$EXE_EXT" ]; then
-  echo "Compiling template compiler"
-  xmake "$CXX" "$FLAGS" "$LIBS" "bin/lib80s.a" "bin/template$EXE_EXT" src/90s/httpd/template_compiler.cpp
-fi
+echo "Compiling template compiler"
+xmake "$CXX" "$FLAGS" "$LIBS" "bin/lib80s.a" "bin/template$EXE_EXT" src/90s/httpd/template_compiler.cpp
 
 if [ "$arg" = "pages" ]; then
   # Detect all .htmls in webroot and compile them into separate .so/.dlls
   echo "Compiling webpages"
   WEB_ROOT="${WEB_ROOT:-src/90s/httpd/pages/}"
-  FLAGS="$FLAGS $DEFINES -fPIC -shared"
+  FLAGS="$FLAGS $DEFINES -shared"
 
   to_translate=$(find "$WEB_ROOT" -name *.html -type f | grep -v .priv.html)
   for file in $to_translate; do
@@ -135,7 +131,7 @@ if [ "$arg" = "pages" ]; then
   to_compile=$(find "$WEB_ROOT" -name "*.html.cpp" -type f)
   for file in $to_compile; do
     outname=$(echo "$file" | sed s/\\.cpp$/.$SO_EXT/g)
-    xmake "$CXX" "$FLAGS" "$LIBS" "-" "$outname" "$file"
+    xmake "$CXX" "$FLAGS" "$LIBS" "bin/lib80s.a" "$outname" "$file"
   done
 
   # Detect all .cpps that aren't generated from .htmls and compile main lib
@@ -151,5 +147,6 @@ else
     src/90s/90s.cpp src/90s/afd.cpp src/90s/context.cpp \
     src/90s/httpd/environment.cpp src/90s/httpd/render_context.cpp src/90s/httpd/server.cpp \
     src/90s/util/util.cpp \
-    src/90s/sql/mysql.cpp src/90s/sql/mysql_util.cpp
+    src/90s/sql/mysql.cpp src/90s/sql/mysql_util.cpp \
+    src/90s/mail/server.cpp src/90s/mail/indexed_mail_storage.cpp
 fi

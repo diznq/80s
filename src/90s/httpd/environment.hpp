@@ -141,7 +141,7 @@ namespace s90 {
             requires orm::with_orm_trait<T>
             T query() const {
                 T val;
-                val.get_orm().to_native(query());
+                to_native(val.get_orm(), query());
                 return val;
             }
             
@@ -149,7 +149,7 @@ namespace s90 {
             requires orm::with_orm_trait<T>
             T signed_query() const {
                 T val;
-                val.get_orm().to_native(signed_query());
+                to_native(val.get_orm(), signed_query());
                 return val;
             }
             
@@ -157,7 +157,7 @@ namespace s90 {
             requires orm::with_orm_trait<T>
             T form() const {
                 T val;
-                val.get_orm().to_native(form());
+                to_native(val.get_orm(), form());
                 return val;
             }
         };

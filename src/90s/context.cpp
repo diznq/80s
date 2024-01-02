@@ -1,5 +1,5 @@
-#include "context.hpp"
 #include <80s/crypto.h>
+#include "context.hpp"
 #include "sql/mysql.hpp"
 
 namespace s90 {
@@ -33,8 +33,8 @@ namespace s90 {
 
     void context::on_receive(read_params params) {
         auto it = fds.find(params.childfd);
-        if(it != fds.end()) {
-            if(auto fd = it->second.lock()) {
+        if(it != fds.end()) [[likely]] {
+            if(auto fd = it->second.lock()) [[likely]] {
                 fd->on_data(std::string_view(params.buf, params.readlen));
             } else {
                 fds.erase(it);
@@ -44,8 +44,8 @@ namespace s90 {
 
     void context::on_close(close_params params) {
         auto it = fds.find(params.childfd);
-        if(it != fds.end()) {
-            if(auto fd = it->second.lock()) {
+        if(it != fds.end()) [[likely]] {
+            if(auto fd = it->second.lock()) [[likely]] {
                 fds.erase(it);
                 fd->on_close();
             } else {
@@ -56,8 +56,8 @@ namespace s90 {
 
     void context::on_write(write_params params) {
         auto it = fds.find(params.childfd);
-        if(it != fds.end()) {
-            if(auto fd = it->second.lock()) {
+        if(it != fds.end()) [[likely]] {
+            if(auto fd = it->second.lock()) [[likely]] {
                 fd->on_write((size_t)params.written);
                 auto connect_it = connect_promises.find(params.childfd);
                 if(connect_it != connect_promises.end()) {
@@ -72,7 +72,7 @@ namespace s90 {
 
     void context::on_accept(accept_params params) {
         auto it = fds.find(params.childfd);
-        if(it != fds.end()) {
+        if(it != fds.end()) [[unlikely]] {
             if(auto fd = it->second.lock()) {
                 fd->on_accept();
                 if(handler) {
@@ -232,6 +232,11 @@ namespace s90 {
 
         ssl_contexts[key] = ctx;
         return ctx;
+    }
+
+
+    node_id context::get_node_id() const {
+        return *id;
     }
     
 }

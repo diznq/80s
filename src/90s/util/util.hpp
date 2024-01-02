@@ -3,6 +3,8 @@
 #include "../aiopromise.hpp"
 #include <string>
 #include <string_view>
+#include <sstream>
+#include <ostream>
 #include <expected>
 #include <charconv>
 
