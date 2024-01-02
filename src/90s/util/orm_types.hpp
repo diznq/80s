@@ -28,7 +28,7 @@ namespace s90 {
                 return point < v.point;
             }
 
-            void to_native(std::string_view value) {
+            bool to_native(std::string_view value) {
                 if(value.length() >= 19 && value[4] == '-') {
                     std::string_view Y = value.substr(0, 4);
                     std::string_view M = value.substr(5, 2);
@@ -51,10 +51,13 @@ namespace s90 {
                     time.tm_min = i;
                     time.tm_sec = s;
                     point = std::chrono::system_clock::time_point(std::chrono::seconds(std::mktime(&time)));
+                    return true;
                 } else {
                     size_t secs = 0;
-                    std::from_chars(value.begin(), value.end(), secs, 10);
+                    auto res = std::from_chars(value.begin(), value.end(), secs, 10);
+                    if(res.ec != std::errc() || res.ptr != value.end()) return false;
                     point = std::chrono::system_clock::time_point(std::chrono::seconds(secs));
+                    return true;
                 }
             }
 

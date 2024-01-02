@@ -16,7 +16,7 @@ namespace s90 {
 
         class any;
 
-        using orm_key_t = const char*;
+        using orm_key_t = std::string_view;
 
         /// @brief Optional class for ORM types
         /// @tparam T underlying type, must be a plain simple object
@@ -99,10 +99,13 @@ namespace s90 {
         template <class T>
         concept with_orm_trait = std::is_base_of<with_orm, T>::value;
 
+        template<class T>
+        concept without_orm_trait = !std::is_base_of<with_orm, T>::value;
+
         /// @brief Object utilities for `any` in case it holds either object or an array
         struct any_internals {
             std::function<std::vector<std::pair<orm_key_t, any>>(uintptr_t, bool)> get_orm = nullptr;
-            std::function<void(uintptr_t, const any&)> push_back = nullptr;
+            std::function<any(uintptr_t, const any&)> push_back = nullptr;
             std::function<size_t(const uintptr_t)> size = nullptr;
             std::function<any(const uintptr_t, size_t)> get_item = nullptr;
             uintptr_t orm_id = 0;
@@ -323,10 +326,10 @@ namespace s90 {
                         break;
                     // dates
                     case reftype::dt:
-                        ((util::datetime*)addr)->to_native(value);
+                        success = ((util::datetime*)addr)->to_native(value);
                         break;
                     case reftype::ts:
-                        ((util::timestamp*)addr)->to_native(value);
+                        success = ((util::timestamp*)addr)->to_native(value);
                         break;
                     default:
                         success = false;
@@ -519,8 +522,9 @@ namespace s90 {
             
             /// @brief Push an item to the underlying array
             /// @param v item to be pushed
-            void push_back(const any& v, uintptr_t offset = 0) const {
+            any push_back(const any& v, uintptr_t offset = 0) const {
                 if(auto fn = internals.push_back) return fn(ref + offset, v);
+                return {};
             }
 
             /// @brief Get size of the underlyig array
@@ -675,9 +679,15 @@ namespace s90 {
         template<class T>
         any::any(std::vector<T>& vec) : type(reftype::arr), ref((uintptr_t)&vec) {
             //internals = internals ? internals : std::make_shared<any_internals>();
-            internals.push_back = [](uintptr_t ref, const any& value) {
+            internals.push_back = [](uintptr_t ref, const any& value) -> any {
                 std::vector<T> *tr = (std::vector<T>*)ref;
-                tr->push_back(*(T*)value.get_ref());
+                if(value.get_type() == reftype::empty) {
+                    tr->push_back(T{});
+                    return any(tr->back());
+                } else {
+                    tr->push_back(*(T*)value.get_ref());
+                    return any(tr->back());
+                }
             };
             internals.get_item = [](const uintptr_t ref, size_t index) -> auto {
                 const std::vector<T> *tr = (const std::vector<T>*)ref;
