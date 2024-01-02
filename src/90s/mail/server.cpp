@@ -9,7 +9,7 @@ namespace s90 {
         server::server(icontext *ctx) : global_context(ctx) {
             auto cfg_orm = config.get_orm();
             for(auto& [k, v] : cfg_orm) {
-                const char *env = getenv(k);
+                const char *env = getenv(std::string(k).c_str());
                 if(env) v.to_native(env);
             }
             if(config.sv_tls_enabled) {
