@@ -13,9 +13,6 @@ namespace s90 {
         std::string url_decode(std::string_view text);
         std::string url_encode(std::string_view text);
 
-        std::string json_encode(std::string_view data);
-        void json_encode(std::ostream& out, std::string_view data);
-
         std::string sha1(std::string_view text);
         std::string sha256(std::string_view text);
         std::string hmac_sha256(std::string_view text, std::string_view key);

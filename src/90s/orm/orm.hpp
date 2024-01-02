@@ -546,7 +546,7 @@ namespace s90 {
         /// should also either implement get_orm_id or use WITH_ID; at beginning
         class with_orm {
         public:
-            WITH_ID;
+            static uintptr_t get_orm_id() { return (uintptr_t)0; }
             mapper get_orm();
         };
 

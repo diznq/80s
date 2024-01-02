@@ -13,23 +13,75 @@ namespace s90 {
             #include "../escape_mixin.hpp.inc"
             dict<uintptr_t, orm::mapper> mappers;
 
+            void json_encode(std::ostream &out, std::string_view data) const {
+                const char *value = data.data();
+                size_t value_len = data.length();
+
+                out << '"';
+
+                char x_fill[4];
+                
+                while (value_len--) {
+                    char c = *value;
+                    switch (c) {
+                    case '\r':
+                        out.write("\\r", 2);
+                        break;
+                    case '\n':
+                        out.write("\\n", 2);
+                        break;
+                    case '\t':
+                        out.write("\\t", 2);
+                        break;
+                    case '"':
+                        out.write("\\\"", 2);
+                        break;
+                    case '\\':
+                        out.write("\\\\", 2);
+                        break;
+                    case '\0':
+                        out.write("\\0", 2);
+                        break;
+                    default:
+                        if(c < 32 && c > 0) {
+                            x_fill[2] = "0123456789ABCDEF"[(c >> 4) & 15];
+                            x_fill[3] = "0123456789ABCDEF"[(c) & 15];
+                            out.write(x_fill, 4);
+                        } else {
+                            out << c;
+                        }
+                        break;
+                    }
+                    value++;
+                }
+                out << '"';
+            }
+
             std::string escape_string(std::string_view sv) const {
-                return json_encode(sv);
+                std::stringstream ss;
+                json_encode(ss, sv);
+                return ss.str();
             }
 
             void escape(std::ostream& out, const orm::any& a, uintptr_t offset = 0) {
                 dict<uintptr_t, orm::mapper>::iterator it;
+                uintptr_t orm_id;
                 if(a.is_present()) {
                     switch(a.get_type()) {
                         case orm::reftype::arr:
                             escape_array(out, a, offset);
                             break;
                         case orm::reftype::obj:
-                            it = mappers.find(a.get_orm_id());
-                            if(it == mappers.end()) {
-                                it = mappers.emplace(std::make_pair(a.get_orm_id(), a.get_orm(true))).first;
+                            orm_id = a.get_orm_id();
+                            if(orm_id) {
+                                it = mappers.find(a.get_orm_id());
+                                if(it == mappers.end()) {
+                                    it = mappers.emplace(std::make_pair(a.get_orm_id(), a.get_orm(true))).first;
+                                }
+                                escape_object(out, it->second, a.get_ref());
+                            } else {
+                                out << "{\"error\":\"invalid class, object must contain WITH_ID!\"}";
                             }
-                            escape_object(out, it->second, a.get_ref());
                             break;
                         case orm::reftype::str:
                         case orm::reftype::cstr:
