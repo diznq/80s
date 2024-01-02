@@ -256,9 +256,10 @@ namespace s90 {
                 return in;
             }
 
-            std::string decode(std::istream& in, const orm::any& a, uintptr_t offset) {
+            std::string decode(std::istream& in, const orm::any& a, uintptr_t offset, size_t depth = 0, size_t max_depth = 32) {
                 std::string helper, key, err;
                 char c;
+                if(depth >= max_depth) [[unlikely]] return "reached max nested depth of " + std::to_string(depth);
                 switch(a.get_type()) {
                     case orm::reftype::arr:
                         {
@@ -273,7 +274,7 @@ namespace s90 {
                                     } else [[likely]] {
                                         in.seekg(-1, std::ios_base::cur);
                                         orm::any el = a.push_back({}, offset);
-                                        auto res = decode(in, el, el.get_ref());
+                                        auto res = decode(in, el, el.get_ref(), depth + 1, max_depth);
                                         if(res.length() > 0) return res;
                                         read_next_c(in, c);
                                         if(!in) return "unexpected EOF on reading next array item";
@@ -287,7 +288,7 @@ namespace s90 {
                             }
                         }
                         break;
-                    case orm::reftype::obj:
+                    case orm::reftype::obj: [[likely]]
                         {
                             // decode object by searching for {, then for string : item
                             // and then searching either for , or } where if we find , we continue
@@ -306,7 +307,7 @@ namespace s90 {
                                     }
                                     auto ref = it->second.find(std::string_view(key));
                                     if(ref != it->second.end()) [[likely]] {
-                                        auto res = decode(in, ref->second, a.get_ref());
+                                        auto res = decode(in, ref->second, a.get_ref(), depth + 1, max_depth);
                                         if(res.length() > 0) return res;
                                     }
                                     read_next_c(in, c);
@@ -327,6 +328,7 @@ namespace s90 {
                     case orm::reftype::vstr:
                     case orm::reftype::dt:
                     case orm::reftype::cstr:
+                        [[likely]]
                         helper = "";
                         // read either string or date and decode the JSON encoded string into native string
                         if(read_str(in, helper, err)) [[likely]] {
@@ -369,7 +371,7 @@ namespace s90 {
                 ss << text;
                 T obj;
                 orm::any a(obj);
-                auto err = decode(ss, a, a.get_ref());
+                auto err = decode(ss, a, a.get_ref(), 0, 32);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
@@ -389,7 +391,7 @@ namespace s90 {
                 ss << text;
                 T obj;
                 orm::any a(obj);
-                auto err = decode(ss, a, 0);
+                auto err = decode(ss, a, 0, 0, 32);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
