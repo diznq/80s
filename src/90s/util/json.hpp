@@ -15,6 +15,9 @@ namespace s90 {
             #include "../escape_mixin.hpp.inc"
             dict<uintptr_t, orm::mapper> mappers;
 
+            /// @brief Encode string into JSON escaped string, i.e. AB"C => AB\"C
+            /// @param out output stream
+            /// @param data string to be encoded
             void json_encode(std::ostream &out, std::string_view data) const {
                 const char *value = data.data();
                 size_t value_len = data.length();
@@ -62,27 +65,42 @@ namespace s90 {
                 out.put('"');
             }
 
+            /// @brief Escape any string using JSON encode (required for mixin, otherwise not used)
+            /// @param sv string
+            /// @return escaped string
             std::string escape_string(std::string_view sv) const {
                 std::stringstream ss;
                 json_encode(ss, sv);
                 return ss.str();
             }
 
+            /// @brief Encode `any` as JSON given `any` is located at given offset
+            /// @param out output stream
+            /// @param a any value
+            /// @param offset offset of any
             void escape(std::ostream& out, const orm::any& a, uintptr_t offset = 0) {
                 dict<uintptr_t, orm::mapper>::iterator it;
                 uintptr_t orm_id;
+                // only encode non-optionals or present optionals
                 if(a.is_present()) [[likely]] {
                     switch(a.get_type()) {
                         case orm::reftype::arr:
                             escape_array(out, a, offset);
                             break;
                         case orm::reftype::obj: [[likely]]
+                            // for objects we must retrieve the proper ORM object,
+                            // to speed things up we can leverage the fact that each ORM object
+                            // also has ORM ID, therefore we can build a dictionary of <ORM ID, ORM>
+                            // where ORM is always positioned at NULL offset
                             orm_id = a.get_orm_id();
                             if(orm_id) [[likely]] { 
                                 it = mappers.find(a.get_orm_id());
                                 if(it == mappers.end()) [[unlikely]] {
+                                    // retrieve the  NULL offset ORM
                                     it = mappers.emplace(std::make_pair(a.get_orm_id(), a.get_orm(true))).first;
                                 }
+                                // actually encode the object, we must also pass a.get_ref() as offset
+                                // since ORM offsets are NULL based
                                 escape_object(out, it->second, a.get_ref());
                             } else  [[unlikely]] {
                                 out << "{\"error\":\"invalid class, object must contain WITH_ID!\"}";
@@ -92,9 +110,11 @@ namespace s90 {
                         case orm::reftype::cstr:
                         case orm::reftype::vstr:
                         case orm::reftype::dt:
+                            // encode types that yield a string
                             json_encode(out, a.from_native(true, offset));
                             break;
                         default:
+                            // encode rest of types that don't yield a string
                             a.from_native(out,true, offset);
                             break;
                     }
@@ -125,6 +145,9 @@ namespace s90 {
                 out << '}';
             }
         public:
+            /// @brief Encode `any` to JSON string
+            /// @param obj object or vector of objects to be encoded
+            /// @return JSON string
             std::string encode(const orm::any& obj) {
                 std::stringstream ss;
                 escape(ss, obj, 0);
@@ -135,10 +158,19 @@ namespace s90 {
         class json_decoder {
             dict<uintptr_t, dict<orm::orm_key_t, orm::any>> mappers;
 
+            /// @brief Read next non white character
+            /// @param in input stream
+            /// @param c output character
+            /// @return stream
             std::istream& read_next_c(std::istream& in, char& c) const {
                 return in >> std::ws >> c >> std::noskipws;
             }
 
+            /// @brief Read JSON encoded string
+            /// @param in input stream
+            /// @param out output string
+            /// @param err output error
+            /// @return stream
             std::istream& read_str(std::istream& in, std::string& out, std::string& err) const {
                 out.clear();
                 err.clear();
@@ -157,10 +189,10 @@ namespace s90 {
                 while(in >> c) {
                     if(is_backslash) {
                         switch(c) {
-                            case 'n':
-                                out += '\n';
-                                break;
                             case 'r':
+                                out += '\r';
+                                break;
+                            case 'n':
                                 out += '\n';
                                 break;
                             case 't':
@@ -169,14 +201,20 @@ namespace s90 {
                             case 'b':
                                 out += '\b';
                                 break;
-                            case 'v':
-                                out += '\v';
+                            case 'f':
+                                out += '\f';
                                 break;
-                            case 'a':
-                                out += '\a';
+                            case '"':
+                                out += '"';
                                 break;
                             case '0':
                                 out += '\0';
+                                break;
+                            case '\\':
+                                out += '\\';
+                                break;
+                            case '/':
+                                out += '/';
                                 break;
                             case 'x':
                                 {
@@ -188,7 +226,7 @@ namespace s90 {
                                     else if(a >= 'A' && a <= 'f') a = a - 'a' + 10;
                                     else if(a >= 'A' && a <= 'F') a = a - 'A' + 10;
                                     if(b >= '0' && b <= '9') b = b - '0';
-                                    else if(b >= 'A' && b <= 'f') b = b - 'a' + 10;
+                                    else if(b >= 'a' && b <= 'f') b = b - 'a' + 10;
                                     else if(b >= 'A' && b <= 'F') b = b - 'A' + 10;
                                     if(a >= 0 && a <= 15 && b >= 0 && b <= 15) {
                                         out += (char)((a << 4) | (b));
@@ -198,6 +236,10 @@ namespace s90 {
                                         return in;
                                     }
                                 }
+                                break;
+                            default:
+                                out += '\\';
+                                out += c;
                                 break;
                         }
                         is_backslash = false;
@@ -220,6 +262,8 @@ namespace s90 {
                 switch(a.get_type()) {
                     case orm::reftype::arr:
                         {
+                            // decode array by searching for [, then parsing items
+                            // and searching either for , or ] where if we find , we continue
                             if(read_next_c(in, c) && c == '[') {
                                 while(true) {
                                     if(read_next_c(in, c) && c == ']') {
@@ -245,6 +289,8 @@ namespace s90 {
                         break;
                     case orm::reftype::obj:
                         {
+                            // decode object by searching for {, then for string : item
+                            // and then searching either for , or } where if we find , we continue
                             if(read_next_c(in, c) && c == '{') {
                                 while(read_str(in, key, err)) {
                                     if(read_next_c(in, c) && c != ':') [[unlikely]] return "expected : after key";
@@ -282,6 +328,7 @@ namespace s90 {
                     case orm::reftype::dt:
                     case orm::reftype::cstr:
                         helper = "";
+                        // read either string or date and decode the JSON encoded string into native string
                         if(read_str(in, helper, err)) [[likely]] {
                             if(!a.to_native(helper, offset)) [[unlikely]] {
                                 return "failed to parse value \"" + helper + "\" as a " + (a.get_type() == orm::reftype::dt ? "datetime" : "string");
@@ -292,6 +339,7 @@ namespace s90 {
                         break;
                     default:
                         helper = "";
+                        // read rest of the types - numeric + booleans
                         while(read_next_c(in, c)) {
                             if(c == ']' || c == '}' || c == ',') [[unlikely]] {
                                 break;
@@ -310,6 +358,10 @@ namespace s90 {
             }
 
         public:
+            /// @brief Decode JSON string to an object
+            /// @tparam T object type
+            /// @param text JSON string
+            /// @return decoded object
             template<typename T>
             requires orm::with_orm_trait<T>
             std::expected<T, std::string> decode(std::string text) {
@@ -324,6 +376,10 @@ namespace s90 {
                 return obj;
             }
 
+            /// @brief Decode JSON array string to vector<T>
+            /// @tparam T vector<T>
+            /// @param text JSON string
+            /// @return decoded array
             template<
                 typename T, 
                 typename = std::enable_if<std::is_same<T, std::vector<typename T::value_type>>::value>::type
