@@ -28,7 +28,10 @@ namespace s90 {
                 while (value_len--) {
                     char c = *value;
 
-                    if(c >= 32 || c <= 127) [[likely]] {
+                    if(c == '\\' || c == '"') {
+                        out.put('\\'); out.put(c);
+                        value++;
+                    } else if(c >= 32 || c < 0) [[likely]] {
                         out.put(c);
                         value++;
                     } else {
@@ -259,12 +262,39 @@ namespace s90 {
                 std::string helper, key, err;
                 char c;
                 if(depth >= max_depth) [[unlikely]] return "reached max nested depth of " + std::to_string(depth);
+                if(a.is_optional()) [[unlikely]] {
+                    // test for `null` occurence in case of optionals
+                    read_next_c(in, c);
+                    if(!in) [[unlikely]] {
+                        return "unexpected EOF when testing for optional";
+                    } else if(c == 'n') {
+                        helper = "n";
+                        // read rest of the types - numeric + booleans
+                        while(read_next_c(in, c)) {
+                            if(c == ']' || c == '}' || c == ',') [[unlikely]] {
+                                break;
+                            }
+                            helper += c;
+                        }
+                        if(!in) {
+                            return "unexpected EOF while reading null optional";
+                        } else if(helper.starts_with("null")) [[likely]] {
+                            in.seekg(-1, std::ios_base::cur);
+                            return "";
+                        } else {
+                            return "invalid value when reading optional: " + helper;
+                        }
+                    } else [[likely]] {
+                        in.seekg(-1, std::ios_base::cur);
+                    }
+                }
                 switch(a.get_type()) {
                     case orm::reftype::arr:
                         {
                             // decode array by searching for [, then parsing items
                             // and searching either for , or ] where if we find , we continue
                             if(read_next_c(in, c) && c == '[') {
+                                a.set_present(true, offset);
                                 while(true) {
                                     if(read_next_c(in, c) && c == ']') {
                                         return "";
@@ -292,6 +322,7 @@ namespace s90 {
                             // decode object by searching for {, then for string : item
                             // and then searching either for , or } where if we find , we continue
                             if(read_next_c(in, c) && c == '{') {
+                                a.set_present(true, offset);
                                 while(read_str(in, key, err)) {
                                     if(read_next_c(in, c) && c != ':') [[unlikely]] return "expected : after key";
                                     if(!in) [[unlikely]]  return "unexpected EOF on object key";

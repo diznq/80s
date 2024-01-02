@@ -200,11 +200,24 @@ namespace s90 {
             /// @return value reference
             inline uintptr_t get_ref() const { return ref; }
 
+            /// @brief Set present flag if optional
+            inline void set_present(bool value = true, uintptr_t offset = 0) const {
+                if(success_wb) {
+                    *(bool*)(offset + success_wb) = value;
+                }
+            }
+
             /// @brief Determine if `any` holds a value
             /// @return true if `any` is not an optional or if it is an optional and holds a value
             inline bool is_present() const {
                 if(!success_wb) return true;
                 return *(bool*)success_wb;
+            }
+
+            /// @brief Determine if `any` holds an optional
+            /// @return true if optional
+            inline bool is_optional() const {
+                return success_wb != 0;
             }
 
             /// @brief Determine if `any` holds a string
@@ -335,9 +348,7 @@ namespace s90 {
                         success = false;
                         break;
                 }
-                if(success_wb) {
-                    *(bool*)success_wb = success;
-                }
+                set_present(success, offset);
                 return success;
             }
 
