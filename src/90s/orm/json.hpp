@@ -2,10 +2,10 @@
 #include <string>
 #include <string_view>
 #include <sstream>
-#include <iomanip>
 #include <format>
 #include <type_traits>
 #include <expected>
+#include <codecvt>
 #include "orm.hpp"
 
 namespace s90 {
@@ -22,7 +22,7 @@ namespace s90 {
 
                 out.put('"');
 
-                char x_fill[4];
+                char x_fill[6] = { '\\', 'u', '0', '0', '0', '0' };
                 
                 while (value_len--) {
                     char c = *value;
@@ -54,9 +54,9 @@ namespace s90 {
                             out.write("\\0", 2);
                             break;
                         default: [[likely]]
-                            x_fill[2] = "0123456789ABCDEF"[(c >> 4) & 15];
-                            x_fill[3] = "0123456789ABCDEF"[(c) & 15];
-                            out.write(x_fill, 4);
+                            x_fill[4] = "0123456789ABCDEF"[(c >> 4) & 15];
+                            x_fill[5] = "0123456789ABCDEF"[(c) & 15];
+                            out.write(x_fill, 6);
                             break;
                         }
                         value++;
@@ -185,18 +185,44 @@ namespace s90 {
                 return in;
             }
 
+            bool read_hex_doublet(char a, char b, char& out) const {
+                if(a < '0' || b < '0' || a > 'f' || b > 'f') [[unlikely]] return false;
+                static char lut[] = {
+                       0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -1, -1, -1, -1, -1, -1, -1, 
+                    // A   B   C   D   E   F   G   H   I   J   K   L   M   N   O   P   Q   R   S   T   U   V   W   X   Y   Z
+                      10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                    // [   \   ]   ^   _   `   a   b   c   d   e   f
+                      -1, -1, -1, -1, -1, -1, 10, 11, 12, 13, 14, 15
+                };
+                a = lut[a - '0'];
+                b = lut[b - '0'];
+                if(a >= 0 && a <= 15 && b >= 0 && b <= 15) [[likely]] {
+                    out = (char)((a << 4) | (b));
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+
             /// @brief Read JSON encoded string
             /// @param in input stream
             /// @param out output string
             /// @param err output error
             /// @return stream
             std::istream& read_str(std::istream& in, std::string& out, std::string& err) const {
+                static std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> convert;
                 out.clear();
                 err.clear();
-                char c = 0, a = -1, b = -1;
+                
+                char a = -1, b = -1, c = 0, d = -1, e = -1, f = -1;
+
+                char16_t u16_value = 0;
+                std::u16string u16_buffer;
+
                 read_next_c(in, c);
                 if(!in) [[unlikely]] {
                     err = "unexpected EOF";
+                    in.setstate(std::ios::failbit);
                     return in;
                 }
                 if(c != '"') [[unlikely]] {
@@ -207,6 +233,44 @@ namespace s90 {
                 bool is_backslash = false;
                 while(in >> c) {
                     if(is_backslash) {
+                        // treat \u specially as it's easier this way than fixing entire switch statement
+                        // for end of \u case
+                        if(c == 'u') [[unlikely]] {
+                            if(!(in >> a >> b >> c >> d)) [[unlikely]] {
+                                err = "failed to read U16 value";
+                                in.setstate(std::ios::failbit);
+                                return in;
+                            }
+                            // in case of UTF-16 we gotta convert it to UTF-8,
+                            // so let's use C c16rtomb as codecvt will be deprecated anyway
+                            if(read_hex_doublet(a, b, e) && read_hex_doublet(c, d, f)) [[likely]] {
+                                u16_value = (char16_t)
+                                    (
+                                        ((((unsigned int)e) & 255) << 8) |
+                                        ((((unsigned int)f) & 255))
+                                    );
+                                u16_buffer += u16_value;
+                            } else {
+                                err = "failed to parse U16 value";
+                                in.setstate(std::ios::failbit);
+                                return in;
+                            }
+                            is_backslash = false;
+                            continue;
+                        } else [[likely]] {
+                            // flush the utf16 buffer if no other \u follows
+                            if(u16_buffer.length() > 0) {
+                                try {
+                                    auto bytes = convert.to_bytes(u16_buffer);
+                                    out += bytes;
+                                } catch(std::range_error& ex) {
+                                    err = "failed to parse U16 value";
+                                    in.setstate(std::ios::failbit);
+                                    return in;
+                                }
+                                u16_buffer.clear();
+                            }
+                        }
                         switch(c) {
                             case 'r':
                                 out += '\r';
@@ -235,27 +299,6 @@ namespace s90 {
                             case '/':
                                 out += '/';
                                 break;
-                            case 'x':
-                                {
-                                    if(!(in >> a >> b)) {
-                                        err = "failed to read two bytes after \\x";
-                                        return in;
-                                    }
-                                    if(a >= '0' && a <= '9') a = a - '0';
-                                    else if(a >= 'A' && a <= 'f') a = a - 'a' + 10;
-                                    else if(a >= 'A' && a <= 'F') a = a - 'A' + 10;
-                                    if(b >= '0' && b <= '9') b = b - '0';
-                                    else if(b >= 'a' && b <= 'f') b = b - 'a' + 10;
-                                    else if(b >= 'A' && b <= 'F') b = b - 'A' + 10;
-                                    if(a >= 0 && a <= 15 && b >= 0 && b <= 15) {
-                                        out += (char)((a << 4) | (b));
-                                    } else {
-                                        err = "provided \\x value is not valid";
-                                        in.setstate(std::ios::failbit);
-                                        return in;
-                                    }
-                                }
-                                break;
                             default:
                                 out += '\\';
                                 out += c;
@@ -263,15 +306,30 @@ namespace s90 {
                         }
                         is_backslash = false;
                     } else if(c == '\\') {
+                        // we handle this in the next cycle
                         is_backslash = true;
-                    } else if(c == '"') {
-                        return in;
-                    } else [[likely]] {
-                        out += c;
+                    } else {
+                        // handle UTF16 buffer here as well for either final flush or early flush
+                        if(u16_buffer.length() > 0) {
+                            try {
+                                auto bytes = convert.to_bytes(u16_buffer);
+                                out += bytes;
+                            } catch(std::range_error& ex) {
+                                err = "failed to parse U16 value";
+                                in.setstate(std::ios::failbit);
+                                return in;
+                            }
+                            u16_buffer.clear();
+                        }
+                        if(c == '"') {
+                            return in;
+                        } else [[likely]] {
+                            out += c;
+                        }
                     }
                 }
-                in.setstate(std::ios::failbit);
                 err = "unexpected parse error";
+                in.setstate(std::ios::failbit);
                 return in;
             }
 
