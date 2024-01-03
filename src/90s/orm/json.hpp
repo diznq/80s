@@ -11,6 +11,7 @@
 namespace s90 {
     namespace orm {
         class json_encoder {
+
             dict<uintptr_t, orm::mapper> mappers;
 
             /// @brief Encode string into JSON escaped string, i.e. AB"C => AB\"C
@@ -159,6 +160,14 @@ namespace s90 {
         class json_decoder {
             dict<uintptr_t, dict<orm::orm_key_t, orm::any>> mappers;
 
+            static constexpr char lut[] = {
+                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -1, -1, -1, -1, -1, -1, -1, 
+                // A   B   C   D   E   F   G   H   I   J   K   L   M   N   O   P   Q   R   S   T   U   V   W   X   Y   Z
+                    10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                // [   \   ]   ^   _   `   a   b   c   d   e   f
+                    -1, -1, -1, -1, -1, -1, 10, 11, 12, 13, 14, 15
+            };
+
             /// @brief Read next non white character
             /// @param in input stream
             /// @param c output character
@@ -196,13 +205,6 @@ namespace s90 {
 
             bool read_hex_doublet(char a, char b, char& out) const {
                 if(a < '0' || b < '0' || a > 'f' || b > 'f') [[unlikely]] return false;
-                static char lut[] = {
-                       0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -1, -1, -1, -1, -1, -1, -1, 
-                    // A   B   C   D   E   F   G   H   I   J   K   L   M   N   O   P   Q   R   S   T   U   V   W   X   Y   Z
-                      10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-                    // [   \   ]   ^   _   `   a   b   c   d   e   f
-                      -1, -1, -1, -1, -1, -1, 10, 11, 12, 13, 14, 15
-                };
                 a = lut[a - '0'];
                 b = lut[b - '0'];
                 if(a >= 0 && a <= 15 && b >= 0 && b <= 15) [[likely]] {
@@ -486,7 +488,7 @@ namespace s90 {
             /// @return decoded object
             template<typename T>
             requires orm::with_orm_trait<T>
-            std::expected<T, std::string> decode(std::string text, size_t max_depth = 32) {
+            std::expected<T, std::string> decode(const std::string& text, size_t max_depth = 32) {
                 std::stringstream ss;
                 ss << text;
                 T obj;
@@ -507,7 +509,7 @@ namespace s90 {
                 typename T, 
                 typename = std::enable_if<std::is_same<T, std::vector<typename T::value_type>>::value>::type
             >
-            std::expected<T, std::string> decode(std::string text, size_t max_depth = 32) {
+            std::expected<T, std::string> decode(const std::string& text, size_t max_depth = 32) {
                 std::stringstream ss;
                 ss << text;
                 T obj;
@@ -520,6 +522,49 @@ namespace s90 {
                 return obj;
             }
 
+            /* Move based */
+
+            /// @brief Decode JSON string to an object
+            /// @tparam T object type
+            /// @param text JSON string
+            /// @return decoded object
+            template<typename T>
+            requires orm::with_orm_trait<T>
+            std::expected<T, std::string> decode(std::string&& text, size_t max_depth = 32) {
+                std::stringstream ss;
+                ss << std::move(text);
+                T obj;
+                orm::any a(obj);
+                std::optional<char> carried;
+                auto err = decode(ss, a, a.get_ref(), carried, 0, max_depth);
+                if(err.length() > 0) [[unlikely]] {
+                    return std::unexpected(err);
+                }
+                return obj;
+            }
+
+            /// @brief Decode JSON array string to vector<T>
+            /// @tparam T vector<T>
+            /// @param text JSON string
+            /// @return decoded array
+            template<
+                typename T, 
+                typename = std::enable_if<std::is_same<T, std::vector<typename T::value_type>>::value>::type
+            >
+            std::expected<T, std::string> decode(std::string&& text, size_t max_depth = 32) {
+                std::stringstream ss;
+                ss << std::move(text);
+                T obj;
+                orm::any a(obj);
+                std::optional<char> carried;
+                auto err = decode(ss, a, 0, carried, 0, max_depth);
+                if(err.length() > 0) [[unlikely]] {
+                    return std::unexpected(err);
+                }
+                return obj;
+            }
+
+            /* Stream based */
 
             /// @brief Decode JSON string to an object
             /// @tparam T object type
