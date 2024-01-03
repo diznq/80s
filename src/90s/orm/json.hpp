@@ -11,7 +11,6 @@
 namespace s90 {
     namespace orm {
         class json_encoder {
-            #include "../escape_mixin.hpp.inc"
             dict<uintptr_t, orm::mapper> mappers;
 
             /// @brief Encode string into JSON escaped string, i.e. AB"C => AB\"C
@@ -65,15 +64,6 @@ namespace s90 {
                 }
 
                 out.put('"');
-            }
-
-            /// @brief Escape any string using JSON encode (required for mixin, otherwise not used)
-            /// @param sv string
-            /// @return escaped string
-            std::string escape_string(std::string_view sv) const {
-                std::stringstream ss;
-                json_encode(ss, sv);
-                return ss.str();
             }
 
             /// @brief Encode `any` as JSON given `any` is located at given offset
