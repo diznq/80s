@@ -19,13 +19,13 @@ namespace s90 {
         std::string_view trim(std::string_view str) {
             size_t off = 0;
             for(char c : str) {
-                if(isblank(c)) off++;
+                if(!isgraph(c)) off++;
                 else break;
             }
             str = str.substr(off);
             off = 0;
             for(size_t i = str.length() - 1; i >= 0; i--) {
-                if(isblank(str[i])) off++;
+                if(!isgraph(str[i])) off++;
                 else break;
             }
             str = str.substr(0, str.length() - off);
