@@ -1,450 +1,721 @@
 #pragma once
+#include <functional>
 #include <string>
-#include <string_view>
-#include <sstream>
-#include <iomanip>
+#include <vector>
+#include <set>
+#include <initializer_list>
+#include <concepts>
 #include <format>
+#include <cstdint>
 #include <type_traits>
-#include <expected>
-#include "orm.hpp"
+#ifdef S90_SHARED_ORM
+#include "../shared.hpp"
+#else
+#include <unordered_map>
+namespace s90 {
+    template<class A, class B>
+    using dict = std::unordered_map<A, B>;
+}
+#endif
+#include "types.hpp"
 
 namespace s90 {
     namespace orm {
-        class json_encoder {
-            #include "../escape_mixin.hpp.inc"
-            dict<uintptr_t, orm::mapper> mappers;
 
-            /// @brief Encode string into JSON escaped string, i.e. AB"C => AB\"C
-            /// @param out output stream
-            /// @param data string to be encoded
-            void json_encode(std::ostream &out, std::string_view data) const {
-                const char *value = data.data();
-                size_t value_len = data.length();
+        class any;
 
-                out.put('"');
+        using orm_key_t = std::string_view;
 
-                char x_fill[4];
-                
-                while (value_len--) {
-                    char c = *value;
-
-                    if(c == '\\' || c == '"') {
-                        out.put('\\'); out.put(c);
-                        value++;
-                    } else if(c >= 32 || c < 0) [[likely]] {
-                        out.put(c);
-                        value++;
-                    } else {
-                        switch (c) {
-                        case '\r':
-                            out.write("\\r", 2);
-                            break;
-                        case '\n': [[likely]]
-                            out.write("\\n", 2);
-                            break;
-                        case '\t':
-                            out.write("\\t", 2);
-                            break;
-                        case '"': [[likely]]
-                            out.write("\\\"", 2);
-                            break;
-                        case '\\':
-                            out.write("\\\\", 2);
-                            break;
-                        case '\0': [[unlikely]]
-                            out.write("\\0", 2);
-                            break;
-                        default: [[likely]]
-                            x_fill[2] = "0123456789ABCDEF"[(c >> 4) & 15];
-                            x_fill[3] = "0123456789ABCDEF"[(c) & 15];
-                            out.write(x_fill, 4);
-                            break;
-                        }
-                        value++;
-                    }
-                }
-
-                out.put('"');
-            }
-
-            /// @brief Escape any string using JSON encode (required for mixin, otherwise not used)
-            /// @param sv string
-            /// @return escaped string
-            std::string escape_string(std::string_view sv) const {
-                std::stringstream ss;
-                json_encode(ss, sv);
-                return ss.str();
-            }
-
-            /// @brief Encode `any` as JSON given `any` is located at given offset
-            /// @param out output stream
-            /// @param a any value
-            /// @param offset offset of any
-            void escape(std::ostream& out, const orm::any& a, uintptr_t offset = 0) {
-                dict<uintptr_t, orm::mapper>::iterator it;
-                uintptr_t orm_id;
-                // only encode non-optionals or present optionals
-                if(a.is_present(offset)) [[likely]] {
-                    switch(a.get_type()) {
-                        case orm::reftype::arr:
-                            escape_array(out, a, offset);
-                            break;
-                        case orm::reftype::obj: [[likely]]
-                            // for objects we must retrieve the proper ORM object,
-                            // to speed things up we can leverage the fact that each ORM object
-                            // also has ORM ID, therefore we can build a dictionary of <ORM ID, ORM>
-                            // where ORM is always positioned at NULL offset
-                            orm_id = a.get_orm_id();
-                            if(orm_id) [[likely]] { 
-                                it = mappers.find(a.get_orm_id());
-                                if(it == mappers.end()) [[unlikely]] {
-                                    // retrieve the  NULL offset ORM
-                                    it = mappers.emplace(std::make_pair(a.get_orm_id(), a.get_orm(true))).first;
-                                }
-                                // actually encode the object, we must also pass a.get_ref() as offset
-                                // since ORM offsets are NULL based
-                                escape_object(out, it->second, a.get_ref());
-                            } else  [[unlikely]] {
-                                out << "{\"error\":\"invalid class, object must contain WITH_ID!\"}";
-                            }
-                            break;
-                        case orm::reftype::str:
-                        case orm::reftype::cstr:
-                        case orm::reftype::vstr:
-                        case orm::reftype::dt:
-                            // encode types that yield a string
-                            json_encode(out, a.from_native(true, offset));
-                            break;
-                        default:
-                            // encode rest of types that don't yield a string
-                            a.from_native(out,true, offset);
-                            break;
-                    }
-                } else {
-                    out.write("null", 4);
-                }
-            }
-
-            void escape_array(std::ostream& out,  const orm::any& a, uintptr_t offset = 0) {
-                out << '[';
-                const size_t j = a.size(offset);
-                for(size_t i = 0; i < j; i++) {
-                    auto item = a.at(i, offset);
-                    escape(out, item, (uintptr_t)&item);
-                    if(i != j - 1) [[unlikely]] out << ',';
-                }
-                out << ']';
-            }
-
-            void escape_object(std::ostream& out, const std::vector<std::pair<orm::orm_key_t, orm::any>>& pairs, uintptr_t offset = 0) {
-                out << '{';
-                const size_t j = pairs.size();
-                for(size_t i = 0; i < j; i++) {
-                    out << '"' << pairs[i].first << "\":";
-                    escape(out, pairs[i].second, offset);
-                    if(i != j - 1) [[unlikely]] out << ',';
-                }
-                out << '}';
-            }
+        /// @brief Optional class for ORM types
+        /// @tparam T underlying type, must be a plain simple object
+        template<class T>
+        class optional {
+            bool is_set = false;
+            T value_;
         public:
-            /// @brief Encode `any` to JSON string
-            /// @param obj object or vector of objects to be encoded
-            /// @return JSON string
-            std::string encode(const orm::any& obj) {
-                std::stringstream ss;
-                escape(ss, obj, 0);
-                return ss.str();
+            friend class any;
+            optional() : is_set(false) {}
+
+            optional(const T& value) : value_(value), is_set(true) {}
+            optional(T&& value) : value_(std::move(value)), is_set(true) {}
+            optional(const optional& v) : value_(v.value_), is_set(v.is_set) {}
+            optional(optional&& v) : value_(std::move(v.value_)), is_set(std::move(v.is_set)) {}
+
+            optional& operator=(const T& v) {
+                value_ = v;
+                is_set = true;
+                return *this;
             }
 
-            /// @brief Encode `any` to JSON string
-            /// @param stream output stream
-            /// @param obj object or vector of objects to be encoded
-            /// @return JSON string
-            std::ostream& encode(std::ostream& stream, const orm::any& obj) {
-                escape(stream, obj, 0);
-                return stream;
+            optional& operator=(T&& v) {
+                value_ = std::move(v);
+                is_set = true;
+                return *this;
             }
+
+            optional& operator=(const optional& v) {
+                value_ = v.value_;
+                is_set = v.is_set;
+                return *this;
+            }
+
+            optional& operator=(optional&& v) {
+                value_ = std::move(v.value_);
+                is_set = std::move(v.is_set);
+                return *this;
+            }
+
+            const T& operator*() const {
+                return value_;
+            }
+
+            T* operator->() {
+                return &value_;
+            }
+
+            explicit operator bool() const {
+                return is_set;
+            }
+
+            bool has_value() const {
+                return is_set;
+            }
+
+            const T& or_else(const T& value) const {
+                if(is_set) return value_;
+                return value;
+            }
+
+            const T& value() const {
+                if(!is_set)
+                    throw std::runtime_error("optional doesn't have a value");
+                return value_;
+            }
+
         };
 
-        class json_decoder {
-            dict<uintptr_t, dict<orm::orm_key_t, orm::any>> mappers;
+        /// @brief Type of the object held by `any`
+        enum class reftype {
+            empty, 
+            vstr, str, cstr, 
+            i1, i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, f80, ts, dt,
+            obj, arr
+        };
 
-            /// @brief Read next non white character
-            /// @param in input stream
-            /// @param c output character
-            /// @return stream
-            std::istream& read_next_c(std::istream& in, char& c) const {
-                return in >> std::ws >> c >> std::noskipws;
+        class with_orm;
+
+        template <class T>
+        concept with_orm_trait = std::is_base_of<with_orm, T>::value;
+
+        template<class T>
+        concept without_orm_trait = !std::is_base_of<with_orm, T>::value;
+
+        /// @brief Object utilities for `any` in case it holds either object or an array
+        struct any_internals {
+            std::function<std::vector<std::pair<orm_key_t, any>>(uintptr_t, bool)> get_orm = nullptr;
+            std::function<any(uintptr_t, const any&)> push_back = nullptr;
+            std::function<size_t(const uintptr_t)> size = nullptr;
+            std::function<any(const uintptr_t, size_t)> get_item = nullptr;
+            uintptr_t orm_id = 0;
+        };
+
+        /// @brief Any class, can hold any type
+        class any {
+            uintptr_t ref = 0;
+            reftype type = reftype::empty;
+            any_internals internals;
+
+            uintptr_t success_wb = 0;
+            size_t template_arg = 0;
+
+            class iterator {
+                const any* parent;
+                size_t index;
+            public:
+                iterator(const any* parent, size_t index) : parent(parent), index(index) {}
+
+                any operator*() {
+                    return (*parent)[index];
+                }
+
+                iterator& operator++() { index++; return *this; }  
+                iterator operator++(int) { iterator tmp = *this; ++(*this); return tmp; }
+
+                bool operator==(const iterator& it) const {
+                    return parent == it.parent && index == it.index;
+                }
+
+                bool operator!=(const iterator& it) const {
+                    return parent != it.parent || index != it.index;
+                }
+            };
+
+        public:
+            any() : type(reftype::empty), ref(0), template_arg(0) {}
+
+            any(const any& a) : 
+                type(a.type), ref(a.ref), template_arg(a.template_arg), 
+                success_wb(a.success_wb), 
+                internals(a.internals) {}
+
+            any& operator=(const any& a) { 
+                type = a.type;
+                ref = a.ref;
+                template_arg = a.template_arg;
+                success_wb = a.success_wb;
+                internals = a.internals;
+                return *this; 
             }
 
-            /// @brief Read next token (word that doesn't contain whitespace)
-            /// @param in input stream
-            /// @param tok output token
-            /// @return stream
-            std::istream& read_next_token(std::istream& in, std::string& tok) const {
-                char c;
-                if(in >> std::ws >> c >> std::noskipws) {
-                    tok += c;
-                    while(in >> c) {
-                        if(!isgraph(c) || c == '}' || c == ']' || c == ',') {
-                            return in;
-                        }
-                        else tok += c;
-                    }
-                }
-                return in;
+            template<class T>
+            any(optional<T>& opt) : any(opt.value_) {
+                success_wb = (uintptr_t)&opt.is_set;
             }
 
-            /// @brief Read JSON encoded string
-            /// @param in input stream
-            /// @param out output string
-            /// @param err output error
-            /// @return stream
-            std::istream& read_str(std::istream& in, std::string& out, std::string& err) const {
-                out.clear();
-                err.clear();
-                char c = 0, a = -1, b = -1;
-                read_next_c(in, c);
-                if(!in) [[unlikely]] {
-                    err = "unexpected EOF";
-                    return in;
+            template<class T>
+            requires with_orm_trait<T>
+            any(T& obj);
+
+            template<class T>
+            any(std::vector<T>& vec);
+
+            template<size_t N>
+            any(orm::varstr<N>& value) : ref((uintptr_t)&value), type(reftype::vstr), template_arg(value.get_max_size()) {}
+            any(std::string& value) : ref((uintptr_t)&value), type(reftype::str) {}
+            any(const char*& value) : ref((uintptr_t)&value), type(reftype::cstr) {}
+            any(orm::datetime& value) : ref((uintptr_t)&value), type(reftype::dt) {}
+            any(orm::timestamp& value) : ref((uintptr_t)&value), type(reftype::ts) {}
+            
+            any(int8_t& value) : ref((uintptr_t)&value), type(reftype::i8) {}
+            any(int16_t& value) : ref((uintptr_t)&value), type(reftype::i16) {}
+            any(int32_t& value) : ref((uintptr_t)&value), type(reftype::i32) {}
+            any(int64_t& value) : ref((uintptr_t)&value), type(reftype::i64) {}
+            any(uint8_t& value) : ref((uintptr_t)&value), type(reftype::u8) {}
+            any(uint16_t& value) : ref((uintptr_t)&value), type(reftype::u16) {}
+            any(uint32_t& value) : ref((uintptr_t)&value), type(reftype::u32) {}
+            any(uint64_t& value) : ref((uintptr_t)&value), type(reftype::u64) {}
+            
+            any(float& value) : ref((uintptr_t)&value), type(reftype::f32) {}
+            any(double& value) : ref((uintptr_t)&value), type(reftype::f64) {}
+            any(long double& value) : ref((uintptr_t)&value), type(reftype::f80) {}
+            any(bool& value) : ref((uintptr_t)&value), type(reftype::i1) {}
+
+            /// @brief Get type that is held by `any`
+            /// @return referenced type
+            inline reftype get_type() const { return type; }
+
+            /// @brief Get pointer reference to the underyling value
+            /// @return value reference
+            inline uintptr_t get_ref() const { return ref; }
+
+            /// @brief Set present flag if optional
+            inline void set_present(bool value = true, uintptr_t offset = 0) const {
+                if(success_wb) {
+                    *(bool*)(offset + success_wb) = value;
                 }
-                if(c != '"') [[unlikely]] {
-                    err = "expected string to begin with \"";
-                    in.setstate(std::ios::failbit);
-                    return in;
-                }
-                bool is_backslash = false;
-                while(in >> c) {
-                    if(is_backslash) {
-                        switch(c) {
-                            case 'r':
-                                out += '\r';
-                                break;
-                            case 'n':
-                                out += '\n';
-                                break;
-                            case 't':
-                                out += '\t';
-                                break;
-                            case 'b':
-                                out += '\b';
-                                break;
-                            case 'f':
-                                out += '\f';
-                                break;
-                            case '"':
-                                out += '"';
-                                break;
-                            case '0':
-                                out += '\0';
-                                break;
-                            case '\\':
-                                out += '\\';
-                                break;
-                            case '/':
-                                out += '/';
-                                break;
-                            case 'x':
-                                {
-                                    if(!(in >> a >> b)) {
-                                        err = "failed to read two bytes after \\x";
-                                        return in;
-                                    }
-                                    if(a >= '0' && a <= '9') a = a - '0';
-                                    else if(a >= 'A' && a <= 'f') a = a - 'a' + 10;
-                                    else if(a >= 'A' && a <= 'F') a = a - 'A' + 10;
-                                    if(b >= '0' && b <= '9') b = b - '0';
-                                    else if(b >= 'a' && b <= 'f') b = b - 'a' + 10;
-                                    else if(b >= 'A' && b <= 'F') b = b - 'A' + 10;
-                                    if(a >= 0 && a <= 15 && b >= 0 && b <= 15) {
-                                        out += (char)((a << 4) | (b));
-                                    } else {
-                                        err = "provided \\x value is not valid";
-                                        in.setstate(std::ios::failbit);
-                                        return in;
-                                    }
-                                }
-                                break;
-                            default:
-                                out += '\\';
-                                out += c;
-                                break;
-                        }
-                        is_backslash = false;
-                    } else if(c == '\\') {
-                        is_backslash = true;
-                    } else if(c == '"') {
-                        return in;
-                    } else [[likely]] {
-                        out += c;
-                    }
-                }
-                in.setstate(std::ios::failbit);
-                err = "unexpected parse error";
-                return in;
             }
 
-            std::string decode(std::istream& in, const orm::any& a, uintptr_t offset, size_t depth = 0, size_t max_depth = 32) {
-                std::string helper, key, err;
-                char c;
-                if(depth >= max_depth) [[unlikely]] return "reached max nested depth of " + std::to_string(depth);
-                if(a.is_optional()) [[unlikely]] {
-                    // test for `null` occurence in case of optionals
-                    read_next_c(in, c);
-                    if(!in) [[unlikely]] {
-                        return "unexpected EOF when testing for optional";
-                    } else if(c == 'n') {
-                        helper = "n";
-                        // read rest of the types - numeric + booleans
-                        read_next_token(in, helper);
-                        if(!in) {
-                            return "unexpected EOF while reading null optional";
-                        } else if(helper == "null") [[likely]] {
-                            in.seekg(-1, std::ios_base::cur);
-                            return "";
-                        } else {
-                            return "invalid value when reading optional: \"" + helper + "\"";
+            /// @brief Determine if `any` holds a value
+            /// @return true if `any` is not an optional or if it is an optional and holds a value
+            inline bool is_present(size_t offset = 0) const {
+                if(!success_wb) return true;
+                return *(bool*)(offset + success_wb);
+            }
+
+            /// @brief Determine if `any` holds an optional
+            /// @return true if optional
+            inline bool is_optional() const {
+                return success_wb != 0;
+            }
+
+            /// @brief Determine if `any` holds a string
+            /// @return true if `any` holds a string
+            inline bool is_string() const {
+                return type == reftype::str || type == reftype::cstr || type == reftype::vstr || type == reftype::dt;
+            }
+
+            /// @brief Determine if `any` holds a number
+            /// @return true if `any` holds a number
+            inline bool is_numeric() const {
+                return !is_string() && !is_object() && !is_array();
+            }
+
+            /// @brief Determine if `any` holds an object that has get_orm method
+            /// @return true if `any` holds an object
+            inline bool is_object() const {
+                return type == reftype::obj;
+            }
+
+            /// @brief Determine if `any` holds an array
+            /// @return true if `any` holds an array
+            inline bool is_array() const {
+                return type == reftype::arr;
+            }
+
+            inline std::vector<std::pair<orm_key_t, any>> get_orm(bool nulled = false) const {
+                static std::vector<std::pair<orm_key_t, any>> empty_orm = {};
+                if(auto fn = internals.get_orm) return fn(ref, nulled);
+                return empty_orm;
+            }
+
+            uintptr_t get_orm_id() const {
+                return internals.orm_id;
+            }
+
+            /// @brief Transform string form to the underlying native form
+            /// @param value string form
+            /// @param offset offset from the relative base
+            /// @return true if conversion was successful
+            inline bool to_native(std::string_view value, uintptr_t offset = 0) const {
+                int32_t below_32 = 0;
+                uint32_t below_32u = 0;
+                bool success = true;
+                uintptr_t addr = ref + offset;
+                switch(type) {
+                    case reftype::str:
+                    case reftype::vstr:
+                        *(std::string*)addr = value;
+                        break;
+                    case reftype::cstr:
+                        *(const char**)addr = value.data();
+                        break;
+                    // signed
+                    case reftype::i8:
+                        if(std::from_chars(value.begin(), value.end(), below_32, 10).ec != std::errc()) {
+                            below_32 = 0;
+                            success = false;
                         }
-                    } else [[likely]] {
-                        in.seekg(-1, std::ios_base::cur);
-                    }
-                }
-                switch(a.get_type()) {
-                    case orm::reftype::arr:
-                        {
-                            // decode array by searching for [, then parsing items
-                            // and searching either for , or ] where if we find , we continue
-                            if(read_next_c(in, c) && c == '[') {
-                                a.set_present(true, offset);
-                                while(true) {
-                                    if(read_next_c(in, c) && c == ']') {
-                                        return "";
-                                    } else if(!in) [[unlikely]]  {
-                                        return "unexpected EOF on array";
-                                    } else [[likely]] {
-                                        in.seekg(-1, std::ios_base::cur);
-                                        orm::any el = a.push_back({}, offset);
-                                        auto res = decode(in, el, el.get_ref(), depth + 1, max_depth);
-                                        if(res.length() > 0) return res;
-                                        read_next_c(in, c);
-                                        if(!in) return "unexpected EOF on reading next array item";
-                                        else if(c == ']') return "";
-                                        else if(c == ',') continue;
-                                        else return "expected either ] or ,";
-                                    }
-                                }
-                            } else {
-                                return "expected array to begin with [";
-                            }
+                        *(int8_t*)addr = (int8_t)below_32;
+                        break;
+                    case reftype::i16:
+                        if(std::from_chars(value.begin(), value.end(), *(int16_t*)addr, 10).ec != std::errc()) {
+                            *(int16_t*)addr = 0;
+                            success = false;
                         }
                         break;
-                    case orm::reftype::obj: [[likely]]
-                        {
-                            // decode object by searching for {, then for string : item
-                            // and then searching either for , or } where if we find , we continue
-                            if(read_next_c(in, c) && c == '{') {
-                                a.set_present(true, offset);
-                                while(read_str(in, key, err)) {
-                                    if(read_next_c(in, c) && c != ':') [[unlikely]] return "expected : after key";
-                                    if(!in) [[unlikely]]  return "unexpected EOF on object key";
-                                    auto orm_id = a.get_orm_id();
-                                    auto it = mappers.find(orm_id);
-                                    if(it == mappers.end()) {
-                                        dict<orm::orm_key_t, orm::any> m;
-                                        for(const auto& [k, v] : a.get_orm(true)) {
-                                            m[k] = v;
-                                        }
-                                        it = mappers.emplace(std::make_pair(orm_id, std::move(m))).first;
-                                    }
-                                    auto ref = it->second.find(std::string_view(key));
-                                    if(ref != it->second.end()) [[likely]] {
-                                        auto res = decode(in, ref->second, a.get_ref(), depth + 1, max_depth);
-                                        if(res.length() > 0) return res;
-                                    }
-                                    read_next_c(in, c);
-                                    if(!in) return "unexpected EOF after reading key, value pair";
-                                    if(c == ',') [[likely]] continue;
-                                    else if(c == '}') [[likely]] break;
-                                    else return "expected either , or }";
-                                }
-                                if(!in) [[unlikely]]  return err;
-                            } else if(!in) {
-                                return "unexpected EOF on reading object";
-                            } else {
-                                return "expeted object to begin with {";
-                            }
+                    case reftype::i32:
+                        if(std::from_chars(value.begin(), value.end(), *(int32_t*)addr, 10).ec != std::errc()) {
+                            *(int32_t*)addr = 0;
+                            success = false;
                         }
                         break;
-                    case orm::reftype::str:
-                    case orm::reftype::vstr:
-                    case orm::reftype::dt:
-                    case orm::reftype::cstr:
-                        [[likely]]
-                        helper = "";
-                        // read either string or date and decode the JSON encoded string into native string
-                        if(read_str(in, helper, err)) [[likely]] {
-                            if(!a.to_native(helper, offset)) [[unlikely]] {
-                                return "failed to parse value \"" + helper + "\" as a " + (a.get_type() == orm::reftype::dt ? "datetime" : "string");
-                            }
-                        } else {
-                            return err;
+                    case reftype::i64:
+                        if(std::from_chars(value.begin(), value.end(), *(int64_t*)addr, 10).ec != std::errc()) {
+                            *(int64_t*)addr = 0;
+                            success = false;
                         }
+                        break;
+                    // unsigned
+                    case reftype::u8:
+                        if(std::from_chars(value.begin(), value.end(), below_32u, 10).ec != std::errc()) {
+                            below_32u = 0;
+                            success = false;
+                        }
+                        *(uint8_t*)addr = (uint8_t)below_32u;
+                        break;
+                    case reftype::u16:
+                        if(std::from_chars(value.begin(), value.end(), *(uint16_t*)addr, 10).ec != std::errc()) {
+                            *(uint16_t*)addr = 0;
+                            success = false;
+                        }
+                        break;
+                    case reftype::u32:
+                        if(std::from_chars(value.begin(), value.end(), *(uint32_t*)addr, 10).ec != std::errc()) {
+                            *(uint32_t*)addr = 0;
+                            success = false;
+                        }
+                        break;
+                    case reftype::u64:
+                        if(std::from_chars(value.begin(), value.end(), *(uint64_t*)addr, 10).ec != std::errc()) {
+                            *(uint64_t*)addr = 0;
+                            success = false;
+                        }
+                        break;
+                    // bool
+                    case reftype::i1:
+                        *(bool*)addr = value.length() > 0 && (value[0] == '\1' || value[0] == '1' || value[0] == 't' || value[0] == 'T' || value[0] == 'y' || value[0] == 'Y');
+                        break;
+                    // floats
+                    case reftype::f32:
+                        std::from_chars(value.begin(), value.end(), *(float*)addr);
+                        break;
+                    case reftype::f64:
+                        std::from_chars(value.begin(), value.end(), *(double*)addr);
+                        break;
+                    case reftype::f80:
+                        std::from_chars(value.begin(), value.end(), *(long double*)addr);
+                        break;
+                    // dates
+                    case reftype::dt:
+                        success = ((orm::datetime*)addr)->to_native(value);
+                        break;
+                    case reftype::ts:
+                        success = ((orm::timestamp*)addr)->to_native(value);
                         break;
                     default:
-                        helper = "";
-                        // read rest of the types - numeric + booleans
-                        if(!read_next_token(in, helper)) {
-                            return "unexpected EOF when parsing numeric or boolean value";
-                        } else if(helper.length() > 0) [[likely]] {
-                            if(!a.to_native(helper, offset)) [[unlikely]] return "failed to parse value \"" + helper + "\" as a number";
-                            in.seekg(-1, std::ios_base::cur);
-                        } else {
-                            return "failed to read value for numeric field";
-                        }
+                        success = false;
                         break;
                 }
-                return "";
+                set_present(success, offset);
+                return success;
             }
 
-        public:
-            /// @brief Decode JSON string to an object
-            /// @tparam T object type
-            /// @param text JSON string
-            /// @return decoded object
-            template<typename T>
-            requires orm::with_orm_trait<T>
-            std::expected<T, std::string> decode(std::string text) {
-                std::stringstream ss;
-                ss << text;
-                T obj;
-                orm::any a(obj);
-                auto err = decode(ss, a, a.get_ref(), 0, 32);
-                if(err.length() > 0) [[unlikely]] {
-                    return std::unexpected(err);
+            /// @brief Transform from native form to string form
+            /// @param bool_as_text if true, bools are treated as "true" / "false", otherwise "1" / "0"
+            /// @param offset offset from the relative base
+            /// @return string form
+            inline std::string from_native(bool bool_as_text = false, uintptr_t offset = 0) const {
+                if(success_wb && !*(bool*)(offset + success_wb)) return "";
+                uintptr_t addr = ref + offset;
+                switch(type) {
+                    case reftype::str:
+                        return *(std::string*)addr;
+                        break;
+                    case reftype::cstr:
+                        return std::string(*(const char**)addr);
+                        break;
+                    case reftype::vstr:
+                        if(((std::string*)addr)->length() > template_arg) {
+                            return ((std::string*)addr)->substr(0, template_arg);
+                        } else {
+                            return *(std::string*)addr;
+                        }
+                        break;
+                    // signed
+                    case reftype::i8:
+                        return std::to_string((int)*(int8_t*)addr);
+                        break;
+                    case reftype::i16:
+                        return std::to_string(*(int16_t*)addr);
+                        break;
+                    case reftype::i32:
+                        return std::to_string(*(int32_t*)addr);
+                        break;
+                    case reftype::i64:
+                        return std::to_string(*(int64_t*)addr);
+                        break;
+                    // unsigned
+                    case reftype::u8:
+                        return std::to_string((unsigned int)*(uint8_t*)addr);
+                        break;
+                    case reftype::u16:
+                        return std::to_string(*(uint16_t*)addr);
+                        break;
+                    case reftype::u32:
+                        return std::to_string(*(uint32_t*)addr);
+                        break;
+                    case reftype::u64:
+                        return std::to_string(*(uint64_t*)addr);
+                        break;
+                    // bool
+                    case reftype::i1:
+                        return *(bool*)addr ? (bool_as_text ? "true" : "1") : (bool_as_text ? "false" : "0");
+                        break;
+                    // floats
+                    case reftype::f32:
+                        return std::to_string(*(float*)addr);
+                        break;
+                    case reftype::f64:
+                        return std::to_string(*(double*)addr);
+                        break;
+                    case reftype::f80:
+                        return std::to_string(*(long double*)addr);
+                        break;
+                    // dates
+                    case reftype::dt:
+                        return ((orm::datetime*)addr)->from_native();
+                        break;
+                    case reftype::ts:
+                        return ((orm::timestamp*)addr)->from_native();
+                        break;
+                    default:
+                        return "";
+                        break;
                 }
-                return obj;
             }
 
-            /// @brief Decode JSON array string to vector<T>
-            /// @tparam T vector<T>
-            /// @param text JSON string
-            /// @return decoded array
-            template<
-                typename T, 
-                typename = std::enable_if<std::is_same<T, std::vector<typename T::value_type>>::value>::type
-            >
-            std::expected<T, std::string> decode(std::string text) {
-                std::stringstream ss;
-                ss << text;
-                T obj;
-                orm::any a(obj);
-                auto err = decode(ss, a, 0, 0, 32);
-                if(err.length() > 0) [[unlikely]] {
-                    return std::unexpected(err);
+            /// @brief Transform from native form to output stream
+            /// @param output output stream
+            /// @param bool_as_text if true, bools are treated as "true" / "false", otherwise "1" / "0"
+            /// @param offset offset from the relative base
+            /// @return string form
+            inline void from_native(std::ostream& out, bool bool_as_text = false, uintptr_t offset = 0) const {
+                if(success_wb && !*(bool*)success_wb) return;
+                uintptr_t addr = ref + offset;
+                switch(type) {
+                    case reftype::str:
+                        out << *(std::string*)addr;
+                        break;
+                    case reftype::cstr:
+                        out << std::string(*(const char**)addr);
+                        break;
+                    case reftype::vstr:
+                        {
+                            std::string_view sv(*(std::string*)addr);
+                            if(sv.length() > template_arg) {
+                                out << sv.substr(0, template_arg);
+                            } else {
+                                out << sv;
+                            }
+                        }
+                        break;
+                    // signed
+                    case reftype::i8:
+                        out << ((int)*(int8_t*)addr);
+                        break;
+                    case reftype::i16:
+                        out << (*(int16_t*)addr);
+                        break;
+                    case reftype::i32:
+                        out << (*(int32_t*)addr);
+                        break;
+                    case reftype::i64:
+                        out << (*(int64_t*)addr);
+                        break;
+                    // unsigned
+                    case reftype::u8:
+                        out << ((unsigned int)*(uint8_t*)addr);
+                        break;
+                    case reftype::u16:
+                        out << (*(uint16_t*)addr);
+                        break;
+                    case reftype::u32:
+                        out << (*(uint32_t*)addr);
+                        break;
+                    case reftype::u64:
+                        out << (*(uint64_t*)addr);
+                        break;
+                    // bool
+                    case reftype::i1:
+                        out << *(bool*)addr ? (bool_as_text ? "true" : "1") : (bool_as_text ? "false" : "0");
+                        break;
+                    // floats
+                    case reftype::f32:
+                        out << (*(float*)addr);
+                        break;
+                    case reftype::f64:
+                        out << (*(double*)addr);
+                        break;
+                    case reftype::f80:
+                        out << (*(long double*)addr);
+                        break;
+                    // dates
+                    case reftype::dt:
+                        ((orm::datetime*)addr)->from_native(out);
+                        break;
+                    case reftype::ts:
+                        ((orm::timestamp*)addr)->from_native(out);
+                        break;
+                    default:
+                        break;
                 }
-                return obj;
+            }
+
+            /// @brief Return iterator to the beginning of the underlying array
+            /// @return begin iterator
+            inline iterator begin() const {
+                return iterator(this, 0);
+            }
+
+            /// @brief Return iterator to the end of the underlying array
+            /// @return end iterator
+            inline iterator end() const {
+                return iterator(this, size());
+            }
+
+            /// @brief Get n-th item in the underlying array
+            /// @param index item index
+            /// @return n-th item
+            inline any operator[](size_t index) const {
+                if(auto fn = internals.get_item) return fn(ref, index);
+                return {};
+            }
+
+            /// @brief Get n-th item in the underlying array
+            /// @param index item index
+            /// @return n-th item
+            inline any at(size_t index, uintptr_t offset) const {
+                if(auto fn = internals.get_item) return fn(ref + offset, index);
+                return {};
+            }
+            
+            /// @brief Push an item to the underlying array
+            /// @param v item to be pushed
+            any push_back(const any& v, uintptr_t offset = 0) const {
+                if(auto fn = internals.push_back) return fn(ref + offset, v);
+                return {};
+            }
+
+            /// @brief Get size of the underlyig array
+            /// @return size of the array
+            inline size_t size(uintptr_t offset = 0) const {
+                if(auto fn = internals.size) return fn(ref + offset);
+                return 0;
             }
         };
+
+        // Utilities
+
+        /// @brief ORM relation between key and referenced value
+        using mapping = std::pair<orm_key_t, any>;
+
+        /// @brief ORM definition
+        using mapper = std::vector<mapping>;
+
+        /// @brief A required trait if nested entity encoding / decoding is required.
+        #define WITH_ID static uintptr_t get_orm_id() { return (uintptr_t)(&get_orm_id); }
+        
+        /// @brief Class trait for having ORM functionalities, all with_orm classes
+        /// should also either implement get_orm_id or use WITH_ID; at beginning
+        class with_orm {
+        public:
+            static uintptr_t get_orm_id() { return (uintptr_t)0; }
+            mapper get_orm();
+        };
+
+        /// @brief Transform dictionary of string keys and values to a native C++ object
+        /// @param self mapper reference
+        /// @param fields dictionary of keys and values
+        /// @param offset offset relative to base
+        static void to_native(const mapper& self, const dict<std::string, std::string>& fields, uintptr_t offset = 0) {
+            for(auto& item : self) {
+                auto it = fields.find(std::string(item.first));
+                if(it != fields.end()) {
+                    item.second.to_native(it->second, offset);
+                }
+            }
+        }
+
+        /// @brief Transform a native C++ object into dictionary of keys and values
+        /// @param self mapper reference
+        /// @param bool_as_text true if booleans are treated as "true" / "false", otherwise "1" / "0"
+        /// @param offset offset relative to base
+        /// @return dictionary
+        static dict<std::string, std::string> from_native(const mapper& self, bool bool_as_text = false, uintptr_t offset = 0) {
+            dict<std::string, std::string> obj;
+            for(auto& item : self) {
+                obj[std::string(item.first)] = item.second.from_native(bool_as_text, offset);
+            }
+            return obj;
+        }
+
+        /// @brief Transform an array of dictionaries to array of native C++ objects
+        /// @tparam T object type
+        /// @param items array of dictionaries to be transformed
+        /// @return transformed result
+        template<class T>
+        requires with_orm_trait<T>
+        inline std::vector<T> transform(std::span<dict<std::string, std::string>> items) {
+            std::vector<T> result;
+            auto orm_base = ((T*)NULL)->get_orm();
+            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
+                T new_item;
+                to_native(orm_base, item, (uintptr_t)&new_item);
+                return new_item;
+            });
+            return result;
+        }
+
+        /// @brief Transform an array of dictionaries to array of native C++ objects
+        /// @tparam T object type
+        /// @param items array of dictionaries to be transformed
+        /// @return transformed result
+        template<class T>
+        requires with_orm_trait<T>
+        inline std::vector<T> transform(std::vector<dict<std::string, std::string>>&& items) {
+            std::vector<T> result;
+            auto orm_base = ((T*)NULL)->get_orm();
+            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
+                T new_item;
+                to_native(orm_base, item, (uintptr_t)&new_item);
+                return new_item;
+            });
+            return result;
+        }
+        
+        /// @brief Transform an array of native C++ objects into an array of dictionaries
+        /// @tparam T object type
+        /// @param items array of native objects to be transformed
+        /// @return transformed result
+        template<class T>
+        requires with_orm_trait<T>
+        inline std::vector<dict<std::string,std::string>> transform(std::span<T> items, bool bool_as_text = false) {
+            std::vector<dict<std::string,std::string>> result;
+            auto orm_base = ((T*)NULL)->get_orm();
+            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text, &orm_base](T& item) -> auto {
+                return from_native(orm_base, bool_as_text, (uintptr_t)&item);
+            });
+            return result;
+        }
+
+        /// @brief Transform an array of native C++ objects into an array of dictionaries
+        /// @tparam T object type
+        /// @param items array of native objects to be transformed
+        /// @return transformed result
+        template<class T>
+        requires with_orm_trait<T>
+        inline std::vector<dict<std::string,std::string>> transform(std::vector<T>&& items, bool bool_as_text = false) {
+            std::vector<dict<std::string,std::string>> result;
+            auto orm_base = ((T*)NULL)->get_orm();
+            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text, &orm_base](T& item) -> auto {
+                return from_native(orm_base, bool_as_text, (uintptr_t)&item);
+            });
+            return result;
+        }
+
+        /// @brief Transform a shared array of dictionaries to a shared array of native C++ objects
+        /// @tparam T object type
+        /// @param items shared array of dictionaries
+        /// @return transformed result
+        template<class T>
+        requires with_orm_trait<T>
+        inline std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<dict<std::string, std::string>>>&& items) {
+            auto result = std::make_shared<std::vector<T>>();
+            auto orm_base = ((T*)NULL)->get_orm();
+            std::transform(items->cbegin(), items->cend(), std::back_inserter(*result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
+                T new_item;
+                to_native(orm_base, item, (uintptr_t)&new_item);
+                return new_item;
+            });
+            return result;
+        }
+
+        template<class T>
+        requires with_orm_trait<T>
+        inline any::any(T& obj) : type(reftype::obj), ref((uintptr_t)&obj) {
+            //internals = internals ? internals : std::make_shared<any_internals>();
+            internals.orm_id = obj.get_orm_id();
+            internals.get_orm = [](uintptr_t r, bool nulled) -> std::vector<std::pair<orm_key_t, any>> {
+                if(nulled) {
+                    return ((std::remove_cv_t<T>*)NULL)->get_orm();
+                } else {
+                    auto tr = (std::remove_cv_t<T>*)r;
+                    return tr->get_orm();
+                }
+            };
+        }
+
+        template<class T>
+        any::any(std::vector<T>& vec) : type(reftype::arr), ref((uintptr_t)&vec) {
+            //internals = internals ? internals : std::make_shared<any_internals>();
+            internals.push_back = [](uintptr_t ref, const any& value) -> any {
+                std::vector<T> *tr = (std::vector<T>*)ref;
+                if(value.get_type() == reftype::empty) {
+                    tr->push_back(T{});
+                    return any(tr->back());
+                } else {
+                    tr->push_back(*(T*)value.get_ref());
+                    return any(tr->back());
+                }
+            };
+            internals.get_item = [](const uintptr_t ref, size_t index) -> auto {
+                const std::vector<T> *tr = (const std::vector<T>*)ref;
+                return any(tr->at(index));
+            };
+            internals.size = [](const uintptr_t ref) -> auto {
+                const std::vector<T> *tr = (const std::vector<T>*)ref;
+                return tr->size();
+            };
+        }
     }
 }

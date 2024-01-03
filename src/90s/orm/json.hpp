@@ -177,6 +177,24 @@ namespace s90 {
                 return in >> std::ws >> c >> std::noskipws;
             }
 
+            /// @brief Read next token (word that doesn't contain whitespace)
+            /// @param in input stream
+            /// @param tok output token
+            /// @return stream
+            std::istream& read_next_token(std::istream& in, std::string& tok) const {
+                char c;
+                if(in >> std::ws >> c >> std::noskipws) {
+                    tok += c;
+                    while(in >> c) {
+                        if(!isgraph(c) || c == '}' || c == ']' || c == ',') {
+                            return in;
+                        }
+                        else tok += c;
+                    }
+                }
+                return in;
+            }
+
             /// @brief Read JSON encoded string
             /// @param in input stream
             /// @param out output string
@@ -279,19 +297,14 @@ namespace s90 {
                     } else if(c == 'n') {
                         helper = "n";
                         // read rest of the types - numeric + booleans
-                        while(read_next_c(in, c)) {
-                            if(c == ']' || c == '}' || c == ',') [[unlikely]] {
-                                break;
-                            }
-                            helper += c;
-                        }
+                        read_next_token(in, helper);
                         if(!in) {
                             return "unexpected EOF while reading null optional";
-                        } else if(helper.starts_with("null")) [[likely]] {
+                        } else if(helper == "null") [[likely]] {
                             in.seekg(-1, std::ios_base::cur);
                             return "";
                         } else {
-                            return "invalid value when reading optional: " + helper;
+                            return "invalid value when reading optional: \"" + helper + "\"";
                         }
                     } else [[likely]] {
                         in.seekg(-1, std::ios_base::cur);
@@ -381,13 +394,9 @@ namespace s90 {
                     default:
                         helper = "";
                         // read rest of the types - numeric + booleans
-                        while(read_next_c(in, c)) {
-                            if(c == ']' || c == '}' || c == ',') [[unlikely]] {
-                                break;
-                            }
-                            helper += c;
-                        }
-                        if(helper.length() > 0) [[likely]] {
+                        if(!read_next_token(in, helper)) {
+                            return "unexpected EOF when parsing numeric or boolean value";
+                        } else if(helper.length() > 0) [[likely]] {
                             if(!a.to_native(helper, offset)) [[unlikely]] return "failed to parse value \"" + helper + "\" as a number";
                             in.seekg(-1, std::ios_base::cur);
                         } else {
