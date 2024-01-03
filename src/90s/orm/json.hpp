@@ -44,11 +44,11 @@ namespace s90 {
                         case '\t':
                             out.write("\\t", 2);
                             break;
-                        case '"': [[likely]]
-                            out.write("\\\"", 2);
+                        case '\f': [[unlikely]]
+                            out.write("\\f", 2);
                             break;
-                        case '\\':
-                            out.write("\\\\", 2);
+                        case '\b': [[unlikely]]
+                            out.write("\\b", 2);
                             break;
                         case '\0': [[unlikely]]
                             out.write("\\0", 2);
