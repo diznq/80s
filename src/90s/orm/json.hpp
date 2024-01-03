@@ -177,10 +177,11 @@ namespace s90 {
                 if(carried) [[unlikely]] {
                     c = *carried;
                     carried.reset();
-                    if(isgraph(c))
+                    if(isgraph(c)) {
                         return in;
+                    }
                 }
-                return in >> std::ws >> c >> std::noskipws;
+                return in >> c;
             }
 
             /// @brief Read next token (word that doesn't contain whitespace)
@@ -190,16 +191,30 @@ namespace s90 {
             /// @return stream
             std::istream& read_next_token(std::istream& in, std::string& tok, std::optional<char>& carried) const {
                 char c;
-                if(read_next_c(in, c, carried)) {
+                if(read_next_c(in, c, carried)) [[likely]] {
+                    in >> std::noskipws;
                     tok += c;
                     while(in >> c) {
-                        carried = c;
-                        if(!isgraph(c) || c == '}' || c == ']' || c == ',') {
-                            return in;
+                        switch(c) {
+                            case '}':
+                            case ']':
+                            case ',':
+                            case ' ':
+                            case '\t':
+                            case '\r':
+                            case '\n':
+                                in >> std::skipws;
+                                carried = c;
+                                return in;
+                                break;
+                            default:
+                                tok += c;
+                                break;
                         }
-                        else tok += c;
                     }
                 }
+                in >> std::skipws;
+                carried = c;
                 return in;
             }
 
@@ -243,6 +258,7 @@ namespace s90 {
                     return in;
                 }
                 bool is_backslash = false;
+                in >> std::noskipws;
                 while(in >> c) {
                     if(is_backslash) {
                         // treat \u specially as it's easier this way than fixing entire switch statement
@@ -334,6 +350,7 @@ namespace s90 {
                             u16_buffer.clear();
                         }
                         if(c == '"') {
+                            in >> std::skipws;
                             return in;
                         } else [[likely]] {
                             out += c;
@@ -367,7 +384,6 @@ namespace s90 {
                         helper = "n";
                         // read rest of the types - numeric + booleans
                         read_next_token(in, helper, carried);
-                        printf("HELPER: %s, carried: %c\n", helper.c_str(), carried ? *carried : '?');
                         if(!in) {
                             return "unexpected EOF while reading null optional";
                         } else if(helper == "null") [[likely]] {
@@ -494,7 +510,7 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 std::optional<char> carried;
-                auto err = decode(ss, a, a.get_ref(), carried, 0, max_depth);
+                auto err = decode(ss >> std::skipws, a, a.get_ref(), carried, 0, max_depth);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
@@ -515,7 +531,7 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 std::optional<char> carried;
-                auto err = decode(ss, a, 0, carried, 0, max_depth);
+                auto err = decode(ss >> std::skipws, a, 0, carried, 0, max_depth);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
@@ -536,7 +552,7 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 std::optional<char> carried;
-                auto err = decode(ss, a, a.get_ref(), carried, 0, max_depth);
+                auto err = decode(ss >> std::skipws, a, a.get_ref(), carried, 0, max_depth);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
@@ -557,7 +573,7 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 std::optional<char> carried;
-                auto err = decode(ss, a, 0, carried, 0, max_depth);
+                auto err = decode(ss >> std::skipws, a, 0, carried, 0, max_depth);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
@@ -576,7 +592,7 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 std::optional<char> carried;
-                auto err = decode(text, a, a.get_ref(), carried, 0, max_depth);
+                auto err = decode(text >> std::skipws, a, a.get_ref(), carried, 0, max_depth);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
@@ -595,7 +611,7 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 std::optional<char> carried;
-                auto err = decode(text, a, 0, carried, 0, max_depth);
+                auto err = decode(text >> std::skipws, a, 0, carried, 0, max_depth);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
