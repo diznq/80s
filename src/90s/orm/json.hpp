@@ -2,15 +2,16 @@
 #include <string>
 #include <string_view>
 #include <sstream>
-#include <iomanip>
 #include <format>
 #include <type_traits>
 #include <expected>
+#include <codecvt>
 #include "orm.hpp"
 
 namespace s90 {
     namespace orm {
         class json_encoder {
+
             dict<uintptr_t, orm::mapper> mappers;
 
             /// @brief Encode string into JSON escaped string, i.e. AB"C => AB\"C
@@ -22,7 +23,7 @@ namespace s90 {
 
                 out.put('"');
 
-                char x_fill[4];
+                char x_fill[6] = { '\\', 'u', '0', '0', '0', '0' };
                 
                 while (value_len--) {
                     char c = *value;
@@ -54,9 +55,9 @@ namespace s90 {
                             out.write("\\0", 2);
                             break;
                         default: [[likely]]
-                            x_fill[2] = "0123456789ABCDEF"[(c >> 4) & 15];
-                            x_fill[3] = "0123456789ABCDEF"[(c) & 15];
-                            out.write(x_fill, 4);
+                            x_fill[4] = "0123456789ABCDEF"[(c >> 4) & 15];
+                            x_fill[5] = "0123456789ABCDEF"[(c) & 15];
+                            out.write(x_fill, 6);
                             break;
                         }
                         value++;
@@ -159,44 +160,96 @@ namespace s90 {
         class json_decoder {
             dict<uintptr_t, dict<orm::orm_key_t, orm::any>> mappers;
 
+            static constexpr char lut[] = {
+                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -1, -1, -1, -1, -1, -1, -1, 
+                // A   B   C   D   E   F   G   H   I   J   K   L   M   N   O   P   Q   R   S   T   U   V   W   X   Y   Z
+                    10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                // [   \   ]   ^   _   `   a   b   c   d   e   f
+                    -1, -1, -1, -1, -1, -1, 10, 11, 12, 13, 14, 15
+            };
+
             /// @brief Read next non white character
             /// @param in input stream
             /// @param c output character
+            /// @param carried carried character from last read to prevent is::seekg(-1)
             /// @return stream
-            std::istream& read_next_c(std::istream& in, char& c) const {
-                return in >> std::ws >> c >> std::noskipws;
+            std::istream& read_next_c(std::istream& in, char& c, std::optional<char>& carried) const {
+                if(carried) [[unlikely]] {
+                    c = *carried;
+                    carried.reset();
+                    if(isgraph(c)) {
+                        return in;
+                    }
+                }
+                return in >> c;
             }
 
             /// @brief Read next token (word that doesn't contain whitespace)
             /// @param in input stream
             /// @param tok output token
+            /// @param carried carried character from last read to prevent is::seekg(-1)
             /// @return stream
-            std::istream& read_next_token(std::istream& in, std::string& tok) const {
+            std::istream& read_next_token(std::istream& in, std::string& tok, std::optional<char>& carried) const {
                 char c;
-                if(in >> std::ws >> c >> std::noskipws) {
+                if(read_next_c(in, c, carried)) [[likely]] {
+                    in >> std::noskipws;
                     tok += c;
                     while(in >> c) {
-                        if(!isgraph(c) || c == '}' || c == ']' || c == ',') {
-                            return in;
+                        switch(c) {
+                            case '}':
+                            case ']':
+                            case ',':
+                            case ' ':
+                            case '\t':
+                            case '\r':
+                            case '\n':
+                                in >> std::skipws;
+                                carried = c;
+                                return in;
+                                break;
+                            default:
+                                tok += c;
+                                break;
                         }
-                        else tok += c;
                     }
                 }
+                in >> std::skipws;
+                carried = c;
                 return in;
+            }
+
+            bool read_hex_doublet(char a, char b, char& out) const {
+                if(a < '0' || b < '0' || a > 'f' || b > 'f') [[unlikely]] return false;
+                a = lut[a - '0'];
+                b = lut[b - '0'];
+                if(a >= 0 && a <= 15 && b >= 0 && b <= 15) [[likely]] {
+                    out = (char)((a << 4) | (b));
+                    return true;
+                } else {
+                    return false;
+                }
             }
 
             /// @brief Read JSON encoded string
             /// @param in input stream
             /// @param out output string
             /// @param err output error
+            /// @param carried carried character from last read to prevent is::seekg(-1)
             /// @return stream
-            std::istream& read_str(std::istream& in, std::string& out, std::string& err) const {
+            std::istream& read_str(std::istream& in, std::string& out, std::string& err, std::optional<char>& carried) const {
+                static std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> convert;
                 out.clear();
                 err.clear();
-                char c = 0, a = -1, b = -1;
-                read_next_c(in, c);
+                
+                char a = -1, b = -1, c = 0, d = -1, e = -1, f = -1;
+
+                char16_t u16_value = 0;
+                std::u16string u16_buffer;
+
+                read_next_c(in, c, carried);
                 if(!in) [[unlikely]] {
                     err = "unexpected EOF";
+                    in.setstate(std::ios::failbit);
                     return in;
                 }
                 if(c != '"') [[unlikely]] {
@@ -205,8 +258,47 @@ namespace s90 {
                     return in;
                 }
                 bool is_backslash = false;
+                in >> std::noskipws;
                 while(in >> c) {
                     if(is_backslash) {
+                        // treat \u specially as it's easier this way than fixing entire switch statement
+                        // for end of \u case
+                        if(c == 'u') [[unlikely]] {
+                            if(!(in >> a >> b >> c >> d)) [[unlikely]] {
+                                err = "failed to read U16 value";
+                                in.setstate(std::ios::failbit);
+                                return in;
+                            }
+                            // in case of UTF-16 we gotta convert it to UTF-8,
+                            // so let's use C c16rtomb as codecvt will be deprecated anyway
+                            if(read_hex_doublet(a, b, e) && read_hex_doublet(c, d, f)) [[likely]] {
+                                u16_value = (char16_t)
+                                    (
+                                        ((((unsigned int)e) & 255) << 8) |
+                                        ((((unsigned int)f) & 255))
+                                    );
+                                u16_buffer += u16_value;
+                            } else {
+                                err = "failed to parse U16 value";
+                                in.setstate(std::ios::failbit);
+                                return in;
+                            }
+                            is_backslash = false;
+                            continue;
+                        } else [[likely]] {
+                            // flush the utf16 buffer if no other \u follows
+                            if(u16_buffer.length() > 0) {
+                                try {
+                                    auto bytes = convert.to_bytes(u16_buffer);
+                                    out += bytes;
+                                } catch(std::range_error& ex) {
+                                    err = "failed to parse U16 value";
+                                    in.setstate(std::ios::failbit);
+                                    return in;
+                                }
+                                u16_buffer.clear();
+                            }
+                        }
                         switch(c) {
                             case 'r':
                                 out += '\r';
@@ -235,27 +327,6 @@ namespace s90 {
                             case '/':
                                 out += '/';
                                 break;
-                            case 'x':
-                                {
-                                    if(!(in >> a >> b)) {
-                                        err = "failed to read two bytes after \\x";
-                                        return in;
-                                    }
-                                    if(a >= '0' && a <= '9') a = a - '0';
-                                    else if(a >= 'A' && a <= 'f') a = a - 'a' + 10;
-                                    else if(a >= 'A' && a <= 'F') a = a - 'A' + 10;
-                                    if(b >= '0' && b <= '9') b = b - '0';
-                                    else if(b >= 'a' && b <= 'f') b = b - 'a' + 10;
-                                    else if(b >= 'A' && b <= 'F') b = b - 'A' + 10;
-                                    if(a >= 0 && a <= 15 && b >= 0 && b <= 15) {
-                                        out += (char)((a << 4) | (b));
-                                    } else {
-                                        err = "provided \\x value is not valid";
-                                        in.setstate(std::ios::failbit);
-                                        return in;
-                                    }
-                                }
-                                break;
                             default:
                                 out += '\\';
                                 out += c;
@@ -263,41 +334,65 @@ namespace s90 {
                         }
                         is_backslash = false;
                     } else if(c == '\\') {
+                        // we handle this in the next cycle
                         is_backslash = true;
-                    } else if(c == '"') {
-                        return in;
-                    } else [[likely]] {
-                        out += c;
+                    } else {
+                        // handle UTF16 buffer here as well for either final flush or early flush
+                        if(u16_buffer.length() > 0) {
+                            try {
+                                auto bytes = convert.to_bytes(u16_buffer);
+                                out += bytes;
+                            } catch(std::range_error& ex) {
+                                err = "failed to parse U16 value";
+                                in.setstate(std::ios::failbit);
+                                return in;
+                            }
+                            u16_buffer.clear();
+                        }
+                        if(c == '"') {
+                            in >> std::skipws;
+                            return in;
+                        } else [[likely]] {
+                            out += c;
+                        }
                     }
                 }
-                in.setstate(std::ios::failbit);
                 err = "unexpected parse error";
+                in.setstate(std::ios::failbit);
                 return in;
             }
 
-            std::string decode(std::istream& in, const orm::any& a, uintptr_t offset, size_t depth = 0, size_t max_depth = 32) {
+            /// @brief Decode input stream into `any`
+            /// @param in input stream
+            /// @param a target any
+            /// @param offset offset of output any
+            /// @param carried carried char from last read to prevent is::seekg(-1)
+            /// @param depth current depth
+            /// @param max_depth max depth
+            /// @return error if any, no error if empty
+            std::string decode(std::istream& in, const orm::any& a, uintptr_t offset, std::optional<char>& carried, size_t depth = 0, size_t max_depth = 32) {
                 std::string helper, key, err;
                 char c;
+                //std::optional<char> carried;
                 if(depth >= max_depth) [[unlikely]] return "reached max nested depth of " + std::to_string(depth);
                 if(a.is_optional()) [[unlikely]] {
                     // test for `null` occurence in case of optionals
-                    read_next_c(in, c);
+                    read_next_c(in, c, carried);
                     if(!in) [[unlikely]] {
                         return "unexpected EOF when testing for optional";
                     } else if(c == 'n') {
                         helper = "n";
                         // read rest of the types - numeric + booleans
-                        read_next_token(in, helper);
+                        read_next_token(in, helper, carried);
                         if(!in) {
                             return "unexpected EOF while reading null optional";
                         } else if(helper == "null") [[likely]] {
-                            in.seekg(-1, std::ios_base::cur);
                             return "";
                         } else {
                             return "invalid value when reading optional: \"" + helper + "\"";
                         }
                     } else [[likely]] {
-                        in.seekg(-1, std::ios_base::cur);
+                        carried = c; //in.seekg(-1, std::ios_base::cur);
                     }
                 }
                 switch(a.get_type()) {
@@ -305,19 +400,20 @@ namespace s90 {
                         {
                             // decode array by searching for [, then parsing items
                             // and searching either for , or ] where if we find , we continue
-                            if(read_next_c(in, c) && c == '[') {
+                            if(read_next_c(in, c, carried) && c == '[') {
                                 a.set_present(true, offset);
                                 while(true) {
-                                    if(read_next_c(in, c) && c == ']') {
+                                    if(read_next_c(in, c, carried) && c == ']') {
                                         return "";
                                     } else if(!in) [[unlikely]]  {
                                         return "unexpected EOF on array";
                                     } else [[likely]] {
-                                        in.seekg(-1, std::ios_base::cur);
+                                        carried = c;
+                                        //in.seekg(-1, std::ios_base::cur);
                                         orm::any el = a.push_back({}, offset);
-                                        auto res = decode(in, el, el.get_ref(), depth + 1, max_depth);
+                                        auto res = decode(in, el, el.get_ref(), carried, depth + 1, max_depth);
                                         if(res.length() > 0) return res;
-                                        read_next_c(in, c);
+                                        read_next_c(in, c, carried);
                                         if(!in) return "unexpected EOF on reading next array item";
                                         else if(c == ']') return "";
                                         else if(c == ',') continue;
@@ -333,10 +429,10 @@ namespace s90 {
                         {
                             // decode object by searching for {, then for string : item
                             // and then searching either for , or } where if we find , we continue
-                            if(read_next_c(in, c) && c == '{') {
+                            if(read_next_c(in, c, carried) && c == '{') {
                                 a.set_present(true, offset);
-                                while(read_str(in, key, err)) {
-                                    if(read_next_c(in, c) && c != ':') [[unlikely]] return "expected : after key";
+                                while(read_str(in, key, err, carried)) {
+                                    if(read_next_c(in, c, carried) && c != ':') [[unlikely]] return "expected : after key";
                                     if(!in) [[unlikely]]  return "unexpected EOF on object key";
                                     auto orm_id = a.get_orm_id();
                                     auto it = mappers.find(orm_id);
@@ -349,10 +445,10 @@ namespace s90 {
                                     }
                                     auto ref = it->second.find(std::string_view(key));
                                     if(ref != it->second.end()) [[likely]] {
-                                        auto res = decode(in, ref->second, a.get_ref(), depth + 1, max_depth);
+                                        auto res = decode(in, ref->second, a.get_ref(), carried, depth + 1, max_depth);
                                         if(res.length() > 0) return res;
                                     }
-                                    read_next_c(in, c);
+                                    read_next_c(in, c, carried);
                                     if(!in) return "unexpected EOF after reading key, value pair";
                                     if(c == ',') [[likely]] continue;
                                     else if(c == '}') [[likely]] break;
@@ -373,7 +469,7 @@ namespace s90 {
                         [[likely]]
                         helper = "";
                         // read either string or date and decode the JSON encoded string into native string
-                        if(read_str(in, helper, err)) [[likely]] {
+                        if(read_str(in, helper, err, carried)) [[likely]] {
                             if(!a.to_native(helper, offset)) [[unlikely]] {
                                 return "failed to parse value \"" + helper + "\" as a " + (a.get_type() == orm::reftype::dt ? "datetime" : "string");
                             }
@@ -383,12 +479,16 @@ namespace s90 {
                         break;
                     default:
                         helper = "";
+                        if(carried) {
+                            helper += *carried;
+                            carried.reset();
+                        }
                         // read rest of the types - numeric + booleans
-                        if(!read_next_token(in, helper)) {
+                        if(!read_next_token(in, helper, carried)) {
                             return "unexpected EOF when parsing numeric or boolean value";
                         } else if(helper.length() > 0) [[likely]] {
                             if(!a.to_native(helper, offset)) [[unlikely]] return "failed to parse value \"" + helper + "\" as a number";
-                            in.seekg(-1, std::ios_base::cur);
+                            //in.seekg(-1, std::ios_base::cur);
                         } else {
                             return "failed to read value for numeric field";
                         }
@@ -404,12 +504,13 @@ namespace s90 {
             /// @return decoded object
             template<typename T>
             requires orm::with_orm_trait<T>
-            std::expected<T, std::string> decode(std::string text) {
+            std::expected<T, std::string> decode(const std::string& text, size_t max_depth = 32) {
                 std::stringstream ss;
                 ss << text;
                 T obj;
                 orm::any a(obj);
-                auto err = decode(ss, a, a.get_ref(), 0, 32);
+                std::optional<char> carried;
+                auto err = decode(ss >> std::skipws, a, a.get_ref(), carried, 0, max_depth);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
@@ -424,12 +525,93 @@ namespace s90 {
                 typename T, 
                 typename = std::enable_if<std::is_same<T, std::vector<typename T::value_type>>::value>::type
             >
-            std::expected<T, std::string> decode(std::string text) {
+            std::expected<T, std::string> decode(const std::string& text, size_t max_depth = 32) {
                 std::stringstream ss;
                 ss << text;
                 T obj;
                 orm::any a(obj);
-                auto err = decode(ss, a, 0, 0, 32);
+                std::optional<char> carried;
+                auto err = decode(ss >> std::skipws, a, 0, carried, 0, max_depth);
+                if(err.length() > 0) [[unlikely]] {
+                    return std::unexpected(err);
+                }
+                return obj;
+            }
+
+            /* Move based */
+
+            /// @brief Decode JSON string to an object
+            /// @tparam T object type
+            /// @param text JSON string
+            /// @return decoded object
+            template<typename T>
+            requires orm::with_orm_trait<T>
+            std::expected<T, std::string> decode(std::string&& text, size_t max_depth = 32) {
+                std::stringstream ss;
+                ss << std::move(text);
+                T obj;
+                orm::any a(obj);
+                std::optional<char> carried;
+                auto err = decode(ss >> std::skipws, a, a.get_ref(), carried, 0, max_depth);
+                if(err.length() > 0) [[unlikely]] {
+                    return std::unexpected(err);
+                }
+                return obj;
+            }
+
+            /// @brief Decode JSON array string to vector<T>
+            /// @tparam T vector<T>
+            /// @param text JSON string
+            /// @return decoded array
+            template<
+                typename T, 
+                typename = std::enable_if<std::is_same<T, std::vector<typename T::value_type>>::value>::type
+            >
+            std::expected<T, std::string> decode(std::string&& text, size_t max_depth = 32) {
+                std::stringstream ss;
+                ss << std::move(text);
+                T obj;
+                orm::any a(obj);
+                std::optional<char> carried;
+                auto err = decode(ss >> std::skipws, a, 0, carried, 0, max_depth);
+                if(err.length() > 0) [[unlikely]] {
+                    return std::unexpected(err);
+                }
+                return obj;
+            }
+
+            /* Stream based */
+
+            /// @brief Decode JSON string to an object
+            /// @tparam T object type
+            /// @param text JSON string
+            /// @return decoded object
+            template<typename T>
+            requires orm::with_orm_trait<T>
+            std::expected<T, std::string> decode(std::istream& text, size_t max_depth = 32) {
+                T obj;
+                orm::any a(obj);
+                std::optional<char> carried;
+                auto err = decode(text >> std::skipws, a, a.get_ref(), carried, 0, max_depth);
+                if(err.length() > 0) [[unlikely]] {
+                    return std::unexpected(err);
+                }
+                return obj;
+            }
+
+            /// @brief Decode JSON array string to vector<T>
+            /// @tparam T vector<T>
+            /// @param text JSON string
+            /// @return decoded array
+            template<
+                typename T, 
+                typename = std::enable_if<std::is_same<T, std::vector<typename T::value_type>>::value>::type
+            >
+            std::expected<T, std::string> decode(std::istream& text, size_t max_depth = 32) {
+                T obj;
+                orm::any a(obj);
+                std::optional<char> carried;
+                auto err = decode(text >> std::skipws, a, 0, carried, 0, max_depth);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }

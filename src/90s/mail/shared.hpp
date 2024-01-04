@@ -103,6 +103,8 @@ namespace s90 {
         };
 
         struct mail_attachment : public orm::with_orm {
+            WITH_ID;
+            
             std::string attachment_id;
             size_t start = 0, end = 0;
             std::string name;
