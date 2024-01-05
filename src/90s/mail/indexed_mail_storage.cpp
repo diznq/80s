@@ -1,5 +1,5 @@
 #include <80s/algo.h>
-#include "mail_storage.hpp"
+#include "indexed_mail_storage.hpp"
 #include "../util/util.hpp"
 #include "../orm/json.hpp"
 #include <filesystem>
@@ -541,7 +541,7 @@ namespace s90 {
          *  Indexed Mail Storage implementation 
          */
 
-        indexed_mail_storage::indexed_mail_storage(icontext *ctx, server_config cfg) : global_context(ctx), config(cfg) 
+        indexed_mail_storage::indexed_mail_storage(icontext *ctx, mail_server_config cfg) : global_context(ctx), config(cfg) 
         {
             db = ctx->new_sql_instance("mysql");
         }
@@ -555,6 +555,17 @@ namespace s90 {
                 co_await db->connect(config.db_host, config.db_port, config.db_user, config.db_password, config.db_name);
             }
             co_return db;
+        }
+
+        aiopromise<std::expected<mail_user, std::string>> indexed_mail_storage::login(std::string name, std::string password) {
+            auto db = co_await get_db();
+            auto password_hash = util::to_hex(util::hmac_sha256(util::hmac_sha256(password, name), config.user_salt));
+            auto result = co_await db->select<mail_user>("SELECT * FROM mail_users WHERE email = '{}' AND password = '{}' LIMIT 1", name, password_hash);
+            if(result && result.size() == 1) {
+                co_return *result;
+            } else {
+                co_return std::unexpected("invalid username or password");
+            }
         }
 
         aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::store_mail(mail_knowledge mail, bool outbounding) {

@@ -1,17 +1,13 @@
-#include "server.hpp"
-#include "mail_storage.hpp"
 #include <iostream>
 #include <cstring>
-#include <regex>
+#include "server.hpp"
+#include "mail_storage.hpp"
+#include "indexed_mail_storage.hpp"
+#include "http/http_api.hpp"
 
 namespace s90 {
     namespace mail {
-        server::server(icontext *ctx) : global_context(ctx) {
-            auto cfg_orm = config.get_orm();
-            for(auto& [k, v] : cfg_orm) {
-                const char *env = getenv(std::string(k).c_str());
-                if(env) v.to_native(env);
-            }
+        smtp_server::smtp_server(icontext *ctx, mail_server_config config) : config(config), global_context(ctx) {
             if(config.sv_tls_enabled) {
                 if(config.sv_tls_privkey.empty() || config.sv_tls_pubkey.empty()) {
                     printf("[smtp server] failed to initialize SSL: pubkey/privkey missing\n");
@@ -26,14 +22,22 @@ namespace s90 {
                     }
                 }
             }
+
             storage = std::make_shared<indexed_mail_storage>(ctx, config);
+
+            if(config.sv_http_api) {
+                http_api = std::make_shared<mail_http_api>(this);
+            }
         }
 
-        server::~server() {
+        smtp_server::~smtp_server() {
 
         }
 
-        aiopromise<nil> server::on_accept(std::shared_ptr<iafd> fd) {
+        aiopromise<nil> smtp_server::on_accept(std::shared_ptr<iafd> fd) {
+            if(config.sv_http_api) {
+                co_return co_await http_api->on_accept(fd);
+            }
             if(!co_await write(fd, std::format("220 {} ESMTP 90s\r\n", config.smtp_host))) co_return nil {};
             mail_knowledge knowledge;
             std::string peer_name = "failed to resolve";
@@ -141,6 +145,16 @@ namespace s90 {
                                 if(!co_await write(fd, std::format("451 Server failed to handle the message. Error: {}. Try again later\r\n", handled.error()))) co_return nil {};
                             }
                         }
+                    } else if(cmd->starts_with("RSET")) {
+                        bool had_hello = knowledge.hello;
+                        bool had_tls = knowledge.tls;
+                        std::string client_name = knowledge.client_name;
+                        knowledge = mail_knowledge {};
+                        knowledge.hello = had_hello;
+                        knowledge.tls = had_tls;
+                        knowledge.client_name = client_name;
+                        knowledge.client_address = peer_name;
+                        if(!co_await write(fd, "250 OK\r\n")) co_return nil {};
                     } else {
                         std::string errors = "503-There were following errors:";
                         if(!knowledge.hello) errors += "\r\n503- No hello has been sent";
@@ -159,20 +173,20 @@ namespace s90 {
             }
         }
 
-        void server::on_load() {
-
+        void smtp_server::on_load() {
+            if(http_api) http_api->on_load();
         }
 
-        void server::on_pre_refresh() {
-
+        void smtp_server::on_pre_refresh() {
+            if(http_api) http_api->on_pre_refresh();
         }
 
-        void server::on_refresh() {
-
+        void smtp_server::on_refresh() {
+            if(http_api) http_api->on_refresh();
         }
 
 
-        aiopromise<read_arg> server::read_until(std::shared_ptr<iafd> fd, std::string&& delim) {
+        aiopromise<read_arg> smtp_server::read_until(std::shared_ptr<iafd> fd, std::string&& delim) {
             auto result = co_await fd->read_until(std::move(delim));
             if(config.sv_logging) {
                 if(result) {
@@ -183,21 +197,21 @@ namespace s90 {
             }
             co_return std::move(result);
         }
-        aiopromise<bool> server::write(std::shared_ptr<iafd> fd, std::string_view data) {
+        aiopromise<bool> smtp_server::write(std::shared_ptr<iafd> fd, std::string_view data) {
             if(config.sv_logging) {
                 std::cout << "--> " << fd->name() << ":" << data << std::endl;
             }
             return fd->write(data);
         }
 
-        void server::close(std::shared_ptr<iafd> fd) {
+        void smtp_server::close(std::shared_ptr<iafd> fd) {
             if(config.sv_logging) {
                 std::cout << "x-- " << fd->name() << std::endl;
             }
             fd->close();
         }
 
-        mail_parsed_user server::parse_smtp_address(std::string_view address) {
+        mail_parsed_user smtp_server::parse_smtp_address(std::string_view address) {
             std::string original_email(address);
             std::string original_email_server;
             std::string email = original_email;

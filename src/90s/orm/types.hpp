@@ -9,15 +9,48 @@
 namespace s90 {
     namespace orm {
 
-        struct timestamp {
-            std::chrono::system_clock::time_point point = std::chrono::system_clock::now();
+        class timestamp {
+        protected:
+            static time_t utc_unix_timestamp(const std::tm *t)  {
+                time_t y = t->tm_year + 1900;
+                int i = 0;
+                int cummulative_days[] =    {   0, 31, 
+                                                28 + (y % 4 == 0 && (y % 400 == 0 || y % 100 != 0)), 
+                                                31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+                                            };
+                const int non_leap[] = {2100, 2200, 2300,  2500, 2600, 2700, 2900, 3000};
+                
+                for(i = 1; i < 12; i++) {
+                    cummulative_days[i] = cummulative_days[i]  + cummulative_days[i - 1];
+                }
 
-            timestamp operator-(size_t t) {
-                return timestamp{ point - std::chrono::seconds(t) };
+                time_t days = (y - 1970) * 365 - 1;
+
+                i = 0, y--;
+                days += ((y - 1970) / 4);
+                while(y >= non_leap[i]) {
+                    days--;
+                    i++;
+                }
+
+                days += cummulative_days[t->tm_mon] + t->tm_mday;
+                time_t seconds = days * 86400 + t->tm_hour * 3600 + t->tm_min * 60 + t->tm_sec;
+                return seconds;
             }
 
-            timestamp operator+(size_t t) {
-                return timestamp{ point - std::chrono::seconds(t) };
+        public:
+            time_t point = 0;
+
+            static timestamp now() {
+                return timestamp { time(NULL) };
+            }
+
+            timestamp operator-(time_t t) {
+                return timestamp{ point - t };
+            }
+
+            timestamp operator+(time_t t) {
+                return timestamp{ point + t };
             }
 
             bool operator==(const timestamp& v) const {
@@ -50,28 +83,30 @@ namespace s90 {
                     time.tm_hour = h; 
                     time.tm_min = i;
                     time.tm_sec = s;
-                    point = std::chrono::system_clock::time_point(std::chrono::seconds(std::mktime(&time)));
+
+                    point = utc_unix_timestamp(&time);
                     return true;
                 } else {
-                    size_t secs = 0;
+                    time_t secs = 0;
                     auto res = std::from_chars(value.begin(), value.end(), secs, 10);
                     if(res.ec != std::errc() || res.ptr != value.end()) return false;
-                    point = std::chrono::system_clock::time_point(std::chrono::seconds(secs));
+                    point = secs;
                     return true;
                 }
             }
 
             std::string from_native() const {
-                return std::to_string(std::chrono::duration_cast<std::chrono::seconds>(point.time_since_epoch()).count());
+                return std::to_string(point);
             }
 
             void from_native(std::ostream& out) const {
-                out << std::chrono::duration_cast<std::chrono::seconds>(point.time_since_epoch()).count();
+                out << point;
             }
 
             std::string ymdhis() const {
-                std::time_t tt = std::chrono::system_clock::to_time_t(point);
-                std::tm utc_tm = *std::gmtime(&tt);
+                const std::tm *utc_tm_p = std::gmtime(&point);
+                if(!utc_tm_p) return "invalid timestamp";
+                const std::tm& utc_tm = *utc_tm_p;
                 char buff[25];
                 std::sprintf(buff, "%04d-%02d-%02d %02d:%02d:%02d", utc_tm.tm_year + 1900, utc_tm.tm_mon + 1, utc_tm.tm_mday,
                                                                     utc_tm.tm_hour, utc_tm.tm_min, utc_tm.tm_sec);
@@ -79,8 +114,9 @@ namespace s90 {
             }
 
             std::string ymd(char sep = '/') const {
-                std::time_t tt = std::chrono::system_clock::to_time_t(point);
-                std::tm utc_tm = *std::gmtime(&tt);
+                const std::tm *utc_tm_p = std::gmtime(&point);
+                if(!utc_tm_p) return "invalid timestamp";
+                const std::tm& utc_tm = *utc_tm_p;
                 char buff[25];
                 if(sep != '\0') {
                     std::sprintf(buff, "%04d%c%02d%c%02d", utc_tm.tm_year + 1900, sep, utc_tm.tm_mon + 1, sep, utc_tm.tm_mday);
@@ -91,8 +127,9 @@ namespace s90 {
             }
 
             std::string his(char sep = '/') const {
-                std::time_t tt = std::chrono::system_clock::to_time_t(point);
-                std::tm utc_tm = *std::gmtime(&tt);
+                const std::tm *utc_tm_p = std::gmtime(&point);
+                if(!utc_tm_p) return "invalid timestamp";
+                const std::tm& utc_tm = *utc_tm_p;
                 char buff[25];
                 if(sep != '\0') {
                     std::sprintf(buff, "%02d%c%02d%c%02d", utc_tm.tm_hour, sep, utc_tm.tm_min, sep, utc_tm.tm_sec);
@@ -103,8 +140,7 @@ namespace s90 {
             }
             
             std::string iso8601() const {
-                std::time_t tt = std::chrono::system_clock::to_time_t(point);
-                std::tm utc_tm = *std::gmtime(&tt);
+                std::tm utc_tm = *std::gmtime(&point);
                 char buff[30];
                 std::sprintf(buff, "%04d-%02d-%02dT%02d:%02d:%02d", utc_tm.tm_year + 1900, utc_tm.tm_mon + 1, utc_tm.tm_mday,
                                                                     utc_tm.tm_hour, utc_tm.tm_min, utc_tm.tm_sec);
@@ -112,13 +148,18 @@ namespace s90 {
             }
         };
 
-        struct datetime : public timestamp {
-            datetime operator-(size_t t) {
-                return datetime{ point - std::chrono::seconds(t) };
+        class datetime : public timestamp {
+        public:
+            static datetime now() {
+                return datetime { time(NULL) };
             }
 
-            datetime operator+(size_t t) {
-                return datetime{ point - std::chrono::seconds(t) };
+            datetime operator-(time_t t) {
+                return datetime{ point - t };
+            }
+
+            datetime operator+(time_t t) {
+                return datetime{ point  + t };
             }
 
             std::string from_native() const {

@@ -29,9 +29,10 @@ namespace s90 {
             html_text
         };
 
-        struct server_config : public orm::with_orm {
+        struct mail_server_config : public orm::with_orm {
             std::string smtp_host = "localhost";
             bool sv_tls_enabled = false;
+            bool sv_http_api = false;
             std::string sv_tls_privkey;
             std::string sv_tls_pubkey;
             std::string sv_mail_storage_dir = "/tmp/mails/";
@@ -42,6 +43,13 @@ namespace s90 {
             std::string db_user = "mail";
             std::string db_password = "password";
             std::string db_name = "mails";
+            std::string user_salt = "123";
+
+            static mail_server_config env() {
+                mail_server_config entity;
+                orm::from_env(entity.get_orm());
+                return entity;
+            }
 
             orm::mapper get_orm() {
                 return {
@@ -49,13 +57,15 @@ namespace s90 {
                     { "SV_TLS_ENABLED", sv_tls_enabled },
                     { "SV_TLS_PRIVKEY", sv_tls_privkey },
                     { "SV_TLS_PUBKEY", sv_tls_pubkey },
+                    { "SV_HTTP_API", sv_http_api },
                     { "SV_LOGGING", sv_logging },
                     { "DB_USER", db_user },
                     { "DB_PASSWORD", db_password },
                     { "DB_NAME", db_name },
                     { "DB_PORT", db_port },
                     { "DB_HOST", db_host },
-                    { "SV_MAIL_STORAGE_DIR", sv_mail_storage_dir }
+                    { "SV_MAIL_STORAGE_DIR", sv_mail_storage_dir },
+                    { "USER_SALT", user_salt }
                 };
             }
         };

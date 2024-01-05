@@ -13,9 +13,13 @@ void *create_context(fd_t elfd, node_id *id, const char *entrypoint, reload_cont
         const char *env = getenv("PROTOCOL");
         if(env) protocol = env;
         if(protocol == "http")
-            ctx->set_handler(static_pointer_cast<s90::connection_handler>(std::make_shared<s90::httpd::server>(ctx)));
+            ctx->set_handler(static_pointer_cast<s90::connection_handler>(
+                std::make_shared<s90::httpd::httpd_server>(ctx, s90::httpd::httpd_config::env())
+            ));
         else if(protocol == "smtp")
-            ctx->set_handler(static_pointer_cast<s90::connection_handler>(std::make_shared<s90::mail::server>(ctx)));
+            ctx->set_handler(static_pointer_cast<s90::connection_handler>(
+                std::make_shared<s90::mail::smtp_server>(ctx, s90::mail::mail_server_config::env())
+            ));
     });
     ctx->on_load();
     return ctx;

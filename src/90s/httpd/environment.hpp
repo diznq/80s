@@ -1,6 +1,7 @@
 #pragma once
 #include "../context.hpp"
 #include "render_context.hpp"
+#include "../orm/json.hpp"
 #include <string>
 #include <expected>
 #include <optional>
@@ -8,7 +9,7 @@
 namespace s90 {
     namespace httpd {
         class page;
-        class server;
+        class httpd_server;
 
         enum class encryption {
             none,
@@ -156,9 +157,17 @@ namespace s90 {
             template<class T>
             requires orm::with_orm_trait<T>
             T form() const {
-                T val;
-                to_native(val.get_orm(), form());
-                return val;
+                auto it = header("content-type");
+                if(it && *it == "application/json") {
+                    orm::json_decoder dec;
+                    auto res = dec.decode<T>(body());
+                    if(res) return *res;
+                    else return T{};
+                } else {
+                    T val;
+                    to_native(val.get_orm(), form());
+                    return val;
+                }
             }
         };
 
@@ -223,7 +232,7 @@ namespace s90 {
             std::string to_hex(std::string_view data) const override;
 
         private:
-            friend class s90::httpd::server;
+            friend class s90::httpd::httpd_server;
             void write_method(std::string&& method);
             void write_header(std::string&& key, std::string&& value);
             void write_query(dict<std::string, std::string>&& qs);
