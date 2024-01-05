@@ -95,6 +95,23 @@ CREATE TABLE `mail_users` (
 ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+--
+-- Table structure for table `mail_sessions`
+--
+
+DROP TABLE IF EXISTS `mail_sessions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `mail_sessions` (
+  `user_id` bigint(20) NOT NULL,
+  `session_id` varchar(64) NOT NULL,
+  `client_info` text NOT NULL,
+  `created_at` varchar(48) DEFAULT NULL,
+  `last_updated_at` text DEFAULT NULL,
+  PRIMARY KEY (`user_id`,`session_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
