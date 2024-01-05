@@ -121,7 +121,7 @@ namespace s90 {
                                 err.error = "user id not found";
                             }
                         } else {
-                            err.error = "corrupted session/1: " + decrypted.error();
+                            err.error = "corrupted session";
                         }
                     } else {
                         err.error = "failed to decode session";

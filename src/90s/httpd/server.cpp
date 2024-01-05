@@ -144,6 +144,8 @@ namespace s90 {
             std::string master_key = config.master_key;
             if(config.web_static.length() > 0) static_path = config.web_static;
 
+            enc_base = master_key;
+
             if(enc_base.starts_with("b64:")) {
                 auto decoded = util::from_b64(enc_base.substr(4));
                 if(decoded) {
