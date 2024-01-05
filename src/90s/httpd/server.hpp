@@ -19,7 +19,7 @@ namespace s90 {
 
             std::string web_root = "src/90s/httpd/pages/";
             std::string web_static = "";
-            std::string master_key = "ABCDEFGHIJLMNO";
+            std::string master_key = "ABCDEFGHIJKLMNOP";
             bool dynamic_content = true;
             std::vector<page*> pages;
 
