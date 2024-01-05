@@ -150,6 +150,7 @@ namespace s90 {
                     enc_base = *decoded;
                 }
             }
+            
             if(enc_base.length() == 0) enc_base = "ABCDEFGHIJKLMNOP";
             if(enc_base.length() < 16) enc_base = util::sha256(enc_base);
 
@@ -241,6 +242,7 @@ namespace s90 {
         }
 
         aiopromise<nil> httpd_server::on_accept(std::shared_ptr<iafd> fd) {
+            std::string peer_name;
             dict<std::string, page*>::iterator it;
             page *current_page = default_page;
             std::string_view script;
@@ -249,6 +251,15 @@ namespace s90 {
             environment env;
             size_t pivot = 0, body_length = 0, prev_pivot = 0;
             bool write_status = true;
+
+            char peer_name_buff[100];
+            int peer_port = 0;
+
+            if(s80_peername(fd->get_fd(), peer_name_buff, sizeof(peer_name_buff), &peer_port)) {
+                peer_name = peer_name_buff;
+                peer_name += ',';
+                peer_name += std::to_string(peer_port);
+            }
 
             #if 0
             auto ssl_ctx = global_context->new_ssl_server_context("private/pubkey.pem", "private/privkey.pem");
@@ -356,6 +367,7 @@ namespace s90 {
                 env.write_local_context(local_context);
                 env.write_endpoint(endpoint);
                 env.write_enc_base(enc_base);
+                env.write_peer(peer_name);
 
                 auto page_coro = current_page->render(env);
                 auto page_result = co_await page_coro;

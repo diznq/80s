@@ -13,8 +13,15 @@ namespace s90 {
             indexed_mail_storage(icontext *ctx, mail_server_config cfg);
             ~indexed_mail_storage();
             aiopromise<std::shared_ptr<sql::isql>> get_db();
+
             aiopromise<std::expected<std::string, std::string>> store_mail(mail_knowledge mail, bool outbounding = false) override;
-            aiopromise<std::expected<mail_user, std::string>> login(std::string name, std::string password) override;
+            aiopromise<std::expected<mail_user, std::string>> login(std::string name, std::string password, orm::optional<mail_session> session = {}) override;
+            aiopromise<std::expected<mail_user, std::string>> get_user(std::string session_id, uint64_t user_id) override;
+
+            aiopromise<std::expected<
+                            std::tuple<sql::sql_result<mail_record>, uint64_t>, std::string
+                                    >> get_inbox(uint64_t user_id, orm::optional<std::string> folder, orm::optional<std::string> thread_id, uint64_t page, uint64_t per_page) override;
+
         };
 
         mail_parsed parse_mail(std::string_view message_id, std::string_view data);

@@ -9,6 +9,18 @@ namespace s90 {
     namespace sql {
         using sql_row = dict<std::string, std::string>;
 
+        struct count_result : public orm::with_orm {
+            WITH_ID;
+
+            uint64_t count;
+
+            orm::mapper get_orm() {
+                return {
+                    {"c", count}
+                };
+            }
+        };
+
         /// @brief SQL result
         /// @tparam T either sql_row or any type that extends with_orm
         template<class T>

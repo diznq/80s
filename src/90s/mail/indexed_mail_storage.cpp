@@ -1,4 +1,5 @@
 #include <80s/algo.h>
+#include <80s/crypto.h>
 #include "indexed_mail_storage.hpp"
 #include "../util/util.hpp"
 #include "../orm/json.hpp"
@@ -557,14 +558,71 @@ namespace s90 {
             co_return db;
         }
 
-        aiopromise<std::expected<mail_user, std::string>> indexed_mail_storage::login(std::string name, std::string password) {
+        aiopromise<std::expected<mail_user, std::string>> indexed_mail_storage::login(std::string name, std::string password, orm::optional<mail_session> session) {
             auto db = co_await get_db();
             auto password_hash = util::to_hex(util::hmac_sha256(util::hmac_sha256(password, name), config.user_salt));
             auto result = co_await db->select<mail_user>("SELECT * FROM mail_users WHERE email = '{}' AND password = '{}' LIMIT 1", name, password_hash);
             if(result && result.size() == 1) {
+                if(session) {
+                    char session_id_raw[20];
+                    crypto_random(session_id_raw, sizeof(session_id_raw));
+                    std::string session_id = util::to_b64(std::string_view(session_id_raw, session_id_raw + 20));
+                    auto session_ok = co_await db->exec(
+                        "INSERT INTO mail_sessions(user_id, session_id, client_info, created_at, last_updated_at) VALUES('{}', '{}', '{}', '{}', '{}')",
+                        result->user_id,
+                        session_id,
+                        session->client_info,
+                        orm::datetime::now(),
+                        orm::datetime::now()
+                    );
+                    if(session_ok) {
+                        result->session_id = session_id;
+                    } else {
+                        co_return std::unexpected("failed to create a session");
+                    }
+                }
                 co_return *result;
             } else {
                 co_return std::unexpected("invalid username or password");
+            }
+        }
+
+        aiopromise<std::expected<mail_user, std::string>> indexed_mail_storage::get_user(std::string session_id, uint64_t user_id) {
+            auto db = co_await get_db();
+            auto result = co_await db->select<mail_user>("SELECT mail_users.* FROM mail_users INNER JOIN mail_sessions ON mail_sessions.user_id=mail_users.user_id WHERE mail_sessions.user_id = '{}' AND mail_sessions.session_id='{}' LIMIT 1", user_id, session_id);
+            if(result && result.size() == 1) {
+                result->session_id = session_id;
+                co_return *result;
+            }
+            co_return std::unexpected("invalid session");
+        }
+
+        aiopromise<std::expected<
+                    std::tuple<sql::sql_result<mail_record>, uint64_t>, std::string
+                  >> 
+        indexed_mail_storage::get_inbox(uint64_t user_id, orm::optional<std::string> folder, orm::optional<std::string> thread_id, uint64_t page, uint64_t per_page) {
+            auto db = co_await get_db();
+            
+            auto limit_part = std::format("ORDER BY created_at DESC LIMIT {}, {}", (page - 1) * per_page, per_page);
+            auto select_part = std::format("user_id = '{}' ", db->escape(user_id));
+
+            if(folder) {
+                select_part += std::format("AND folder = '{}' ", db->escape(*folder));
+            }
+            if(thread_id) {
+                select_part += std::format("AND thread_id = '{}' ", db->escape(*thread_id));
+            }
+
+            auto result = co_await db->select<mail_record>("SELECT * FROM mail_indexed WHERE " + select_part + limit_part);
+            auto total = co_await db->select<sql::count_result>("SELECT COUNT(*) AS c FROM mail_indexed WHERE " + select_part);
+
+            if(result && total) {
+                for(auto& r : result) {
+                    r.disk_path = sql_text {};
+                }
+                co_return std::make_tuple(result, total->count);
+            } else {
+                co_return std::unexpected("database error");
             }
         }
 

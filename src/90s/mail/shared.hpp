@@ -77,7 +77,7 @@ namespace s90 {
             orm::datetime created_at;
             size_t used_space = 0;
             size_t quota = 100000000;
-
+            std::string session_id;
             
             orm::mapper get_orm() {
                 return {
@@ -157,6 +157,8 @@ namespace s90 {
         };
 
         struct mail_record : public orm::with_orm {
+            WITH_ID;
+
             uint64_t user_id;
             varstr<64> message_id;
             sql_text external_message_id;

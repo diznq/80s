@@ -1,9 +1,10 @@
 #include "environment.hpp"
 #include "page.hpp"
 #include "../util/util.hpp"
+#include "../cache/cache.hpp"
 #include <algorithm>
 #include <cctype>
-#include "../cache/cache.hpp"
+#include <ranges>
 
 namespace s90 {
     namespace httpd {
@@ -82,6 +83,17 @@ namespace s90 {
             auto it = signed_params.find(std::move(key));
             if(it == signed_params.end()) return {};
             return it->second;
+        }
+
+        dict<std::string, std::string> environment::cookies() const {
+            dict<std::string, std::string> all;
+            auto hdr = header("cookie");
+            if(hdr) {
+                for(auto value : std::ranges::split_view(std::string_view(*hdr), std::string_view("; "))) {
+
+                }
+            }
+            return all;
         }
 
         const dict<std::string, std::string>& environment::query() const {
@@ -195,6 +207,10 @@ namespace s90 {
             return util::to_hex(data);
         }
 
+        const std::string& environment::peer() const {
+            return peer_name;
+        }
+
         void environment::write_body(std::string&& data) {
             http_body = std::move(data);
         }
@@ -230,6 +246,10 @@ namespace s90 {
 
         void environment::write_enc_base(std::string_view base) {
             enc_base = base;
+        }
+
+        void environment::write_peer(const std::string& name) {
+            peer_name = std::move(name);
         }
 
     }
