@@ -55,6 +55,14 @@ namespace s90 {
             virtual aiopromise<std::expected<
                                std::tuple<sql::sql_result<mail_record>, uint64_t>, std::string
                                             >> get_inbox(uint64_t user_id, orm::optional<std::string> folder, orm::optional<std::string> thread_id, uint64_t page, uint64_t per_page) = 0;
+
+            /// @brief Get object ID from FS storage
+            /// @param email owner email
+            /// @param message_id message ID
+            /// @param object_name object name, empty if raw.eml/html/txt
+            /// @param fmt format if raw.eml/html/txt
+            /// @return object bytes or error
+            virtual aiopromise<std::expected<std::string, std::string>> get_object(std::string email, std::string message_id, orm::optional<std::string> object_name, mail_format fmt = mail_format::none) = 0;
         };
     }
 }

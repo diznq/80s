@@ -253,7 +253,7 @@ namespace s90 {
             bool hello = false;
             bool tls = false;
             std::string store_id;
-            orm::datetime created_at = orm::datetime();
+            orm::datetime created_at = orm::datetime::now();
             std::string client_name = "";
             std::string client_address = "";
             mail_parsed_user from;

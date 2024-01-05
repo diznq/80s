@@ -198,12 +198,59 @@ namespace s90 {
             }
         };
 
+        class object_page : public authenticated_page {
+            struct input : public orm::with_orm {
+                WITH_ID;
+
+                orm::optional<std::string> name;
+                orm::optional<std::string> message_id;
+                int format = (int)mail_format::none;
+
+                orm::mapper get_orm() {
+                    return {
+                        {"name", name},
+                        {"message_id", message_id},
+                        {"format", format}
+                    };
+                }
+            };
+
+        public:
+            const char *name() const { return "/api/mail/object"; }
+
+            aiopromise<std::expected<nil, httpd::status>> render(httpd::ienvironment& env) const {
+                auto user = co_await verify_login(env);
+                if(user) {
+                    error_response err;
+                    auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
+                    auto query = env.query<input>();
+                    if(!query.message_id) {
+                        err.error = "missing message id";
+                        env.status("400 Bad request");
+                        env.output()->write_json(err);
+                        co_return nil {};
+                    }
+                    auto obj = co_await ctx->get_object(user->email, *query.message_id, query.name, (mail_format)query.format);
+                    if(obj) {
+                        env.header("cache-control", "immutable");
+                        env.output()->write(*obj);
+                    } else {
+                        err.error = obj.error();
+                        env.status("400 Bad request");
+                        env.output()->write_json(err);
+                        co_return nil {};
+                    }
+                }
+                co_return nil {};
+            }
+        };
+
         mail_http_api::mail_http_api(smtp_server *parent) : parent(parent) {
             httpd::httpd_config cfg = httpd::httpd_config::env();
             cfg.initializer = [this](icontext *ctx, void*) { return this; };
 
             cfg.pages = {
-                new login_page, new inbox_page
+                new login_page, new inbox_page, new object_page
             };
 
             http_base = std::make_shared<httpd::httpd_server>(parent->get_context(), cfg);

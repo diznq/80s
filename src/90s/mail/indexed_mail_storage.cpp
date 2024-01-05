@@ -626,6 +626,27 @@ namespace s90 {
             }
         }
 
+        aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::get_object(std::string email, std::string message_id, orm::optional<std::string> object_name, mail_format fmt) {
+            std::string obj_name = "";
+            if(object_name) {
+                obj_name = util::to_hex(util::sha256(*object_name)) + ".bin";
+            } else {
+                if(fmt == mail_format::none) obj_name = "raw.eml";
+                else if(fmt == mail_format::html) obj_name = "raw.html";
+                else if(fmt == mail_format::text) obj_name = "raw.txt";
+            }
+            if(obj_name.length() == 0) co_return std::unexpected("invalid object name");
+            std::string disk_path = std::format("{}/{}/{}/{}", config.sv_mail_storage_dir, email, message_id, obj_name);
+            std::stringstream ss;
+            std::ifstream ifs(disk_path, std::ios_base::binary);
+            if(ifs) {
+                ss << ifs.rdbuf();
+                co_return ss.str();
+            } else {
+                co_return std::unexpected("invalid object");
+            }
+        }
+
         aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::store_mail(mail_knowledge mail, bool outbounding) {
             auto db = co_await get_db();
             orm::json_encoder encoder;
