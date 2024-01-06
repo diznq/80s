@@ -723,6 +723,8 @@ namespace s90 {
             node_id id = global_context->get_node_id();
             auto folder = mail.created_at.ymd('/');
             auto msg_id = std::format("{}/{}-{}-{}", folder, mail.created_at.his('_'), id.id, counter++);
+            printf("Msg ID: %s\n", msg_id.c_str());
+            printf("Mail To: #%zu\n", mail.to.size());
             if(config.sv_mail_storage_dir.ends_with("/"))
                 config.sv_mail_storage_dir = config.sv_mail_storage_dir.substr(0, config.sv_mail_storage_dir.length() - 1);
             
@@ -735,9 +737,13 @@ namespace s90 {
             for(auto& user : mail.to) user_lookup.insert(user.email);
 
             for(auto& email : user_lookup) {
+                printf("Looking up user %s\n", email.c_str());
                 auto match = co_await db->select<mail_user>("SELECT * FROM mail_users WHERE email = '{}' LIMIT 1", email);
                 if(match && match.size() > 0) {
+                    printf("Found user %s, caching it\n", email.c_str());
                     users[email] = *match;
+                } else {
+                    printf("User %s not found\n", email.c_str());
                 }
             }
 
