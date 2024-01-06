@@ -20,7 +20,7 @@ namespace s90 {
 
             aiopromise<std::expected<
                             std::tuple<sql::sql_result<mail_record>, uint64_t>, std::string
-                                    >> get_inbox(uint64_t user_id, orm::optional<std::string> folder, orm::optional<std::string> thread_id, uint64_t page, uint64_t per_page) override;
+                                    >> get_inbox(uint64_t user_id, orm::optional<std::string> folder, orm::optional<std::string> message_id, orm::optional<std::string> thread_id, uint64_t page, uint64_t per_page) override;
 
             aiopromise<std::expected<std::string, std::string>> get_object(std::string email, std::string message_id, orm::optional<std::string> object_name, mail_format fmt = mail_format::none) override;
 

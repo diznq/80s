@@ -600,7 +600,7 @@ namespace s90 {
         aiopromise<std::expected<
                     std::tuple<sql::sql_result<mail_record>, uint64_t>, std::string
                   >> 
-        indexed_mail_storage::get_inbox(uint64_t user_id, orm::optional<std::string> folder, orm::optional<std::string> thread_id, uint64_t page, uint64_t per_page) {
+        indexed_mail_storage::get_inbox(uint64_t user_id, orm::optional<std::string> folder, orm::optional<std::string> message_id, orm::optional<std::string> thread_id, uint64_t page, uint64_t per_page) {
             auto db = co_await get_db();
             
             auto limit_part = std::format("ORDER BY created_at DESC LIMIT {}, {}", (page - 1) * per_page, per_page);
@@ -611,6 +611,9 @@ namespace s90 {
             }
             if(thread_id) {
                 select_part += std::format("AND thread_id = '{}' ", db->escape(*thread_id));
+            }
+            if(message_id) {
+                select_part += std::format("AND message_id = '{}' ", db->escape(*message_id));
             }
 
             auto result = co_await db->select<mail_record>("SELECT * FROM mail_indexed WHERE " + select_part + limit_part);

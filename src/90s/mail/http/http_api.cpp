@@ -145,12 +145,14 @@ namespace s90 {
 
                 orm::optional<std::string> folder;
                 orm::optional<std::string> thread_id;
+                orm::optional<std::string> message_id;
                 orm::optional<int> page = 1;
                 orm::optional<int> per_page = 25;
 
                 orm::mapper get_orm() {
                     return {
                         {"folder", folder},
+                        {"message_id", message_id},
                         {"thread_id", thread_id},
                         {"page", page},
                         {"per_page", per_page}
@@ -180,7 +182,7 @@ namespace s90 {
                     auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
                     auto query = env.query<input>();
                     auto db_response = co_await ctx->get_inbox(
-                        user->user_id, query.folder, query.thread_id, query.page.or_else(1), query.per_page.or_else(25)
+                        user->user_id, query.folder, query.message_id, query.thread_id, query.page.or_else(1), query.per_page.or_else(25)
                     );
                     if(db_response) {
                         auto [sql_res, total] = *db_response;
