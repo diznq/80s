@@ -212,13 +212,51 @@ namespace s90 {
         }
 
         mail_parsed_user smtp_server::parse_smtp_address(std::string_view address) {
+            if(!address.starts_with("<")) return mail_parsed_user { true };
+            auto end = address.find('>');
+            if(end == std::string::npos) return mail_parsed_user { true };
+            address = address.substr(1, end - 1);
+            int ats = 0;
+            int prefix_invalid = 0, postfix_invalid = 0;
+            int prefix_length = 0, postfix_length = 0;
             std::string original_email(address);
             std::string original_email_server;
             std::string email = original_email;
+            for(char c : address) {
+                bool valid = false;
+                if(c == '@') {
+                    ats++;
+                }else if(ats == 0) {
+                    valid = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '=' || c == '+';
+                    if(!valid) prefix_invalid++;
+                    else prefix_length++;
+                } else {
+                    valid = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_';
+                    if(!valid) postfix_invalid++;
+                    else postfix_length++;
+                }
+            }
+            if(ats != 1 || prefix_invalid > 0 || postfix_invalid > 0 || prefix_length == 0 || postfix_length == 0) return mail_parsed_user { true };
             auto at_pos = address.find('@');
-            if(at_pos == std::string::npos) return mail_parsed_user { true };
-            original_email_server = address.substr(at_pos + 1);
-            return mail_parsed_user {false, original_email, original_email_server, email, ""};
+            std::string folder = "";
+            for(const auto& sv : config.get_smtp_hosts()) {
+                auto postfix = "." + sv;
+                if(original_email.ends_with(postfix)) {
+                    folder = original_email.substr(0, at_pos);
+                    email = original_email.substr(at_pos + 1, original_email.length() - at_pos - 1 - postfix.length()) + "@" + sv;
+                    break;
+                } else if(original_email.ends_with("@" + sv)) {
+                    auto mbox = original_email.find(".mbox.");
+                    if(mbox != 0 && mbox != std::string::npos) {
+                        folder = original_email.substr(0, mbox);
+                        email = original_email.substr(mbox + 6);
+                        break;
+                    }
+                }
+            }
+            at_pos = email.find('@');
+            original_email_server = email.substr(at_pos + 1); 
+            return mail_parsed_user {false, original_email, original_email_server, email, folder};
         }
     }
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "../context.hpp"
+#include <ranges>
 
 namespace s90 {
     namespace mail {
@@ -35,6 +36,7 @@ namespace s90 {
 
         struct mail_server_config : public orm::with_orm {
             std::string smtp_host = "localhost";
+            std::string smtp_hosts = "localhost";
             bool sv_tls_enabled = false;
             bool sv_http_api = false;
             std::string sv_tls_privkey;
@@ -48,6 +50,17 @@ namespace s90 {
             std::string db_password = "password";
             std::string db_name = "mails";
             std::string user_salt = "123";
+
+            std::vector<std::string> smtp_hosts_array;
+
+            const std::vector<std::string>& get_smtp_hosts() {
+                if(smtp_hosts_array.size() == 0) {
+                    for(auto v : std::ranges::split_view(std::string_view(smtp_hosts), std::string_view(","))) {
+                        smtp_hosts_array.push_back(std::string(std::string_view(v)));
+                    }
+                }
+                return smtp_hosts_array;
+            }
 
             static mail_server_config env() {
                 mail_server_config entity;
@@ -69,7 +82,8 @@ namespace s90 {
                     { "DB_PORT", db_port },
                     { "DB_HOST", db_host },
                     { "SV_MAIL_STORAGE_DIR", sv_mail_storage_dir },
-                    { "USER_SALT", user_salt }
+                    { "USER_SALT", user_salt },
+                    { "SMTP_HOSTS", smtp_hosts }
                 };
             }
         };

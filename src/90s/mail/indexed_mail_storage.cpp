@@ -663,7 +663,7 @@ namespace s90 {
                 select_part += std::format("AND direction = '{}' ", db->escape(*direction));
             }
 
-            auto result = co_await db->select<mail_folder_info>("SELECT folder, COUNT(*) AS total_count, SUM(status = 1 AND direction = 0) AS unread_count FROM mail_indexed WHERE " + select_part);
+            auto result = co_await db->select<mail_folder_info>("SELECT folder, COUNT(*) AS total_count, SUM(status = 1 AND direction = 0) AS unread_count FROM mail_indexed WHERE " + select_part + " GROUP BY folder");
             if(result) {
                 co_return result;
             } else {
