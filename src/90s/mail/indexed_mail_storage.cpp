@@ -778,9 +778,11 @@ namespace s90 {
                 auto path = std::format("{}/{}/{}", config.sv_mail_storage_dir, user.email, msg_id);
                 auto fs_path = std::filesystem::path(path);
                 if(!std::filesystem::exists(fs_path)) {
+                    printf("FS path %s doesn't exist, creating it", fs_path.c_str());
                     std::filesystem::create_directories(fs_path);
                 }
             
+                printf("Preparing data\n");
                 std::vector<std::tuple<std::string, const char*, size_t>> to_save = {
                     {"/raw.eml", mail.data.data(), mail.data.size()}
                 };

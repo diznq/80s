@@ -128,8 +128,15 @@ namespace s90 {
                         } else {
                             knowledge.data = msg.data;
                             std::expected<std::string, std::string> handled;
-                            if(!storage) handled = std::unexpected("no storage handler");
-                            else handled = co_await storage->store_mail(knowledge);
+                            if(!storage) {
+                                handled = std::unexpected("no storage handler");
+                            } else {
+                                auto prom = storage->store_mail(knowledge);
+                                handled = co_await prom;
+                                if(prom.has_exception()) {
+                                    handled = std::unexpected("unhandled error while storing");
+                                }
+                            }
                             if(handled) {
                                 bool had_hello = knowledge.hello;
                                 bool had_tls = knowledge.tls;
