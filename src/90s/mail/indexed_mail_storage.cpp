@@ -643,6 +643,7 @@ namespace s90 {
 
         aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::get_object(std::string email, std::string message_id, orm::optional<std::string> object_name, mail_format fmt) {
             std::string obj_name = "";
+            if(message_id.find('.')) co_return std::unexpected("invalid object name");
             if(object_name) {
                 obj_name = util::to_hex(util::sha256(*object_name)) + ".bin";
             } else {
@@ -669,7 +670,7 @@ namespace s90 {
                     users_total = mail.to.size();
             node_id id = global_context->get_node_id();
             auto folder = mail.created_at.ymd('/');
-            auto msg_id = std::format("{}/{}-{}-{}", folder, mail.created_at.his('.'), id.id, counter++);
+            auto msg_id = std::format("{}/{}-{}-{}", folder, mail.created_at.his('_'), id.id, counter++);
             if(config.sv_mail_storage_dir.ends_with("/"))
                 config.sv_mail_storage_dir = config.sv_mail_storage_dir.substr(0, config.sv_mail_storage_dir.length() - 1);
             

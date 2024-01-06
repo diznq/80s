@@ -90,7 +90,11 @@ namespace s90 {
             auto hdr = header("cookie");
             if(hdr) {
                 for(auto value : std::ranges::split_view(std::string_view(*hdr), std::string_view("; "))) {
-
+                    std::string_view v { value };
+                    auto pivot = v.find('=');
+                    if(pivot != std::string::npos) {
+                        all[std::string(v.substr(0, pivot))] = v.substr(pivot + 1);
+                    }
                 }
             }
             return all;
