@@ -723,8 +723,8 @@ namespace s90 {
             node_id id = global_context->get_node_id();
             auto folder = mail.created_at.ymd('/');
             auto msg_id = std::format("{}/{}-{}-{}", folder, mail.created_at.his('_'), id.id, counter++);
-            printf("Msg ID: %s\n", msg_id.c_str());
-            printf("Mail To: #%zu\n", mail.to.size());
+            dbgf("Msg ID: %s\n", msg_id.c_str());
+            dbgf("Mail To: #%zu\n", mail.to.size());
             if(config.sv_mail_storage_dir.ends_with("/"))
                 config.sv_mail_storage_dir = config.sv_mail_storage_dir.substr(0, config.sv_mail_storage_dir.length() - 1);
             
@@ -737,13 +737,13 @@ namespace s90 {
             for(auto& user : mail.to) user_lookup.insert(user.email);
 
             for(auto& email : user_lookup) {
-                printf("Looking up user %s\n", email.c_str());
+                dbgf("Looking up user %s\n", email.c_str());
                 auto match = co_await db->select<mail_user>("SELECT * FROM mail_users WHERE email = '{}' LIMIT 1", email);
                 if(match && match.size() > 0) {
-                    printf("Found user %s, caching it\n", email.c_str());
+                    dbgf("Found user %s, caching it\n", email.c_str());
                     users[email] = *match;
                 } else {
-                    printf("User %s not found\n", email.c_str());
+                    dbgf("User %s not found\n", email.c_str());
                 }
             }
 
@@ -759,14 +759,14 @@ namespace s90 {
 
             size_t size_on_disk = 0;
 
-            printf("Total saves to disk: %zu\n", mail.to.size());
+            dbgf("Total saves to disk: %zu\n", mail.to.size());
             // save the data to the disk!
             for(auto& user : mail.to) {
                 auto found_user = users.find(user.email);
-                printf("Save to disk for user %s\n", user.email.c_str());
+                dbgf("Save to disk for user %s\n", user.email.c_str());
 
                 if(found_user == users.end()) {
-                    printf("(save) User not found: %s\n", user.email.c_str());
+                    dbgf("(save) User not found: %s\n", user.email.c_str());
                     // if the user is outside of our internal DB, record it
                     // so we later know if it is 100% delivered internally
                     // or not
@@ -778,11 +778,19 @@ namespace s90 {
                 auto path = std::format("{}/{}/{}", config.sv_mail_storage_dir, user.email, msg_id);
                 auto fs_path = std::filesystem::path(path);
                 if(!std::filesystem::exists(fs_path)) {
-                    printf("FS path %s doesn't exist, creating it", fs_path.c_str());
-                    std::filesystem::create_directories(fs_path);
+                    dbgf("FS path %s doesn't exist, creating it", fs_path.c_str());
+                    std::string failure;
+                    try {
+                        std::filesystem::create_directories(fs_path);
+                    } catch(std::exception& ex) {
+                        failure = ex.what();
+                    }
+                    if(failure.length()) {
+                        co_return std::unexpected(failure);
+                    }
                 }
             
-                printf("Preparing data\n");
+                dbgf("Preparing data\n");
                 std::vector<std::tuple<std::string, const char*, size_t>> to_save = {
                     {"/raw.eml", mail.data.data(), mail.data.size()}
                 };
@@ -810,7 +818,7 @@ namespace s90 {
                 }
 
                 for(auto& [file_name, data_ptr, data_size] : to_save) {
-                    printf("Writing file %s %s to disk\n", path.c_str(), file_name.c_str());
+                    dbgf("Writing file %s %s to disk\n", path.c_str(), file_name.c_str());
                     FILE *f = fopen((path + file_name).c_str(), "wb");
                     if(f) {
                         fwrite(data_ptr, data_size, 1, f);
@@ -847,13 +855,13 @@ namespace s90 {
                     attachment_ids += ";";
             }
 
-            printf("Save %zu records to database\n", mail.to.size());
+            dbgf("Save %zu records to database\n", mail.to.size());
             // create a large query
             for(auto& user : mail.to) {
                 auto found_user = users.find(user.email);
                 if(found_user == users.end()) {
                     if(outbounding && user.direction == (int)mail_direction::inbound && mail.from.user) {
-                        printf("Mail to %s is outbound from %s\n", user.email.c_str(), mail.from.user->email.c_str());
+                        dbgf("Mail to %s is outbound from %s\n", user.email.c_str(), mail.from.user->email.c_str());
                         mail_outgoing_record outgoing_record = {
                             .user_id = mail.from.user->user_id,
                             .message_id = msg_id,
@@ -883,7 +891,7 @@ namespace s90 {
                     continue;
                 }
 
-                printf("Saving record for user %s\n", found_user->second.email.c_str());
+                dbgf("Saving record for user %s\n", found_user->second.email.c_str());
                 mail_record record {
                     .user_id = found_user->second.user_id,
                     .message_id = msg_id,
@@ -941,7 +949,7 @@ namespace s90 {
                 stored_to_db++;
             }
 
-            printf("Executing save query, length: %zu\n", query.length());
+            dbgf("Executing save query, length: %zu\n", query.length());
             // index the e-mails to the DB
             if(stored_to_db > 0) {
                 auto write_status = co_await db->exec(query.substr(0, query.length() - 1));
@@ -950,7 +958,7 @@ namespace s90 {
                 }
             }
 
-            printf("Executing queue query, length: %zu\n", outbounding_query.length());
+            dbgf("Executing queue query, length: %zu\n", outbounding_query.length());
             // submit the e-mails to the outgoing queue
             if(outbounding && outgoing_count > 0) {
                 auto write_status = co_await db->exec(outbounding_query.substr(0, outbounding_query.length() - 1));
