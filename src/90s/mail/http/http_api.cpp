@@ -1,6 +1,7 @@
 #include "../shared.hpp"
 #include "http_api.hpp"
 #include "../../util/util.hpp"
+#include <ranges>
 
 namespace s90 {
     namespace mail {
@@ -302,9 +303,8 @@ namespace s90 {
             struct input : public orm::with_orm {
                 WITH_ID;
 
-                std::vector<std::string> message_ids;
+                std::string message_ids;
                 std::string action = "";
-
                 orm::mapper get_orm() {
                     return {
                         {"message_ids", message_ids},
@@ -321,7 +321,8 @@ namespace s90 {
                     mail_action action = mail_action::set_seen;
                     error_response err;
                     auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
-                    auto query = env.query<input>();
+                    auto query = env.form<input>();
+                    std::vector<std::string> message_ids;
                     if(query.action == "seen") {
                         action = mail_action::set_seen;
                     } else if(query.action == "unseen") {
@@ -334,7 +335,10 @@ namespace s90 {
                         env.output()->write_json(err);
                         co_return nil {};
                     }
-                    auto result = co_await ctx->alter(user->user_id, query.message_ids, action);
+                    for(auto v : std::ranges::split_view(std::string_view(query.message_ids), std::string_view(","))) {
+                        message_ids.push_back(std::string(std::string_view(v)));
+                    }
+                    auto result = co_await ctx->alter(user->user_id, message_ids, action);
                     if(result) {
                         env.content_type("application/json");
                         env.output()->write("{\"ok\":true}");
@@ -342,9 +346,9 @@ namespace s90 {
                         err.error = result.error();
                         env.status("400 Bad request");
                         env.output()->write_json(err);
-                        co_return nil {};
                     }
                 }
+                co_return nil {};
             }
         };
 
