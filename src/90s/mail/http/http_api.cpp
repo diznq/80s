@@ -173,7 +173,7 @@ namespace s90 {
                 }
             };
         public:
-            const char *name() const { return "/api/mail/inbox"; }
+            const char *name() const { return "GET /api/mail/inbox"; }
 
             aiopromise<std::expected<nil, httpd::status>> render(httpd::ienvironment& env) const {
                 auto user = co_await verify_login(env);
@@ -188,6 +188,57 @@ namespace s90 {
                         auto [sql_res, total] = *db_response;
                         resp.inbox.insert(resp.inbox.end(), sql_res.begin(), sql_res.end());
                         resp.total_count = total;
+                        env.output()->write_json(resp);
+                    } else {
+                        error_response err;
+                        err.error = db_response.error();
+                        env.status("500 Internal server error");
+                        env.output()->write_json(err);
+                    }
+                }
+                co_return nil {};
+            }
+        };
+
+        class folders_page : public authenticated_page {
+            struct input : public orm::with_orm {
+                WITH_ID;
+
+                orm::optional<std::string> folder;
+                orm::optional<int> direction;
+
+                orm::mapper get_orm() {
+                    return {
+                        {"folder", folder},
+                        {"message_id", direction}
+                    };
+                }
+            };
+
+            struct response : public orm::with_orm {
+                WITH_ID;
+                std::vector<mail_folder_info> folders;
+
+                orm::mapper get_orm() {
+                    return {
+                        {"folders", folders}
+                    };
+                }
+            };
+        public:
+            const char *name() const { return "GET /api/mail/folders"; }
+
+            aiopromise<std::expected<nil, httpd::status>> render(httpd::ienvironment& env) const {
+                auto user = co_await verify_login(env);
+                if(user) {
+                    response resp;
+                    auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
+                    auto query = env.query<input>();
+                    auto db_response = co_await ctx->get_folder_info(
+                        user->user_id, query.folder, query.direction
+                    );
+                    if(db_response) {
+                        resp.folders.insert(resp.folders.end(), db_response->begin(), db_response->end());
                         env.output()->write_json(resp);
                     } else {
                         error_response err;
@@ -218,7 +269,7 @@ namespace s90 {
             };
 
         public:
-            const char *name() const { return "/api/mail/object"; }
+            const char *name() const { return "GET /api/mail/object"; }
 
             aiopromise<std::expected<nil, httpd::status>> render(httpd::ienvironment& env) const {
                 auto user = co_await verify_login(env);
@@ -247,12 +298,90 @@ namespace s90 {
             }
         };
 
+        class alter_page : public authenticated_page {
+            struct input : public orm::with_orm {
+                WITH_ID;
+
+                std::vector<std::string> message_ids;
+                std::string action = "";
+
+                orm::mapper get_orm() {
+                    return {
+                        {"message_ids", message_ids},
+                        {"action", action}
+                    };
+                }
+            };
+        public:
+            const char *name() const { return "POST /api/mail/alter"; }
+
+            aiopromise<std::expected<nil, httpd::status>> render(httpd::ienvironment& env) const {
+                auto user = co_await verify_login(env);
+                if(user) {
+                    mail_action action = mail_action::set_seen;
+                    error_response err;
+                    auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
+                    auto query = env.query<input>();
+                    if(query.action == "seen") {
+                        action = mail_action::set_seen;
+                    } else if(query.action == "unseen") {
+                        action = mail_action::set_unseen;
+                    } else if(query.action == "delete") {
+                        action = mail_action::delete_mail;
+                    } else {
+                        err.error = "invalid action";
+                        env.status("400 Bad request");
+                        env.output()->write_json(err);
+                        co_return nil {};
+                    }
+                    auto result = co_await ctx->alter(user->user_id, query.message_ids, action);
+                    if(result) {
+                        env.content_type("application/json");
+                        env.output()->write("{\"ok\":true}");
+                    } else {
+                        err.error = result.error();
+                        env.status("400 Bad request");
+                        env.output()->write_json(err);
+                        co_return nil {};
+                    }
+                }
+            }
+        };
+
+        class me_page : public authenticated_page {
+            struct response : public orm::with_orm {
+                WITH_ID;
+                std::string email;
+
+                orm::mapper get_orm() {
+                    return {
+                        { "email", email }
+                    };
+                }
+            };
+        public:
+            const char *name() const {
+                return "GET /api/mail/me";
+            }
+
+            aiopromise<std::expected<nil, httpd::status>> render(httpd::ienvironment& env) const {
+                auto user = co_await verify_login(env);
+                if(user) {
+                    response resp;
+                    resp.email = user->email;
+                    env.output()->write_json(resp);
+                }
+                co_return nil {};
+            }
+        };
+
         mail_http_api::mail_http_api(smtp_server *parent) : parent(parent) {
             httpd::httpd_config cfg = httpd::httpd_config::env();
             cfg.initializer = [this](icontext *ctx, void*) { return this; };
 
             cfg.pages = {
-                new login_page, new inbox_page, new object_page
+                new login_page, new inbox_page, new object_page, new me_page, 
+                new alter_page, new folders_page
             };
 
             http_base = std::make_shared<httpd::httpd_server>(parent->get_context(), cfg);

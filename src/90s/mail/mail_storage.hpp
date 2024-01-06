@@ -46,6 +46,12 @@ namespace s90 {
             /// @return user or error
             virtual aiopromise<std::expected<mail_user, std::string>> get_user(std::string session_id, uint64_t user_id) = 0;
 
+            /// @brief Destroy user session
+            /// @param session_id session ID
+            /// @param user_id user ID
+            /// @return true if destroyed or error
+            virtual aiopromise<std::expected<bool, std::string>> destroy_session(std::string session_id, uint64_t user_id) = 0;
+
             /// @brief Get inbox
             /// @param user_id user ID
             /// @param folder folder name, #direct for direct, none for all
@@ -64,6 +70,19 @@ namespace s90 {
             /// @param fmt format if raw.eml/html/txt
             /// @return object bytes or error
             virtual aiopromise<std::expected<std::string, std::string>> get_object(std::string email, std::string message_id, orm::optional<std::string> object_name, mail_format fmt = mail_format::none) = 0;
+
+            /// @brief Get folder info
+            /// @param user_id user ID
+            /// @param folder folder name (to filter just for one)
+            /// @param direction direction
+            /// @return folder info or error
+            virtual aiopromise<std::expected<sql::sql_result<mail_folder_info>, std::string>> get_folder_info(uint64_t user_id, orm::optional<std::string> folder, orm::optional<int> direction) = 0;
+
+            /// @brief Set message status as seen
+            /// @param user_id user ID
+            /// @param message_ids list of message IDs
+            /// @return true if success, error otherwise
+            virtual aiopromise<std::expected<bool, std::string>> alter(uint64_t user_id, std::vector<std::string> message_ids, mail_action action = mail_action::set_seen) = 0;
         };
     }
 }

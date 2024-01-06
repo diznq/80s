@@ -599,6 +599,16 @@ namespace s90 {
             }
         }
 
+        aiopromise<std::expected<bool, std::string>> indexed_mail_storage::destroy_session(std::string session_id, uint64_t user_id) {
+            auto db = co_await get_db();
+            auto result = co_await db->exec("DELETE FROM mail_sessions WHERE user_id = '{}' AND session_id = '{}' LIMIT 1", user_id, session_id);
+            if(result) {
+                co_return true;
+            } else {
+                co_return std::unexpected("database error");
+            }
+        }
+
         aiopromise<std::expected<mail_user, std::string>> indexed_mail_storage::get_user(std::string session_id, uint64_t user_id) {
             auto db = co_await get_db();
             auto result = co_await db->select<mail_user>("SELECT mail_users.* FROM mail_users INNER JOIN mail_sessions ON mail_sessions.user_id=mail_users.user_id WHERE mail_sessions.user_id = '{}' AND mail_sessions.session_id='{}' LIMIT 1", user_id, session_id);
@@ -641,9 +651,51 @@ namespace s90 {
             }
         }
 
+        aiopromise<std::expected<sql::sql_result<mail_folder_info>, std::string>> indexed_mail_storage::get_folder_info(uint64_t user_id, orm::optional<std::string> folder, orm::optional<int> direction) {
+            auto db = co_await get_db();
+            
+            auto select_part = std::format("user_id = '{}' ", db->escape(user_id));
+
+            if(folder) {
+                select_part += std::format("AND folder = '{}' ", db->escape(*folder));
+            }
+            if(direction) {
+                select_part += std::format("AND direction = '{}' ", db->escape(*direction));
+            }
+
+            auto result = co_await db->select<mail_folder_info>("SELECT folder, COUNT(*) AS total_count, SUM(status = 1 AND direction = 0) AS unread_count FROM mail_indexed WHERE " + select_part);
+            if(result) {
+                co_return result;
+            } else {
+                co_return std::unexpected("database info");
+            }
+        }
+
+        aiopromise<std::expected<bool, std::string>> indexed_mail_storage::alter(uint64_t user_id, std::vector<std::string> message_ids, mail_action action) {
+            if(message_ids.size() > 100) co_return std::unexpected("max 100 messages per call");
+            if(message_ids.size() == 0) co_return true;
+            auto db = co_await get_db();
+            std::string query;
+            if(action == mail_action::delete_mail) {
+               query = std::format("DELETE FROM mail_indexed AND user_id = '{}' AND message_id IN (", user_id);
+            } else {
+               query = std::format("UPDATE mail_indexed SET status = '{}' WHERE direction = '0' AND user_id = '{}' AND message_id IN (", action == mail_action::set_seen ? 2 : 1, user_id);
+            }
+            for(size_t i = 0; i < message_ids.size(); i++) {
+                query += std::format("'{}'", db->escape(message_ids[i]));
+                if(i != message_ids.size() - 1) query += ',';
+            }
+            query += ')';
+
+            if(query.size() > 64000) co_return std::unexpected("request is too large");
+            auto result = co_await db->exec(query);
+            if(result) co_return true;
+            else co_return std::unexpected("database error");
+        }
+
         aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::get_object(std::string email, std::string message_id, orm::optional<std::string> object_name, mail_format fmt) {
             std::string obj_name = "";
-            if(message_id.find('.')) co_return std::unexpected("invalid object name");
+            if(message_id.find('.') != std::string::npos) co_return std::unexpected("invalid object name");
             if(object_name) {
                 obj_name = util::to_hex(util::sha256(*object_name)) + ".bin";
             } else {

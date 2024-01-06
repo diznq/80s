@@ -715,15 +715,15 @@ namespace s90 {
                 std::vector<T> *tr = (std::vector<T>*)ref;
                 if(value.get_type() == reftype::empty) {
                     tr->push_back(T{});
-                    return any(tr->back());
+                    return any((T&)tr->back());
                 } else {
                     tr->push_back(*(T*)value.get_ref());
-                    return any(tr->back());
+                    return any((T&)tr->back());
                 }
             };
             internals.get_item = [](const uintptr_t ref, size_t index) -> auto {
                 const std::vector<T> *tr = (const std::vector<T>*)ref;
-                return any(tr->at(index));
+                return any((T&)tr->at(index));
             };
             internals.size = [](const uintptr_t ref) -> auto {
                 const std::vector<T> *tr = (const std::vector<T>*)ref;

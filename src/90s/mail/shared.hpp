@@ -15,6 +15,10 @@ namespace s90 {
             sent, delivered, seen
         };
 
+        enum class mail_action {
+            set_seen, set_unseen, delete_mail
+        };
+
         enum class mail_security {
             none,
             tls,
@@ -220,6 +224,21 @@ namespace s90 {
                     { "attachments", attachments },
                     { "attachment_ids", attachment_ids },
                     { "formats", formats }
+                };
+            }
+        };
+
+        struct mail_folder_info : public orm::with_orm {
+            WITH_ID;
+            std::string name;
+            uint64_t total_count;
+            uint64_t unread_count;
+
+            orm::mapper get_orm() {
+                return {
+                    { "folder", name },
+                    { "total_count", total_count },
+                    { "unread_count", unread_count }
                 };
             }
         };

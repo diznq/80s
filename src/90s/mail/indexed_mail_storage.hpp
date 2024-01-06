@@ -16,6 +16,7 @@ namespace s90 {
 
             aiopromise<std::expected<std::string, std::string>> store_mail(mail_knowledge mail, bool outbounding = false) override;
             aiopromise<std::expected<mail_user, std::string>> login(std::string name, std::string password, orm::optional<mail_session> session = {}) override;
+            aiopromise<std::expected<bool, std::string>> destroy_session(std::string session_id, uint64_t user_id) override;
             aiopromise<std::expected<mail_user, std::string>> get_user(std::string session_id, uint64_t user_id) override;
 
             aiopromise<std::expected<
@@ -24,6 +25,9 @@ namespace s90 {
 
             aiopromise<std::expected<std::string, std::string>> get_object(std::string email, std::string message_id, orm::optional<std::string> object_name, mail_format fmt = mail_format::none) override;
 
+            aiopromise<std::expected<sql::sql_result<mail_folder_info>, std::string>> get_folder_info(uint64_t user_id, orm::optional<std::string> folder, orm::optional<int> direction) override;
+
+            aiopromise<std::expected<bool, std::string>> alter(uint64_t user_id, std::vector<std::string> message_ids, mail_action action) override;
         };
 
         mail_parsed parse_mail(std::string_view message_id, std::string_view data);
