@@ -759,11 +759,14 @@ namespace s90 {
 
             size_t size_on_disk = 0;
 
+            printf("Total saves to disk: %zu\n", mail.to.size());
             // save the data to the disk!
             for(auto& user : mail.to) {
                 auto found_user = users.find(user.email);
+                printf("Save to disk for user %s\n", user.email.c_str());
 
                 if(found_user == users.end()) {
+                    printf("(save) User not found: %s\n", user.email.c_str());
                     // if the user is outside of our internal DB, record it
                     // so we later know if it is 100% delivered internally
                     // or not
@@ -805,6 +808,7 @@ namespace s90 {
                 }
 
                 for(auto& [file_name, data_ptr, data_size] : to_save) {
+                    printf("Writing file %s %s to disk\n", path.c_str(), file_name.c_str());
                     FILE *f = fopen((path + file_name).c_str(), "wb");
                     if(f) {
                         fwrite(data_ptr, data_size, 1, f);
@@ -834,17 +838,20 @@ namespace s90 {
             size_t outgoing_count = 0;
 
             std::string attachment_ids = "";
+
             for(size_t i = 0; i < parsed.attachments.size(); i++) {
                 attachment_ids += parsed.attachments[i].attachment_id;
                 if(i != parsed.attachments.size() - 1)
                     attachment_ids += ";";
             }
 
+            printf("Save %zu records to database\n", mail.to.size());
             // create a large query
             for(auto& user : mail.to) {
                 auto found_user = users.find(user.email);
                 if(found_user == users.end()) {
                     if(outbounding && user.direction == (int)mail_direction::inbound && mail.from.user) {
+                        printf("Mail to %s is outbound from %s\n", user.email.c_str(), mail.from.user->email.c_str());
                         mail_outgoing_record outgoing_record = {
                             .user_id = mail.from.user->user_id,
                             .message_id = msg_id,
@@ -874,6 +881,7 @@ namespace s90 {
                     continue;
                 }
 
+                printf("Saving record for user %s\n", found_user->second.email.c_str());
                 mail_record record {
                     .user_id = found_user->second.user_id,
                     .message_id = msg_id,
@@ -931,6 +939,7 @@ namespace s90 {
                 stored_to_db++;
             }
 
+            printf("Executing save query, length: %zu\n", query.length());
             // index the e-mails to the DB
             if(stored_to_db > 0) {
                 auto write_status = co_await db->exec(query.substr(0, query.length() - 1));
@@ -939,6 +948,7 @@ namespace s90 {
                 }
             }
 
+            printf("Executing queue query, length: %zu\n", outbounding_query.length());
             // submit the e-mails to the outgoing queue
             if(outbounding && outgoing_count > 0) {
                 auto write_status = co_await db->exec(outbounding_query.substr(0, outbounding_query.length() - 1));
@@ -947,7 +957,7 @@ namespace s90 {
                 }
             }
             
-            co_return std::move(msg_id);
+            co_return msg_id;
         }
     }
 }
