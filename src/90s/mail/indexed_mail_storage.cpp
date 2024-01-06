@@ -418,6 +418,7 @@ namespace s90 {
                         if(is_attachment && attachment_id.size() > 0) {
                             attachment.start = (size_t)(match.begin() - base);
                             attachment.end = (size_t)(match.end() - base);
+                            attachment.size = attachment.end - attachment.start;
                             parsed.attachments.push_back(std::move(attachment));
                         } else if(!is_attachment) {
                             auto boundary = content_type_values.find("boundary");
@@ -474,6 +475,42 @@ namespace s90 {
             }
         }
 
+        /// @brief Decode SMTP message HTML/text block
+        /// @param out output
+        /// @param data input data as whole .eml
+        /// @param start start offset
+        /// @param end end offset
+        /// @param charset active charset
+        /// @param headers headers
+        void decode_block(std::string& out, std::string_view data, uint64_t start, uint64_t end, const std::string& charset, const std::vector<std::pair<std::string, std::string>>& headers, bool ignore_replies = false) {
+            auto sv = std::string_view(data.begin() + start, data.begin() + end);
+            auto contains_replies = sv.find("\r\n>");
+            if(ignore_replies && contains_replies != std::string::npos) {
+                sv = sv.substr(0, contains_replies);
+                auto line_before = sv.rfind("\r\n");
+                if(line_before != std::string::npos)
+                    sv = sv.substr(0, line_before);
+                out = sv;
+            } else {
+                out = sv;
+            }
+            if(out.length() > 0) {
+                std::string encoding = "";
+                for(const auto& [k, v] : headers) {
+                    if(k == "content-transfer-encoding") {
+                        encoding = v;
+                        break;
+                    }
+                }
+                if(encoding == "quoted-printable") {
+                    out = q_decoder(out);
+                } else if(encoding == "base64") {
+                    out = b_decoder(out);
+                }
+                out = convert_charset(out, charset);
+            }
+        }
+
         /// @brief Parse mail information from .eml data
         /// @param message_id internal message ID
         /// @param data .eml data
@@ -507,32 +544,7 @@ namespace s90 {
             parse_mail_body(parsed, data.begin(), body, content_type, content_type_values, parsed.headers);
 
             if(parsed.formats & (int)mail_format::text) {
-                auto sv = std::string_view(data.begin() + parsed.text_start, data.begin() + parsed.text_end);
-                auto contains_replies = sv.find("\r\n>");
-                if(contains_replies != std::string::npos) {
-                    sv = sv.substr(0, contains_replies);
-                    auto line_before = sv.rfind("\r\n");
-                    if(line_before != std::string::npos)
-                        sv = sv.substr(0, line_before);
-                    parsed.indexable_text = sv;
-                } else {
-                    parsed.indexable_text = sv;
-                }
-                if(parsed.indexable_text.length() > 0) {
-                    std::string encoding = "";
-                    for(auto& [k, v] : parsed.text_headers) {
-                        if(k == "content-transfer-encoding") {
-                            encoding = v;
-                            break;
-                        }
-                    }
-                    if(encoding == "quoted-printable") {
-                        parsed.indexable_text = q_decoder(parsed.indexable_text);
-                    } else if(encoding == "base64") {
-                        parsed.indexable_text = b_decoder(parsed.indexable_text);
-                    }
-                    parsed.indexable_text = convert_charset(parsed.indexable_text, parsed.text_charset);
-                }
+                decode_block(parsed.indexable_text, data, parsed.text_start, parsed.text_end, parsed.text_charset, parsed.text_headers, true);
             }
 
             return parsed;
@@ -711,12 +723,18 @@ namespace s90 {
                     {"/raw.eml", mail.data.data(), mail.data.size()}
                 };
 
+                std::string saved_html, saved_text;
+
                 if(parsed.formats & (int)mail_format::html) {
-                    to_save.push_back({"/raw.html", mail.data.data() + parsed.html_start, parsed.html_end - parsed.html_start});
+                    decode_block(saved_html, mail.data, parsed.html_start, parsed.html_end, parsed.html_charset, parsed.html_headers, false);
+                    std::string_view sv(saved_html);
+                    to_save.push_back({"/raw.html", sv.begin(), sv.length()});
                 }
 
                 if(parsed.formats & (int)mail_format::text) {
-                    to_save.push_back({"/raw.txt", mail.data.data() + parsed.text_start, parsed.text_end - parsed.text_start});
+                    decode_block(saved_text, mail.data, parsed.text_start, parsed.text_end, parsed.text_charset, parsed.text_headers, false);
+                    std::string_view sv(saved_text);
+                    to_save.push_back({"/raw.txt", sv.begin(), sv.length()});
                 }
 
                 for(auto& attachment : parsed.attachments) {

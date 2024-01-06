@@ -121,6 +121,7 @@ namespace s90 {
             std::string file_name;
             std::string disposition;
             std::string mime;
+            uint64_t size;
 
             orm::mapper get_orm() {
                 return {
@@ -128,7 +129,8 @@ namespace s90 {
                     { "name", name },
                     { "file_name", file_name },
                     { "disposition", disposition },
-                    { "mime", mime }
+                    { "mime", mime },
+                    { "size", size }
                 };
             }
         };
