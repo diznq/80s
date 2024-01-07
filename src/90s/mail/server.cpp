@@ -4,6 +4,8 @@
 #include "mail_storage.hpp"
 #include "indexed_mail_storage.hpp"
 #include "http/http_api.hpp"
+#include "../util/util.hpp"
+#include <ranges>
 
 namespace s90 {
     namespace mail {
@@ -99,14 +101,23 @@ namespace s90 {
                         if(!parsed_mail) {
                             if(!co_await write(fd, "501 Invalid address\r\n")) co_return nil {};
                         } else {
+                            bool is_ok = true;
                             knowledge.from = parsed_mail;
                             knowledge.from.direction = (int)mail_direction::outbound;
-                            if(!co_await write(fd, "250 OK\r\n")) co_return nil {};
+                            if(storage) {
+                                auto user = co_await storage->get_user_by_email(parsed_mail.email);
+                                if(user) {
+                                    knowledge.from.user = *user;
+                                }
+                            }
+                            if(is_ok) {
+                                if(!co_await write(fd, "250 OK\r\n")) co_return nil {};
+                            }
                         }
                     }
                 } else if(cmd->starts_with("RCPT TO:")) {
-                    if(!knowledge.hello) {
-                        if(!co_await write(fd, "503 HELO or EHLO was not sent previously!\r\n")) co_return nil {};
+                    if(!knowledge.from) {
+                        if(!co_await write(fd, "503 MAIL FROM was not sent previously!\r\n")) co_return nil {};
                     } else {
                         auto parsed_mail = parse_smtp_address(cmd->substr(8));
                         if(!parsed_mail) {
@@ -115,7 +126,20 @@ namespace s90 {
                             if(!co_await write(fd, "501 Limit for number of recipients is 50\r\n")) co_return nil {};
                         } else {
                             knowledge.to.insert(parsed_mail);
-                            if(!co_await write(fd, "250 OK\r\n")) co_return nil {};
+                            bool is_ok = true;
+                            if(storage) {
+                                auto user = co_await storage->get_user_by_email(parsed_mail.email);
+                                if(!user) {
+                                    is_ok = false;
+                                    if(!co_await write(fd, "511 Mailbox not found\r\n")) co_return nil {};
+                                } else if(user->used_space + knowledge.from.requested_size * 2 > user->quota) {
+                                    is_ok = false;
+                                    if(!co_await write(fd, "522 Recipient has exceeded mailbox limit\r\n")) co_return nil {};
+                                }
+                            }
+                            if(is_ok) {
+                                if(!co_await write(fd, "250 OK\r\n")) co_return nil {};
+                            }
                         }
                     }
                 } else if(cmd->starts_with("DATA")) {
@@ -226,9 +250,12 @@ namespace s90 {
         }
 
         mail_parsed_user smtp_server::parse_smtp_address(std::string_view address) {
+            address = util::trim(address);
+            uint64_t requested_size = 0;
             if(!address.starts_with("<")) return mail_parsed_user { true };
             auto end = address.find('>');
             if(end == std::string::npos) return mail_parsed_user { true };
+            auto after_end = util::trim(address.substr(end + 1));
             address = address.substr(1, end - 1);
             int ats = 0;
             int prefix_invalid = 0, postfix_invalid = 0;
@@ -251,6 +278,21 @@ namespace s90 {
                 }
             }
             if(ats != 1 || prefix_invalid > 0 || postfix_invalid > 0 || prefix_length == 0 || postfix_length == 0) return mail_parsed_user { true };
+            
+            for(auto v : std::ranges::split_view(after_end, std::string_view(";"))) {
+                auto value = std::string_view(v);
+                auto pivot = value.find('=');
+                if(pivot != std::string::npos) {
+                    auto extra_key = util::trim(value.substr(0, pivot));
+                    auto extra_value = util::trim(value.substr(pivot + 1));
+                    if(extra_key == "SIZE" || extra_key == "size") {
+                        if(std::from_chars(extra_value.begin(), extra_value.end(), requested_size, 10).ec != std::errc()) {
+                            requested_size = 0;
+                        }
+                    }
+                }
+            }
+            
             auto at_pos = address.find('@');
             std::string folder = "";
             for(const auto& sv : config.get_smtp_hosts()) {
@@ -270,7 +312,7 @@ namespace s90 {
             }
             at_pos = email.find('@');
             original_email_server = email.substr(at_pos + 1); 
-            return mail_parsed_user {false, original_email, original_email_server, email, folder};
+            return mail_parsed_user {false, original_email, original_email_server, email, folder, requested_size};
         }
     }
 }

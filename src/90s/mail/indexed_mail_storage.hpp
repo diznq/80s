@@ -18,6 +18,7 @@ namespace s90 {
             aiopromise<std::expected<mail_user, std::string>> login(std::string name, std::string password, orm::optional<mail_session> session = {}) override;
             aiopromise<std::expected<bool, std::string>> destroy_session(std::string session_id, uint64_t user_id) override;
             aiopromise<std::expected<mail_user, std::string>> get_user(std::string session_id, uint64_t user_id) override;
+            aiopromise<std::expected<mail_user, std::string>> get_user_by_email(std::string email) override;
 
             aiopromise<std::expected<
                             std::tuple<sql::sql_result<mail_record>, uint64_t>, std::string

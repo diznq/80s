@@ -19,22 +19,6 @@ namespace s90 {
          * Utilities
          */
 
-        std::string_view trim(std::string_view str) {
-            size_t off = 0;
-            for(char c : str) {
-                if(!isgraph(c)) off++;
-                else break;
-            }
-            str = str.substr(off);
-            off = 0;
-            for(size_t i = str.length() - 1; i >= 0; i--) {
-                if(!isgraph(str[i])) off++;
-                else break;
-            }
-            str = str.substr(0, str.length() - off);
-            return str;
-        }
-
         /// @brief Convert text from specified charset to UTF-8
         /// @param decoded text to be decoded
         /// @param charset origin charset name
@@ -233,7 +217,7 @@ namespace s90 {
             if(key.length() > 0 && value.length() > 0 && (state == header_value || state == header_value_extend || state == header_value_end)) {
                 headers.push_back(std::make_pair(key, value));
             }
-            return trim(body);
+            return util::trim(body);
         }
 
         /// @brief Parse content type header
@@ -253,7 +237,7 @@ namespace s90 {
                     i++;
                     continue;
                 }
-                auto key = trim(word.substr(0, pivot));
+                auto key = util::trim(word.substr(0, pivot));
                 std::string value { word.substr(pivot + 1) };
                 if(value.starts_with('"') && value.ends_with('"')) {
                     std::stringstream ss; ss<<value;
@@ -273,7 +257,7 @@ namespace s90 {
         void parse_mail_alternative(mail_parsed& parsed, const char *base, std::string_view body, std::string_view boundary) {
             for(const auto match : std::views::split(body, boundary)) {
                 if(match.size()) {
-                    std::string_view view = trim(std::string_view{match});
+                    std::string_view view = util::trim(std::string_view{match});
                     if(view.size() == 0 || view == "--" || view == "--\r\n" || view == "--\n") {
                         continue;
                     }
@@ -357,7 +341,7 @@ namespace s90 {
                 auto attachments = "--" + boundary->second;
                 for(const auto match : std::views::split(body, attachments)) {
                     if(match.size() > 0) {
-                        std::string_view view = trim(std::string_view{match});
+                        std::string_view view = util::trim(std::string_view{match});
                         if(view.size() == 0 || view == "--" || view == "--\r\n" || view == "--\n") {
                             continue;
                         }
@@ -674,41 +658,53 @@ namespace s90 {
             auto parsed = parse_mail(msg_id, mail.data);
 
             // first try to get the users from DB
-            dict<std::string, mail_user> users;
             std::vector<mail_parsed_user> users_outside;
-            std::set<std::string> user_lookup = {mail.from.email};
-            for(auto& user : mail.to) user_lookup.insert(user.email);
 
-            for(auto& email : user_lookup) {
-                dbgf("Searching for user %s\n", email.c_str());
-                auto match = co_await db->select<mail_user>("SELECT * FROM mail_users WHERE email = '{}' LIMIT 1", email);
-                if(match && match.size() > 0) {
-                    dbgf("User %s found!\n", email.c_str());
-                    users[email] = *match;
-                } else {
-                    dbgf("User %s not found!\n", email.c_str());
-                }
-            }
-
-            auto found_from = users.find(mail.from.email);
-            if(found_from != users.end()) {
-                mail.from.user = found_from->second;
-                if(outbounding) {
-                    // if sender was found, it means it's an outbound e-mail coming from us
-                    // so save it so we resolve this one as well
-                    mail.to.insert(mail.from);
-                    dbgf("Adding %s as outbounder\n", mail.from.user->email.c_str());
-                }
-            }
-
-            size_t size_on_disk = 0;
-
-            // save the data to the disk!
+            // insert sender if they are within this mail server
+            if(mail.from.user) mail.to.insert(mail.from);
+            
+            // prepare the data to be saved to disk
             dbgf("Saving e-mails to disk, total recipients: %zu\n", mail.to.size());
-            for(auto& user : mail.to) {
-                auto found_user = users.find(user.email);
 
-                if(found_user == users.end()) {
+            std::vector<std::tuple<std::string, const char*, size_t>> to_save = {
+                {"/raw.eml", mail.data.data(), mail.data.size()}
+            };
+
+            std::string saved_html, saved_text;
+            size_t size_on_disk = 0;
+            std::set<uint64_t> affected_users;
+
+            if(parsed.formats & (int)mail_format::html) {
+                decode_block(saved_html, mail.data, parsed.html_start, parsed.html_end, parsed.html_charset, parsed.html_headers, false);
+                std::string_view sv(saved_html);
+                to_save.push_back({"/raw.html", sv.begin(), sv.length()});
+            }
+
+            if(parsed.formats & (int)mail_format::text) {
+                decode_block(saved_text, mail.data, parsed.text_start, parsed.text_end, parsed.text_charset, parsed.text_headers, false);
+                std::string_view sv(saved_text);
+                to_save.push_back({"/raw.txt", sv.begin(), sv.length()});
+            }
+
+            for(auto& [file_name, data_ptr, data_size] : to_save) {
+                size_on_disk += data_size;
+            }
+
+            bool is_space_avail = true;
+
+            // verify if everyone has enough space in their mailbox
+            for(auto& user : mail.to) {
+                if(!user.user) continue;
+                if(user.user->used_space + size_on_disk > user.user->quota) is_space_avail = false;
+            }
+
+            if(!is_space_avail) {
+                co_return std::unexpected("mailbox of one or more recipients is full");
+            }
+
+            // save the data to the disk
+            for(auto& user : mail.to) {
+                if(!user.user) {
                     dbgf("Recipient %s not found, skipping\n", user.email.c_str());
                     // if the user is outside of our internal DB, record it
                     // so we later know if it is 100% delivered internally
@@ -725,29 +721,11 @@ namespace s90 {
                     try {
                         std::filesystem::create_directories(fs_path);
                     } catch(std::exception& ex) {
-                        failure = ex.what();
+                        failure = "storage error";
                     }
                     if(failure.length()) {
                         co_return std::unexpected(failure);
                     }
-                }
-            
-                std::vector<std::tuple<std::string, const char*, size_t>> to_save = {
-                    {"/raw.eml", mail.data.data(), mail.data.size()}
-                };
-
-                std::string saved_html, saved_text;
-
-                if(parsed.formats & (int)mail_format::html) {
-                    decode_block(saved_html, mail.data, parsed.html_start, parsed.html_end, parsed.html_charset, parsed.html_headers, false);
-                    std::string_view sv(saved_html);
-                    to_save.push_back({"/raw.html", sv.begin(), sv.length()});
-                }
-
-                if(parsed.formats & (int)mail_format::text) {
-                    decode_block(saved_text, mail.data, parsed.text_start, parsed.text_end, parsed.text_charset, parsed.text_headers, false);
-                    std::string_view sv(saved_text);
-                    to_save.push_back({"/raw.txt", sv.begin(), sv.length()});
                 }
 
                 dbgf("Save attachments\n");
@@ -762,10 +740,6 @@ namespace s90 {
                     dbgf("Length: %zu\n", sv.length());
                 }
 
-                for(auto& [file_name, data_ptr, data_size] : to_save) {
-                    size_on_disk += data_size;
-                }
-
                 dbgf("Save to disk\n");
                 for(auto& [file_name, data_ptr, data_size] : to_save) {
                     FILE *f = fopen((path + file_name).c_str(), "wb");
@@ -777,6 +751,7 @@ namespace s90 {
                         co_return std::unexpected("failed to store e-mail on storage");
                     }
                 }
+                affected_users.insert(user.user->user_id);
             }
 
             // save the data to the db!
@@ -805,8 +780,10 @@ namespace s90 {
 
             // create a large query
             for(auto& user : mail.to) {
-                auto found_user = users.find(user.email);
-                if(found_user == users.end()) {
+                const auto& found_user = user.user;
+                if(!found_user) {
+                    // if recipient is not within this server, but sender is within this server, it means
+                    // that this e-mail is outbound to somewhere else
                     if(outbounding && user.direction == (int)mail_direction::inbound && mail.from.user) {
                         mail_outgoing_record outgoing_record = {
                             .user_id = mail.from.user->user_id,
@@ -838,7 +815,7 @@ namespace s90 {
                 }
 
                 mail_record record {
-                    .user_id = found_user->second.user_id,
+                    .user_id = found_user->user_id,
                     .message_id = msg_id,
                     .external_message_id = parsed.external_message_id,
                     .thread_id = parsed.thread_id,
@@ -898,7 +875,13 @@ namespace s90 {
             if(stored_to_db > 0) {
                 auto write_status = co_await db->exec(query.substr(0, query.length() - 1));
                 if(!write_status) {
-                    co_return std::unexpected(std::format("failed to index the e-mail"));
+                    co_return std::unexpected("failed to index the e-mail");
+                }
+                if(affected_users.size() > 0) {
+                    auto update_status = co_await db->exec("UPDATE mail_users SET used_space=(SELECT SUM(mail_indexed.size) FROM mail_indexed WHERE mail_indexed.user_id = mail_users.user_id) WHERE mail_users.user_id IN ({})", affected_users);
+                    if(!update_status) {
+                        co_return std::unexpected("failed to update quotas");
+                    }
                 }
             }
 
@@ -906,7 +889,7 @@ namespace s90 {
             if(outbounding && outgoing_count > 0) {
                 auto write_status = co_await db->exec(outbounding_query.substr(0, outbounding_query.length() - 1));
                 if(!write_status) {
-                    co_return std::unexpected(std::format("failed to submit e-mails to the outgoing queue"));
+                    co_return std::unexpected("failed to submit e-mails to the outgoing queue");
                 }
             }
             

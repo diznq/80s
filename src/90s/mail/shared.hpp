@@ -115,6 +115,7 @@ namespace s90 {
             std::string original_email_server;
             std::string email;
             std::string folder;
+            uint64_t requested_size = 0;
             int direction = (int)mail_direction::inbound;
 
             explicit operator bool() const { return !error; }

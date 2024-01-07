@@ -366,10 +366,14 @@ namespace s90 {
             struct response : public orm::with_orm {
                 WITH_ID;
                 std::string email;
+                uint64_t used_space;
+                uint64_t quota;
 
                 orm::mapper get_orm() {
                     return {
-                        { "email", email }
+                        { "email", email },
+                        { "used_space", used_space },
+                        { "quota", quota }
                     };
                 }
             };
@@ -383,6 +387,8 @@ namespace s90 {
                 if(user) {
                     response resp;
                     resp.email = user->email;
+                    resp.used_space = user->used_space;
+                    resp.quota = user->quota;
                     env.output()->write_json(resp);
                 }
                 co_return nil {};

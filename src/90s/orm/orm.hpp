@@ -70,7 +70,7 @@ namespace s90 {
                 return value_;
             }
 
-            T* operator->() {
+            T* operator->() const {
                 return &value_;
             }
 

@@ -46,6 +46,11 @@ namespace s90 {
             /// @return user or error
             virtual aiopromise<std::expected<mail_user, std::string>> get_user(std::string session_id, uint64_t user_id) = 0;
 
+            /// @brief Get user by e-mail
+            /// @param email e-mail address
+            /// @return user
+            virtual aiopromise<std::expected<mail_user, std::string>> get_user_by_email(std::string email) = 0;
+
             /// @brief Destroy user session
             /// @param session_id session ID
             /// @param user_id user ID
