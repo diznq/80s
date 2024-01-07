@@ -335,7 +335,8 @@ namespace s90 {
         /// @param root_content_type main content type
         /// @param ct_values content type values
         /// @param headers e-mail headeers
-        void parse_mail_body(mail_parsed& parsed, const char *base, std::string_view body, std::string_view root_content_type, const dict<std::string, std::string>& ct_values, const std::vector<std::pair<std::string, std::string>>& headers) {
+        void parse_mail_body(mail_parsed& parsed, const char *base, std::string_view body, std::string_view root_content_type, const dict<std::string, std::string>& ct_values, const std::vector<std::pair<std::string, std::string>>& headers, int depth = 0, int max_depth = 32) {
+            if(depth >= max_depth) return;
             auto boundary = ct_values.find("boundary");
             if((root_content_type == "multipart/related" || root_content_type == "multipart/mixed") && boundary != ct_values.end()) {
                 auto attachments = "--" + boundary->second;
@@ -388,6 +389,8 @@ namespace s90 {
                             auto boundary = content_type_values.find("boundary");
                             if(content_type == "multipart/alternative" && boundary != content_type_values.end()) {
                                 parse_mail_alternative(parsed, base, atch_body, "--" + boundary->second);
+                            } else if((content_type == "multipart/mixed" || content_type == "multipart/related") && boundary != content_type_values.end()) {
+                                parse_mail_body(parsed, base, atch_body, content_type, content_type_values, headers, depth + 1, max_depth);
                             } else if(content_type == "text/html") {
                                 if(!(parsed.formats & (int)mail_format::html)) {
                                     parsed.formats |= (int)mail_format::html;
