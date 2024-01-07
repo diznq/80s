@@ -337,7 +337,7 @@ namespace s90 {
         /// @param headers e-mail headeers
         void parse_mail_body(mail_parsed& parsed, const char *base, std::string_view body, std::string_view root_content_type, const dict<std::string, std::string>& ct_values, const std::vector<std::pair<std::string, std::string>>& headers) {
             auto boundary = ct_values.find("boundary");
-            if(root_content_type == "multipart/related" && boundary != ct_values.end()) {
+            if((root_content_type == "multipart/related" || root_content_type == "multipart/mixed") && boundary != ct_values.end()) {
                 auto attachments = "--" + boundary->second;
                 for(const auto match : std::views::split(body, attachments)) {
                     if(match.size() > 0) {
