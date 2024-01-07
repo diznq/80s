@@ -150,7 +150,7 @@ namespace s90 {
         /// @return decoded value
         std::string decode_smtp_value(std::string_view data) {
             std::string result(data);
-            std::regex re("=\\?(.+?)\\?([QB])\\?(.+?)\\?=");
+            std::regex re("=\\?(.+?)\\?([QBqb])\\?(.+?)\\?=");
             return std::regex_replace(result, re, [](const std::smatch& match) -> std::string {
                 std::string charset = match.str(1);
                 const char encoding = tolower(match.str(2)[0]);
