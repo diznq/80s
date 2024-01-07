@@ -2,7 +2,9 @@
 #include <80s/crypto.h>
 #include "indexed_mail_storage.hpp"
 #include "../util/util.hpp"
+#include "../util/regex.hpp"
 #include "../orm/json.hpp"
+#include <regex>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -62,8 +64,9 @@ namespace s90 {
 
         /// @brief Decode quote encoded string (i.e. Hello=20World -> Hello World)
         /// @param m string to be decoded
+        /// @param replace_underscores if true, underscores are replaced with space
         /// @return decoded string
-        std::string q_decoder(const std::string& m) {
+        std::string q_decoder(const std::string& m, bool replace_underscores = false) {
             std::string new_str, new_data;
 
             // phase1: if line on quoted printable ends with =, it means text continues on the next line
@@ -81,6 +84,8 @@ namespace s90 {
                     } else {
                         new_str += c;
                     }
+                } else if(c == '_' && replace_underscores) {
+                    new_str += ' ';
                 } else {
                     new_str += c;
                 }
@@ -127,46 +132,6 @@ namespace s90 {
             }
         }
 
-        /// @brief Decode SMTP encoded string between =?...?=
-        /// @param a string value
-        /// @return decoded value
-        std::string auto_decoder(const std::string& a) {
-            auto charset_pivot = a.find('?');
-            std::string charset = "utf-8";
-            char encoding = 'Q';
-            if(charset_pivot != std::string::npos) {
-                charset = a.substr(0, charset_pivot);
-                for(char& c : charset) c = tolower(c);
-                if(charset_pivot + 3 < a.length() && a[charset_pivot + 2] == '?') {
-                    encoding = tolower(a[charset_pivot + 1]);
-                    std::string decoded;
-                    if(encoding == 'b') {
-                        decoded = b_decoder(a.substr(charset_pivot + 3));
-                    } else if(encoding == 'q'){
-                        decoded = q_decoder(a.substr(charset_pivot + 3));
-                    } else {
-                        return a;
-                    }
-                    if(charset == "utf-8" || charset == "us-ascii" || charset == "ascii") {
-                        return decoded;
-                    } else {
-                        return convert_charset(decoded, charset);
-                    }
-                } else {
-                    return a;
-                }
-            } else {
-                return a;
-            }
-        }
-
-        /// @brief Passthrough decoder that doesn't modify the nput
-        /// @param a input
-        /// @return input
-        std::string pass_through_decoder(const std::string& a) {
-            return a;
-        }
-
         /// @brief Parse message ID from header value
         /// @param id header value
         /// @return message ID
@@ -180,66 +145,31 @@ namespace s90 {
             return id;
         }
 
-        /// @brief Replace text between two tokens
-        /// @param global_data text
-        /// @param start starting token
-        /// @param end ending token
-        /// @param match_cb callback on text between the two tokens
-        /// @param outside callback on text outside of two tokens
-        /// @param indefinite true if there can be recursion
-        /// @return text
-        std::string replace_between(
-            const std::string& global_data, 
-            const std::string& start, 
-            const std::string& end, 
-            std::function<std::string(const std::string&)> match_cb,
-            std::function<std::string(const std::string&)> outside,
-            bool indefinite
-        ) {
-            std::string data = global_data;
-            std::string out = "";
-            while(true) {
-                int matches = 0;
-                size_t offset = 0;
-                out = "";
-
-                while(true) {
-                    auto match = kmp(data.c_str(), data.length(), start.data(), start.length(), offset);
-                    if(match.length != start.length()) {
-                        auto new_outside_content =  outside(data.substr(offset, data.length() - offset));
-                        out += new_outside_content;
-                        break;
-                    }
-                    auto new_outside_content = outside(data.substr(offset, match.offset - offset));
-                    out += new_outside_content;
-                    auto end_match = kmp(data.c_str(), data.length(), end.data(), end.length(), match.offset + start.length());
-
-                    match.offset += start.length();
-                    auto content = data.substr(match.offset, end_match.length != end.length() ? data.length() - match.offset : end_match.offset - match.offset);
-                    auto new_content = match_cb(content);
-                    out += new_content;
-                    matches++;
-
-                    if(end_match.length != end.length()) {
-                        break;
-                    }
-                    offset = end_match.offset + end.length();
-                }
-
-                if(indefinite && matches == 0) indefinite = 0;
-                if(indefinite) data = out;
-                if(!indefinite) break;
-            }
-            return out;
-        }
-
         /// @brief Decode SMTP encoded value
         /// @param data SMTP encoded value
         /// @return decoded value
         std::string decode_smtp_value(std::string_view data) {
             std::string result(data);
-            result = replace_between(result, "=?", "?=", auto_decoder, pass_through_decoder, false);
-            return result;
+            std::regex re("=\\?(.+?)\\?([QB])\\?(.+?)\\?=");
+            return std::regex_replace(result, re, [](const std::smatch& match) -> std::string {
+                std::string charset = match.str(1);
+                const char encoding = tolower(match.str(2)[0]);
+                const std::string& text = match.str(3);
+                for(char& c : charset) c = tolower(c);
+                std::string decoded;
+                if(encoding == 'b') {
+                    decoded = b_decoder(text);
+                } else if(encoding == 'q'){
+                    decoded = q_decoder(text, true);
+                } else {
+                    return match.str(0);
+                }
+                if(charset == "utf-8" || charset == "us-ascii" || charset == "ascii") {
+                    return decoded;
+                } else {
+                    return convert_charset(decoded, charset);
+                }
+            });
         }
 
         /// @brief Parse e-mail headers and return body view
@@ -323,7 +253,7 @@ namespace s90 {
                     i++;
                     continue;
                 }
-                auto key = word.substr(0, pivot);
+                auto key = trim(word.substr(0, pivot));
                 std::string value { word.substr(pivot + 1) };
                 if(value.starts_with('"') && value.ends_with('"')) {
                     std::stringstream ss; ss<<value;
