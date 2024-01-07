@@ -517,6 +517,7 @@ namespace s90 {
         aiopromise<std::expected<mail_user, std::string>> indexed_mail_storage::login(std::string name, std::string password, orm::optional<mail_session> session) {
             auto db = co_await get_db();
             auto password_hash = util::to_hex(util::hmac_sha256(util::hmac_sha256(password, name), config.user_salt));
+            dbgf("Password hash: %s\n", password_hash.c_str());
             auto result = co_await db->select<mail_user>("SELECT * FROM mail_users WHERE email = '{}' AND password = '{}' LIMIT 1", name, password_hash);
             if(result && result.size() == 1) {
                 if(session) {
