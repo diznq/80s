@@ -10,6 +10,7 @@
 namespace s90 {
     namespace mail {
         smtp_server::smtp_server(icontext *ctx, mail_server_config config) : config(config), global_context(ctx) {
+            if(config.sv_mail_storage_dir.ends_with("/")) config.sv_mail_storage_dir = config.sv_mail_storage_dir.substr(0, config.sv_mail_storage_dir.length() - 1);
             if(config.sv_tls_enabled) {
                 if(config.sv_tls_privkey.empty() || config.sv_tls_pubkey.empty()) {
                     printf("[smtp server] failed to initialize SSL: pubkey/privkey missing\n");

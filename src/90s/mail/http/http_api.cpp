@@ -322,6 +322,21 @@ namespace s90 {
                     };
                 }
             };
+
+            struct response : public orm::with_orm {
+                WITH_ID;
+
+                bool ok = true;
+                uint64_t affected = 0;
+
+                orm::mapper get_orm() {
+                    return {
+                        {"ok", ok},
+                        {"affected", affected}
+                    };
+                }
+            };
+            
         public:
             const char *name() const { return "POST /api/mail/alter"; }
 
@@ -348,10 +363,13 @@ namespace s90 {
                     for(auto v : std::ranges::split_view(std::string_view(query.message_ids), std::string_view(","))) {
                         message_ids.push_back(std::string(std::string_view(v)));
                     }
-                    auto result = co_await ctx->alter(user->user_id, message_ids, action);
+                    auto result = co_await ctx->alter(user->user_id, user->email, message_ids, action);
                     if(result) {
                         env.content_type("application/json");
-                        env.output()->write("{\"ok\":true}");
+                        response resp;
+                        resp.ok = true;
+                        resp.affected = *result;
+                        env.output()->write_json(resp);
                     } else {
                         err.error = result.error();
                         env.status("400 Bad request");

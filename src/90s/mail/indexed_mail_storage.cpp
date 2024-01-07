@@ -643,6 +643,7 @@ namespace s90 {
                 for(auto& message_id : message_ids) {
                     auto path = std::format("{}/{}/{}", config.sv_mail_storage_dir, email, message_id);
                     auto fs_path = std::filesystem::path(path);
+                    dbgf("Deleting %s\n", path.c_str());
                     try {
                         files += std::filesystem::remove_all(fs_path);
                         successfuly_deleted.push_back(message_id);
@@ -653,9 +654,10 @@ namespace s90 {
             }
 
             // if not all files were successfuly deleted, purge only those successful records from DB
-            if(successfuly_deleted.size() != message_ids.size()) {
+            if(action == mail_action::delete_mail && successfuly_deleted.size() != message_ids.size()) {
                 if(successfuly_deleted.size() == 0) co_return std::unexpected("failed to delete files from disk");
                 in_part = "";
+                dbgf("Regenerating deletion query\n");
                 for(size_t i = 0; i < successfuly_deleted.size(); i++) {
                     in_part += std::format("'{}'", db->escape(successfuly_deleted[i]));
                     if(i != successfuly_deleted.size() - 1) in_part += ',';
@@ -669,7 +671,7 @@ namespace s90 {
             auto result = co_await db->exec(query);
 
             if(action == mail_action::delete_mail) {
-                auto update_status = co_await db->exec("UPDATE mail_users SET used_space=(SELECT SUM(mail_indexed.size) FROM mail_indexed WHERE mail_indexed.user_id = mail_users.user_id) WHERE mail_users.user_id IN = '{}'", user_id);
+                auto update_status = co_await db->exec("UPDATE mail_users SET used_space=(SELECT SUM(mail_indexed.size) FROM mail_indexed WHERE mail_indexed.user_id = mail_users.user_id) WHERE mail_users.user_id = '{}'", user_id);
                 if(!update_status) {
                     co_return std::unexpected("failed to update quotas");
                 }
