@@ -622,7 +622,7 @@ namespace s90 {
             auto db = co_await get_db();
             std::string query;
             if(action == mail_action::delete_mail) {
-               query = std::format("DELETE FROM mail_indexed AND user_id = '{}' AND message_id IN (", user_id);
+               query = std::format("DELETE FROM mail_indexed WHERE user_id = '{}' AND message_id IN (", user_id);
             } else {
                query = std::format("UPDATE mail_indexed SET status = '{}' WHERE direction = '0' AND user_id = '{}' AND message_id IN (", action == mail_action::set_seen ? 2 : 1, user_id);
             }
