@@ -46,6 +46,12 @@ namespace s90 {
             /// @param value header value
             virtual void header(std::string&& key, std::string&& value) = 0;
 
+            /// @brief Set an output header with properties
+            /// @param key header name
+            /// @param value header value
+            /// @param params properties
+            virtual void header(std::string&& key, const std::string& value, const dict<std::string, std::string>& params) = 0;
+
             /// @brief Get current endpoint name (script path) 
             /// @return endpoint name
             virtual const std::string& endpoint() const = 0;
@@ -204,6 +210,7 @@ namespace s90 {
             std::optional<std::string> header(std::string&& key) const override;
             void header(const std::string& key, const std::string& value) override;
             void header(std::string&& key, std::string&& value) override;
+            void header(std::string&& key, const std::string& value, const dict<std::string, std::string>& params) override;
 
             const std::string& endpoint() const override;
             std::string url(std::string_view endpoint, dict<std::string, std::string>&& params, encryption encrypt = encryption::lean) const override;

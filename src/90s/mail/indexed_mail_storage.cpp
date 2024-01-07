@@ -335,6 +335,11 @@ namespace s90 {
             return std::make_tuple(content_type, values);
         }
 
+        /// @brief Parse alternative section into HTML and text
+        /// @param parsed output
+        /// @param base e-mail base
+        /// @param body body view
+        /// @param boundary boundary name
         void parse_mail_alternative(mail_parsed& parsed, const char *base, std::string_view body, std::string_view boundary) {
             for(const auto match : std::views::split(body, boundary)) {
                 if(match.size()) {
@@ -373,6 +378,49 @@ namespace s90 {
             }
         }
 
+        /// @brief Decode SMTP message HTML/text block
+        /// @param out output
+        /// @param data input data as whole .eml
+        /// @param start start offset
+        /// @param end end offset
+        /// @param charset active charset
+        /// @param headers headers
+        void decode_block(std::string& out, std::string_view data, uint64_t start, uint64_t end, const std::string& charset, const std::vector<std::pair<std::string, std::string>>& headers, bool ignore_replies = false) {
+            auto sv = std::string_view(data.begin() + start, data.begin() + end);
+            auto contains_replies = sv.find("\r\n>");
+            if(ignore_replies && contains_replies != std::string::npos) {
+                sv = sv.substr(0, contains_replies);
+                auto line_before = sv.rfind("\r\n");
+                if(line_before != std::string::npos)
+                    sv = sv.substr(0, line_before);
+                out = sv;
+            } else {
+                out = sv;
+            }
+            if(out.length() > 0) {
+                std::string encoding = "";
+                for(const auto& [k, v] : headers) {
+                    if(k == "content-transfer-encoding") {
+                        encoding = v;
+                        break;
+                    }
+                }
+                if(encoding == "quoted-printable") {
+                    out = q_decoder(out);
+                } else if(encoding == "base64") {
+                    out = b_decoder(out);
+                }
+                out = convert_charset(out, charset);
+            }
+        }
+
+        /// @brief Parse e-mail body into HTML, text and attachments
+        /// @param parsed output
+        /// @param base pointer to e-mail beginning
+        /// @param body body view
+        /// @param root_content_type main content type
+        /// @param ct_values content type values
+        /// @param headers e-mail headeers
         void parse_mail_body(mail_parsed& parsed, const char *base, std::string_view body, std::string_view root_content_type, const dict<std::string, std::string>& ct_values, const std::vector<std::pair<std::string, std::string>>& headers) {
             auto boundary = ct_values.find("boundary");
             if(root_content_type == "multipart/related" && boundary != ct_values.end()) {
@@ -419,6 +467,8 @@ namespace s90 {
                             attachment.start = (size_t)(match.begin() - base);
                             attachment.end = (size_t)(match.end() - base);
                             attachment.size = attachment.end - attachment.start;
+                            attachment.headers = headers;
+                            decode_block(attachment.content, body, atch_body.begin() - body.begin(), atch_body.end() - body.begin(), "us-ascii", attachment.headers, false);
                             parsed.attachments.push_back(std::move(attachment));
                         } else if(!is_attachment) {
                             auto boundary = content_type_values.find("boundary");
@@ -472,42 +522,6 @@ namespace s90 {
                 }
             } else {
                 // ... dunno, ignore ...
-            }
-        }
-
-        /// @brief Decode SMTP message HTML/text block
-        /// @param out output
-        /// @param data input data as whole .eml
-        /// @param start start offset
-        /// @param end end offset
-        /// @param charset active charset
-        /// @param headers headers
-        void decode_block(std::string& out, std::string_view data, uint64_t start, uint64_t end, const std::string& charset, const std::vector<std::pair<std::string, std::string>>& headers, bool ignore_replies = false) {
-            auto sv = std::string_view(data.begin() + start, data.begin() + end);
-            auto contains_replies = sv.find("\r\n>");
-            if(ignore_replies && contains_replies != std::string::npos) {
-                sv = sv.substr(0, contains_replies);
-                auto line_before = sv.rfind("\r\n");
-                if(line_before != std::string::npos)
-                    sv = sv.substr(0, line_before);
-                out = sv;
-            } else {
-                out = sv;
-            }
-            if(out.length() > 0) {
-                std::string encoding = "";
-                for(const auto& [k, v] : headers) {
-                    if(k == "content-transfer-encoding") {
-                        encoding = v;
-                        break;
-                    }
-                }
-                if(encoding == "quoted-printable") {
-                    out = q_decoder(out);
-                } else if(encoding == "base64") {
-                    out = b_decoder(out);
-                }
-                out = convert_charset(out, charset);
             }
         }
 
@@ -723,8 +737,6 @@ namespace s90 {
             node_id id = global_context->get_node_id();
             auto folder = mail.created_at.ymd('/');
             auto msg_id = std::format("{}/{}-{}-{}", folder, mail.created_at.his('_'), id.id, counter++);
-            dbgf("Msg ID: %s\n", msg_id.c_str());
-            dbgf("Mail To: #%zu\n", mail.to.size());
             if(config.sv_mail_storage_dir.ends_with("/"))
                 config.sv_mail_storage_dir = config.sv_mail_storage_dir.substr(0, config.sv_mail_storage_dir.length() - 1);
             
@@ -737,13 +749,13 @@ namespace s90 {
             for(auto& user : mail.to) user_lookup.insert(user.email);
 
             for(auto& email : user_lookup) {
-                dbgf("Looking up user %s\n", email.c_str());
+                dbgf("Searching for user %s\n", email.c_str());
                 auto match = co_await db->select<mail_user>("SELECT * FROM mail_users WHERE email = '{}' LIMIT 1", email);
                 if(match && match.size() > 0) {
-                    dbgf("Found user %s, caching it\n", email.c_str());
+                    dbgf("User %s found!\n", email.c_str());
                     users[email] = *match;
                 } else {
-                    dbgf("User %s not found\n", email.c_str());
+                    dbgf("User %s not found!\n", email.c_str());
                 }
             }
 
@@ -754,19 +766,19 @@ namespace s90 {
                     // if sender was found, it means it's an outbound e-mail coming from us
                     // so save it so we resolve this one as well
                     mail.to.insert(mail.from);
+                    dbgf("Adding %s as outbounder\n", mail.from.user->email.c_str());
                 }
             }
 
             size_t size_on_disk = 0;
 
-            dbgf("Total saves to disk: %zu\n", mail.to.size());
             // save the data to the disk!
+            dbgf("Saving e-mails to disk, total recipients: %zu\n", mail.to.size());
             for(auto& user : mail.to) {
                 auto found_user = users.find(user.email);
-                dbgf("Save to disk for user %s\n", user.email.c_str());
 
                 if(found_user == users.end()) {
-                    dbgf("(save) User not found: %s\n", user.email.c_str());
+                    dbgf("Recipient %s not found, skipping\n", user.email.c_str());
                     // if the user is outside of our internal DB, record it
                     // so we later know if it is 100% delivered internally
                     // or not
@@ -777,8 +789,7 @@ namespace s90 {
 
                 auto path = std::format("{}/{}/{}", config.sv_mail_storage_dir, user.email, msg_id);
                 auto fs_path = std::filesystem::path(path);
-                if(!std::filesystem::exists(fs_path)) {
-                    dbgf("FS path %s doesn't exist, creating it", fs_path.c_str());
+                if(!std::filesystem::exists(fs_path)) {                    
                     std::string failure;
                     try {
                         std::filesystem::create_directories(fs_path);
@@ -790,7 +801,6 @@ namespace s90 {
                     }
                 }
             
-                dbgf("Preparing data\n");
                 std::vector<std::tuple<std::string, const char*, size_t>> to_save = {
                     {"/raw.eml", mail.data.data(), mail.data.size()}
                 };
@@ -809,16 +819,24 @@ namespace s90 {
                     to_save.push_back({"/raw.txt", sv.begin(), sv.length()});
                 }
 
+                dbgf("Save attachments\n");
                 for(auto& attachment : parsed.attachments) {
-                    to_save.push_back({"/" + util::to_hex(util::sha256(attachment.attachment_id)) + ".bin", mail.data.data() + attachment.start, attachment.end - attachment.start });
+                    dbgf("Save %s\n", attachment.file_name.c_str());
+                    std::string_view sv(attachment.content);
+                    to_save.push_back({
+                        "/" + util::to_hex(util::sha256(attachment.attachment_id)) + ".bin", 
+                        sv.begin(),
+                        sv.length()
+                    });
+                    dbgf("Length: %zu\n", sv.length());
                 }
 
                 for(auto& [file_name, data_ptr, data_size] : to_save) {
                     size_on_disk += data_size;
                 }
 
+                dbgf("Save to disk\n");
                 for(auto& [file_name, data_ptr, data_size] : to_save) {
-                    dbgf("Writing file %s %s to disk\n", path.c_str(), file_name.c_str());
                     FILE *f = fopen((path + file_name).c_str(), "wb");
                     if(f) {
                         fwrite(data_ptr, data_size, 1, f);
@@ -848,20 +866,17 @@ namespace s90 {
             size_t outgoing_count = 0;
 
             std::string attachment_ids = "";
-
             for(size_t i = 0; i < parsed.attachments.size(); i++) {
                 attachment_ids += parsed.attachments[i].attachment_id;
                 if(i != parsed.attachments.size() - 1)
                     attachment_ids += ";";
             }
 
-            dbgf("Save %zu records to database\n", mail.to.size());
             // create a large query
             for(auto& user : mail.to) {
                 auto found_user = users.find(user.email);
                 if(found_user == users.end()) {
                     if(outbounding && user.direction == (int)mail_direction::inbound && mail.from.user) {
-                        dbgf("Mail to %s is outbound from %s\n", user.email.c_str(), mail.from.user->email.c_str());
                         mail_outgoing_record outgoing_record = {
                             .user_id = mail.from.user->user_id,
                             .message_id = msg_id,
@@ -891,7 +906,6 @@ namespace s90 {
                     continue;
                 }
 
-                dbgf("Saving record for user %s\n", found_user->second.email.c_str());
                 mail_record record {
                     .user_id = found_user->second.user_id,
                     .message_id = msg_id,
@@ -949,7 +963,6 @@ namespace s90 {
                 stored_to_db++;
             }
 
-            dbgf("Executing save query, length: %zu\n", query.length());
             // index the e-mails to the DB
             if(stored_to_db > 0) {
                 auto write_status = co_await db->exec(query.substr(0, query.length() - 1));
@@ -958,7 +971,6 @@ namespace s90 {
                 }
             }
 
-            dbgf("Executing queue query, length: %zu\n", outbounding_query.length());
             // submit the e-mails to the outgoing queue
             if(outbounding && outgoing_count > 0) {
                 auto write_status = co_await db->exec(outbounding_query.substr(0, outbounding_query.length() - 1));
@@ -967,7 +979,7 @@ namespace s90 {
                 }
             }
             
-            co_return msg_id;
+            co_return std::move(msg_id);
         }
     }
 }

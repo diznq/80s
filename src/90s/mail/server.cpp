@@ -134,7 +134,10 @@ namespace s90 {
                                 auto prom = storage->store_mail(knowledge);
                                 handled = co_await prom;
                                 if(prom.has_exception()) {
+                                    dbgf("Failed to handle e-mail\n");
                                     handled = std::unexpected("unhandled error while storing");
+                                } else {
+                                    dbgf("E-mail %s successfully handled\n", handled->c_str());
                                 }
                             }
                             if(handled) {
@@ -146,22 +149,14 @@ namespace s90 {
                                 knowledge.tls = had_tls;
                                 knowledge.client_name = client_name;
                                 knowledge.client_address = peer_name;
-                                if(!co_await write(fd, std::format("250 OK: Queued as {}\r\n", *handled))) co_return nil {};
+                                if(!co_await write(fd, std::format("250 OK: Queued as {}\r\n", *handled))) {
+                                    co_return nil {};
+                                }
                             } else {
                                 knowledge.data = "";
                                 if(!co_await write(fd, std::format("451 Server failed to handle the message. Error: {}. Try again later\r\n", handled.error()))) co_return nil {};
                             }
                         }
-                    } else if(cmd->starts_with("RSET")) {
-                        bool had_hello = knowledge.hello;
-                        bool had_tls = knowledge.tls;
-                        std::string client_name = knowledge.client_name;
-                        knowledge = mail_knowledge {};
-                        knowledge.hello = had_hello;
-                        knowledge.tls = had_tls;
-                        knowledge.client_name = client_name;
-                        knowledge.client_address = peer_name;
-                        if(!co_await write(fd, "250 OK\r\n")) co_return nil {};
                     } else {
                         std::string errors = "503-There were following errors:";
                         if(!knowledge.hello) errors += "\r\n503- No hello has been sent";
@@ -170,6 +165,17 @@ namespace s90 {
                         errors += "\r\n503 Please, fill the missing information\r\n";
                         if(!co_await write(fd, errors)) co_return nil {};
                     }
+                } else if(cmd->starts_with("RSET")) {
+                    dbgf("Reset session for peer %s\n", peer_name.c_str());
+                    bool had_hello = knowledge.hello;
+                    bool had_tls = knowledge.tls;
+                    std::string client_name = knowledge.client_name;
+                    knowledge = mail_knowledge {};
+                    knowledge.hello = had_hello;
+                    knowledge.tls = had_tls;
+                    knowledge.client_name = client_name;
+                    knowledge.client_address = peer_name;
+                    if(!co_await write(fd, "250 OK\r\n")) co_return nil {};
                 } else if(cmd->starts_with("QUIT")) {
                     if(!co_await write(fd, "221 Bye\r\n")) co_return nil {};
                     close(fd);
@@ -194,6 +200,7 @@ namespace s90 {
 
 
         aiopromise<read_arg> smtp_server::read_until(std::shared_ptr<iafd> fd, std::string&& delim) {
+            dbgf("Read next command\n");
             auto result = co_await fd->read_until(std::move(delim));
             if(config.sv_logging) {
                 if(result) {

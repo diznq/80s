@@ -69,6 +69,32 @@ namespace s90 {
             output_headers[std::move(key)] = std::move(value);
         }
 
+        void environment::header(std::string&& key, const std::string& value, const dict<std::string, std::string>& params) {
+            std::transform(key.begin(), key.end(), key.begin(), [](auto c) -> auto { return std::tolower(c); });
+            std::string val;
+
+            for(char c : value) {
+                if(c == '"') val += "\\\"";
+                else if(c == '\r') val += "%x0D";
+                else if(c == '\n') val += "%x0A";
+                else val += c;
+            }
+
+            for(const auto& [k, v] : params) {
+                val += "; ";
+                val += k + "=\"";
+                for(char c : v) {
+                    if(c == '"') val += "\\\"";
+                    else if(c == '\r') val += "%x0D";
+                    else if(c == '\n') val += "%x0A";
+                    else val += c;
+                }
+                val += '"';
+            }
+            
+            length_estimate += key.length() + 4 + val.length();
+        }
+
         const std::string& environment::endpoint() const {
             return endpoint_path;
         }

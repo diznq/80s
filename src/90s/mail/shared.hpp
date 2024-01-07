@@ -141,6 +141,9 @@ namespace s90 {
             std::string mime;
             uint64_t size;
 
+            std::vector<std::pair<std::string, std::string>> headers;
+            std::string content;
+
             orm::mapper get_orm() {
                 return {
                     { "attachment_id", attachment_id },

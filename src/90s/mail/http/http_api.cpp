@@ -258,13 +258,19 @@ namespace s90 {
 
                 orm::optional<std::string> name;
                 orm::optional<std::string> message_id;
+                std::string disposition = "inline";
+                std::string file_name = "file.bin";
+                std::string mime = "application/octet-stream";
                 int format = (int)mail_format::none;
 
                 orm::mapper get_orm() {
                     return {
                         {"name", name},
                         {"message_id", message_id},
-                        {"format", format}
+                        {"format", format},
+                        {"disposition", disposition},
+                        {"mime", mime},
+                        {"file_name", file_name}
                     };
                 }
             };
@@ -287,6 +293,10 @@ namespace s90 {
                     auto obj = co_await ctx->get_object(user->email, *query.message_id, query.name, (mail_format)query.format);
                     if(obj) {
                         env.header("cache-control", "immutable");
+                        env.header("content-disposition", query.disposition, {
+                            {"filename", query.file_name}
+                        });
+                        env.header("content-type", query.mime, {});
                         env.output()->write(*obj);
                     } else {
                         err.error = obj.error();
