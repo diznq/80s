@@ -616,9 +616,9 @@ namespace s90 {
             }
         }
 
-        aiopromise<std::expected<bool, std::string>> indexed_mail_storage::alter(uint64_t user_id, std::vector<std::string> message_ids, mail_action action) {
+        aiopromise<std::expected<uint64_t, std::string>> indexed_mail_storage::alter(uint64_t user_id, std::string email, std::vector<std::string> message_ids, mail_action action) {
             if(message_ids.size() > 100) co_return std::unexpected("max 100 messages per call");
-            if(message_ids.size() == 0) co_return true;
+            if(message_ids.size() == 0) co_return 0;
             auto db = co_await get_db();
             std::string query;
             if(action == mail_action::delete_mail) {
@@ -626,15 +626,56 @@ namespace s90 {
             } else {
                query = std::format("UPDATE mail_indexed SET status = '{}' WHERE direction = '0' AND user_id = '{}' AND message_id IN (", action == mail_action::set_seen ? 2 : 1, user_id);
             }
+
+            std::string in_part = "";
+
             for(size_t i = 0; i < message_ids.size(); i++) {
-                query += std::format("'{}'", db->escape(message_ids[i]));
-                if(i != message_ids.size() - 1) query += ',';
+                in_part += std::format("'{}'", db->escape(message_ids[i]));
+                if(i != message_ids.size() - 1) in_part += ',';
             }
+
+            if((query.size() + in_part.size() + 1) > 64000) co_return std::unexpected("request is too large");
+
+            uint64_t files = 0;
+            std::vector<std::string> successfuly_deleted;
+
+            if(action == mail_action::delete_mail) {
+                for(auto& message_id : message_ids) {
+                    auto path = std::format("{}/{}/{}", config.sv_mail_storage_dir, email, message_id);
+                    auto fs_path = std::filesystem::path(path);
+                    try {
+                        files += std::filesystem::remove_all(fs_path);
+                        successfuly_deleted.push_back(message_id);
+                    } catch(std::exception& ex) {
+                        std::cerr << "Failed to remove " << fs_path << ", error: " << ex.what() << "\n";
+                    }
+                }
+            }
+
+            // if not all files were successfuly deleted, purge only those successful records from DB
+            if(successfuly_deleted.size() != message_ids.size()) {
+                if(successfuly_deleted.size() == 0) co_return std::unexpected("failed to delete files from disk");
+                in_part = "";
+                for(size_t i = 0; i < successfuly_deleted.size(); i++) {
+                    in_part += std::format("'{}'", db->escape(successfuly_deleted[i]));
+                    if(i != successfuly_deleted.size() - 1) in_part += ',';
+                }
+            }
+
+            query += in_part;
+
             query += ')';
 
-            if(query.size() > 64000) co_return std::unexpected("request is too large");
             auto result = co_await db->exec(query);
-            if(result) co_return true;
+
+            if(action == mail_action::delete_mail) {
+                auto update_status = co_await db->exec("UPDATE mail_users SET used_space=(SELECT SUM(mail_indexed.size) FROM mail_indexed WHERE mail_indexed.user_id = mail_users.user_id) WHERE mail_users.user_id IN = '{}'", user_id);
+                if(!update_status) {
+                    co_return std::unexpected("failed to update quotas");
+                }
+            }
+
+            if(result) co_return files;
             else co_return std::unexpected("database error");
         }
 

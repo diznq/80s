@@ -85,9 +85,11 @@ namespace s90 {
 
             /// @brief Set message status as seen
             /// @param user_id user ID
+            /// @param email mailbox address
             /// @param message_ids list of message IDs
+            /// @param action action to perform
             /// @return true if success, error otherwise
-            virtual aiopromise<std::expected<bool, std::string>> alter(uint64_t user_id, std::vector<std::string> message_ids, mail_action action = mail_action::set_seen) = 0;
+            virtual aiopromise<std::expected<uint64_t, std::string>> alter(uint64_t user_id, std::string email, std::vector<std::string> message_ids, mail_action action = mail_action::set_seen) = 0;
         };
     }
 }
