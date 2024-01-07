@@ -1,6 +1,7 @@
 #pragma once
 #include "../context.hpp"
 #include "render_context.hpp"
+#include "../orm/json.hpp"
 #include <string>
 #include <expected>
 #include <optional>
@@ -8,7 +9,7 @@
 namespace s90 {
     namespace httpd {
         class page;
-        class server;
+        class httpd_server;
 
         enum class encryption {
             none,
@@ -45,6 +46,12 @@ namespace s90 {
             /// @param value header value
             virtual void header(std::string&& key, std::string&& value) = 0;
 
+            /// @brief Set an output header with properties
+            /// @param key header name
+            /// @param value header value
+            /// @param params properties
+            virtual void header(std::string&& key, const std::string& value, const dict<std::string, std::string>& params) = 0;
+
             /// @brief Get current endpoint name (script path) 
             /// @return endpoint name
             virtual const std::string& endpoint() const = 0;
@@ -66,6 +73,10 @@ namespace s90 {
             /// @brief Get entire signed query
             /// @return query dictionary
             virtual const dict<std::string, std::string>& signed_query() const = 0;
+
+            /// @brief Read cookies
+            /// @return cookies
+            virtual dict<std::string, std::string> cookies() const = 0;
 
             /// @brief Create an URL
             /// @param endpoint endpoint name
@@ -131,6 +142,10 @@ namespace s90 {
             virtual std::expected<std::string, std::string> from_b64(std::string_view data) const = 0;
             virtual std::string to_hex(std::string_view data) const = 0;
 
+            /// @brief Get peer name
+            /// @return peer name
+            virtual const std::string& peer() const = 0;
+
             // template helpers
             template<class T>
             T* const local_context() const {
@@ -156,9 +171,17 @@ namespace s90 {
             template<class T>
             requires orm::with_orm_trait<T>
             T form() const {
-                T val;
-                to_native(val.get_orm(), form());
-                return val;
+                auto it = header("content-type");
+                if(it && *it == "application/json") {
+                    orm::json_decoder dec;
+                    auto res = dec.decode<T>(body());
+                    if(res) return *res;
+                    else return T{};
+                } else {
+                    T val;
+                    to_native(val.get_orm(), form());
+                    return val;
+                }
             }
         };
 
@@ -174,6 +197,7 @@ namespace s90 {
             std::string http_method = "GET";
             std::string endpoint_path = "/";
             std::string enc_base = "";
+            std::string peer_name = "";
             dict<std::string, std::string> signed_params;
             dict<std::string, std::string> query_params;
             dict<std::string, std::string> headers;
@@ -186,12 +210,15 @@ namespace s90 {
             std::optional<std::string> header(std::string&& key) const override;
             void header(const std::string& key, const std::string& value) override;
             void header(std::string&& key, std::string&& value) override;
+            void header(std::string&& key, const std::string& value, const dict<std::string, std::string>& params) override;
 
             const std::string& endpoint() const override;
             std::string url(std::string_view endpoint, dict<std::string, std::string>&& params, encryption encrypt = encryption::lean) const override;
 
             const dict<std::string, std::string>& query() const override;
             const dict<std::string, std::string>& signed_query() const override;
+
+            dict<std::string, std::string> cookies() const override;
 
             std::optional<std::string> query(std::string&& key) const override;
             std::optional<std::string> signed_query(std::string&& key) const override;
@@ -222,8 +249,10 @@ namespace s90 {
             std::expected<std::string, std::string> from_b64(std::string_view data) const override;
             std::string to_hex(std::string_view data) const override;
 
+            const std::string& peer() const override;
+
         private:
-            friend class s90::httpd::server;
+            friend class s90::httpd::httpd_server;
             void write_method(std::string&& method);
             void write_header(std::string&& key, std::string&& value);
             void write_query(dict<std::string, std::string>&& qs);
@@ -233,6 +262,7 @@ namespace s90 {
             void write_global_context(icontext *ctx);
             void write_endpoint(std::string_view endpoint);
             void write_enc_base(std::string_view enc_base);
+            void write_peer(const std::string& peer_name);
             aiopromise<std::string> http_response();
         };
     }

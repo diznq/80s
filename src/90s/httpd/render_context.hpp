@@ -36,6 +36,10 @@ namespace s90 {
             /// @param text text to be written
             virtual void write(std::string&& text) = 0;
 
+            /// @brief Write text to the context
+            /// @param text text to be written
+            virtual void write(const std::string& text) = 0;
+
             /// @brief Write JSON to the context
             /// @param any value to be written
             virtual void write_json(const orm::any& any) = 0;
@@ -79,6 +83,7 @@ namespace s90 {
             aiopromise<std::string> finalize() override;
             
             void write(std::string&& text) override;
+            void write(const std::string& text) override;
             void write_json(const orm::any& any) override;
 
             std::string escape_string(std::string_view view) const override;

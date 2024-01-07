@@ -339,9 +339,8 @@ namespace s90 {
             data = std::string_view(encoded.data(), encoded.data() + encoded.size());
         }
         
-        dbgf("WRITE DATA: %zu\n", data.length());
-
         if(is_closed()) [[unlikely]] {
+            dbgf("Tried to write to closed FD (%s)!\n", name().c_str());
             promise.resolve(false);
             return promise;
         }

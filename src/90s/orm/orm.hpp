@@ -7,6 +7,7 @@
 #include <concepts>
 #include <format>
 #include <cstdint>
+#include <cstdlib>
 #include <type_traits>
 #ifdef S90_SHARED_ORM
 #include "../shared.hpp"
@@ -69,8 +70,8 @@ namespace s90 {
                 return value_;
             }
 
-            T* operator->() {
-                return &value_;
+            T* operator->() const {
+                return const_cast<T*>(&value_);
             }
 
             explicit operator bool() const {
@@ -125,7 +126,7 @@ namespace s90 {
             reftype type = reftype::empty;
             any_internals internals;
 
-            uintptr_t success_wb = 0;
+            uintptr_t success_wb = -1;
             size_t template_arg = 0;
 
             class iterator {
@@ -210,7 +211,7 @@ namespace s90 {
 
             /// @brief Set present flag if optional
             inline void set_present(bool value = true, uintptr_t offset = 0) const {
-                if(success_wb) {
+                if(is_optional()) {
                     *(bool*)(offset + success_wb) = value;
                 }
             }
@@ -218,14 +219,14 @@ namespace s90 {
             /// @brief Determine if `any` holds a value
             /// @return true if `any` is not an optional or if it is an optional and holds a value
             inline bool is_present(size_t offset = 0) const {
-                if(!success_wb) return true;
+                if(!is_optional()) return true;
                 return *(bool*)(offset + success_wb);
             }
 
             /// @brief Determine if `any` holds an optional
             /// @return true if optional
             inline bool is_optional() const {
-                return success_wb != 0;
+                return success_wb != -1;
             }
 
             /// @brief Determine if `any` holds a string
@@ -365,7 +366,7 @@ namespace s90 {
             /// @param offset offset from the relative base
             /// @return string form
             inline std::string from_native(bool bool_as_text = false, uintptr_t offset = 0) const {
-                if(success_wb && !*(bool*)(offset + success_wb)) return "";
+                if(is_optional() && !*(bool*)(offset + success_wb)) return "";
                 uintptr_t addr = ref + offset;
                 switch(type) {
                     case reftype::str:
@@ -440,7 +441,7 @@ namespace s90 {
             /// @param offset offset from the relative base
             /// @return string form
             inline void from_native(std::ostream& out, bool bool_as_text = false, uintptr_t offset = 0) const {
-                if(success_wb && !*(bool*)success_wb) return;
+                if(is_optional() && !*(bool*)(success_wb + offset)) return;
                 uintptr_t addr = ref + offset;
                 switch(type) {
                     case reftype::str:
@@ -599,6 +600,18 @@ namespace s90 {
             return obj;
         }
 
+        /// @brief Transform environment variables to a C++ object
+        /// @param self mapper reference
+        /// @param offset offset relative to base
+        static void from_env(const mapper& self, uintptr_t offset = 0) {
+            for(auto& item : self) {
+                const char *value = std::getenv(std::string(item.first).c_str());
+                if(value != NULL) {
+                    item.second.to_native(std::string(value), offset);
+                }
+            }
+        }
+
         /// @brief Transform an array of dictionaries to array of native C++ objects
         /// @tparam T object type
         /// @param items array of dictionaries to be transformed
@@ -702,15 +715,18 @@ namespace s90 {
                 std::vector<T> *tr = (std::vector<T>*)ref;
                 if(value.get_type() == reftype::empty) {
                     tr->push_back(T{});
-                    return any(tr->back());
+                    T& b = tr->back();
+                    return any(b);
                 } else {
                     tr->push_back(*(T*)value.get_ref());
-                    return any(tr->back());
+                    T& b = tr->back();
+                    return any(b);
                 }
             };
             internals.get_item = [](const uintptr_t ref, size_t index) -> auto {
-                const std::vector<T> *tr = (const std::vector<T>*)ref;
-                return any(tr->at(index));
+                std::vector<T> *tr = (std::vector<T>*)ref;
+                T& b = tr->at(index);
+                return any(b);
             };
             internals.size = [](const uintptr_t ref) -> auto {
                 const std::vector<T> *tr = (const std::vector<T>*)ref;

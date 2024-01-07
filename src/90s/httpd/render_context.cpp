@@ -29,6 +29,16 @@ namespace s90 {
             }
         }
 
+        void render_context::write(const std::string& text) {
+            if(disabled) return;
+            est_length += text.length();
+            if(blocks.size() > 0 && blocks.back().type == output_type::text) {
+                blocks.back().text += text;
+            } else {
+                blocks.push_back(output_block {output_type::text, text});
+            }
+        }
+
         void render_context::write_json(const orm::any& any) {
             if(disabled) return;
             orm::json_encoder enc;

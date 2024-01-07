@@ -25,6 +25,22 @@ namespace s90 {
         std::expected<std::string, std::string> cipher( std::string_view text, std::string_view key, bool encrypt, bool iv);
         dict<std::string, std::string> parse_query_string(std::string_view query_string);
 
+        static std::string_view trim(std::string_view str) {
+            size_t off = 0;
+            for(char c : str) {
+                if(!isgraph(c)) off++;
+                else break;
+            }
+            str = str.substr(off);
+            off = 0;
+            for(size_t i = str.length() - 1; i >= 0; i--) {
+                if(!isgraph(str[i])) off++;
+                else break;
+            }
+            str = str.substr(0, str.length() - off);
+            return str;
+        }
+
         template<class T>
         bool str_to_n(const std::string& str, T& ref, int base = 10) {
             std::string_view view(str);

@@ -28,53 +28,8 @@
 namespace s90 {
     namespace httpd {
 
-        dict<std::string, server::loaded_lib> server::loaded_libs;
-        std::mutex server::loaded_libs_lock;
-
-        struct quit_page : public page {
-        public:
-            const char *name() const override {
-                return "GET /quit";
-            }
-            
-            aiopromise<std::expected<nil, status>> render(ienvironment& env) const {
-                aiopromise<std::expected<nil, status>> prom;
-                env.global_context()->quit();
-                env.output()->write("ok");
-                prom.resolve(nil {});
-                return prom;
-            }
-        };
-
-        struct debug_page : public page {
-        public:
-            const char *name() const override {
-                return "GET /debug";
-            }
-
-            aiopromise<std::expected<nil, status>> render(ienvironment& env) const {
-                aiopromise<std::expected<nil, status>> prom;
-                auto ctx = env.global_context();
-                std::string response;
-                auto& refs = ctx->get_fds();
-                for(auto& [k, w] : refs) {
-                    if(auto v = w.lock()) {
-                        response += "name: " + v->name() + "\n";
-                        auto usage = v->usage();
-                        response += "  read buffer   : " + std::to_string(usage.read_buffer.size) + " / " + std::to_string(usage.read_buffer.capacity) + " / " + std::to_string(usage.read_buffer.offset) + "\n";
-                        response += "  read commands : " + std::to_string(usage.read_commands.size) + " / " + std::to_string(usage.read_commands.capacity) + " / " + std::to_string(usage.read_commands.offset) + "\n";
-                        response += "  write buffer  : " + std::to_string(usage.write_buffer.size) + " / " + std::to_string(usage.write_buffer.capacity) + " / " + std::to_string(usage.write_buffer.offset) + "\n";
-                        response += "  write commands: " + std::to_string(usage.write_commands.size) + " / " + std::to_string(usage.write_commands.capacity) + " / " + std::to_string(usage.write_commands.offset) + "\n";
-                        response += "\n";
-                    }
-                }
-                env.status("200 OK");
-                env.content_type("text/plain");
-                env.output()->write(std::move(response));
-                prom.resolve(nil {});
-                return prom;
-            }
-        };
+        dict<std::string, httpd_server::loaded_lib> httpd_server::loaded_libs;
+        std::mutex httpd_server::loaded_libs_lock;
 
         class generic_error_page : public page {
             std::string static_path = "";
@@ -155,14 +110,12 @@ namespace s90 {
             }
         };
 
-        server::server(context *parent) {
+        httpd_server::httpd_server(icontext *parent, httpd_config config) : config(config) {
             default_page = new generic_error_page;
-            pages["GET /debug"] = loaded_page {new debug_page, false};
-            pages["GET /quit"] = loaded_page {new quit_page, false};
             global_context = parent;
         }
 
-        server::~server() {
+        httpd_server::~httpd_server() {
             for(auto& [k, v] : pages) {
                 if(!v.shared)
                     delete v.webpage;
@@ -171,46 +124,55 @@ namespace s90 {
             default_page = nullptr;
         }
 
-        void server::on_load() {
+        void httpd_server::on_load() {
             // load libs on initial load
             load_libs();
         }
 
-        void server::on_pre_refresh() {
+        void httpd_server::on_pre_refresh() {
             // this is called before refresh happens, basically on_unload
             unload_libs();
         }
 
-        void server::on_refresh() {
+        void httpd_server::on_refresh() {
             // reload libs on refresh
             load_libs();
         }
 
-        void server::load_libs() {
-            const char *web_root_env = getenv("WEB_ROOT");
-            const char *web_static_env = getenv("WEB_STATIC");
-            const char *master_key = getenv("MASTER_KEY");
-            std::string web_root = "src/90s/httpd/pages/";
-            if(web_static_env) static_path = web_static_env;
-            if(web_root_env != NULL) web_root = web_root_env;
-            if(master_key != NULL) enc_base = master_key;
+        void httpd_server::load_libs() {
+            std::string web_root = config.web_root;
+            std::string master_key = config.master_key;
+            if(config.web_static.length() > 0) static_path = config.web_static;
+
+            enc_base = master_key;
+
             if(enc_base.starts_with("b64:")) {
                 auto decoded = util::from_b64(enc_base.substr(4));
                 if(decoded) {
                     enc_base = *decoded;
                 }
             }
+            
             if(enc_base.length() == 0) enc_base = "ABCDEFGHIJKLMNOP";
-            if(enc_base.length() > 0 && enc_base.length() < 16) enc_base = util::sha256(enc_base);
+            if(enc_base.length() < 16) enc_base = util::sha256(enc_base);
+
             ((generic_error_page*)default_page)->set_static_path(static_path);
-            for(const auto& entry : std::filesystem::recursive_directory_iterator(web_root)) {
-                if(entry.path().extension() == SO_EXT) {
-                    load_lib(entry.path().string());
+
+            for(auto& page : config.pages) {
+                load_page(page);
+            }
+
+            if(config.initializer) local_context = config.initializer(global_context, local_context);
+            if(config.dynamic_content) {            
+                for(const auto& entry : std::filesystem::recursive_directory_iterator(web_root)) {
+                    if(entry.path().extension() == SO_EXT) {
+                        load_lib(entry.path().string());
+                    }
                 }
             }
         }
 
-        void server::load_lib(const std::string& name) {
+        void httpd_server::load_lib(const std::string& name) {
             std::lock_guard guard(loaded_libs_lock);
             auto it = loaded_libs.find(name);
             if(it != loaded_libs.end()) {
@@ -253,7 +215,7 @@ namespace s90 {
             }
         }
 
-        void server::unload_libs() {
+        void httpd_server::unload_libs() {
             std::lock_guard guard(loaded_libs_lock);
             for(auto it = loaded_libs.begin(); it != loaded_libs.end();) {
                 auto page_it = pages.find(it->second.webpage->name());
@@ -273,13 +235,16 @@ namespace s90 {
                     it++;
                 }
             }
+
+            if(config.releaser && local_context) local_context = config.releaser(global_context, local_context);
         }
 
-        void server::load_page(page* webpage) {
+        void httpd_server::load_page(page* webpage) {
             pages[webpage->name()] = {webpage, false};
         }
 
-        aiopromise<nil> server::on_accept(std::shared_ptr<iafd> fd) {
+        aiopromise<nil> httpd_server::on_accept(std::shared_ptr<iafd> fd) {
+            std::string peer_name;
             dict<std::string, page*>::iterator it;
             page *current_page = default_page;
             std::string_view script;
@@ -288,6 +253,15 @@ namespace s90 {
             environment env;
             size_t pivot = 0, body_length = 0, prev_pivot = 0;
             bool write_status = true;
+
+            char peer_name_buff[100];
+            int peer_port = 0;
+
+            if(s80_peername(fd->get_fd(), peer_name_buff, sizeof(peer_name_buff), &peer_port)) {
+                peer_name = peer_name_buff;
+                peer_name += ',';
+                peer_name += std::to_string(peer_port);
+            }
 
             #if 0
             auto ssl_ctx = global_context->new_ssl_server_context("private/pubkey.pem", "private/privkey.pem");
@@ -395,6 +369,7 @@ namespace s90 {
                 env.write_local_context(local_context);
                 env.write_endpoint(endpoint);
                 env.write_enc_base(enc_base);
+                env.write_peer(peer_name);
 
                 auto page_coro = current_page->render(env);
                 auto page_result = co_await page_coro;

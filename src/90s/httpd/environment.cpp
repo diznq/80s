@@ -1,9 +1,10 @@
 #include "environment.hpp"
 #include "page.hpp"
 #include "../util/util.hpp"
+#include "../cache/cache.hpp"
 #include <algorithm>
 #include <cctype>
-#include "../cache/cache.hpp"
+#include <ranges>
 
 namespace s90 {
     namespace httpd {
@@ -68,6 +69,34 @@ namespace s90 {
             output_headers[std::move(key)] = std::move(value);
         }
 
+        void environment::header(std::string&& key, const std::string& value, const dict<std::string, std::string>& params) {
+            std::transform(key.begin(), key.end(), key.begin(), [](auto c) -> auto { return std::tolower(c); });
+            std::string val;
+
+            for(char c : value) {
+                if(c == '"') val += "\\\"";
+                else if(c == '\r') val += "%x0D";
+                else if(c == '\n') val += "%x0A";
+                else val += c;
+            }
+
+            for(const auto& [k, v] : params) {
+                val += "; ";
+                val += k + "=\"";
+                for(char c : v) {
+                    if(c == '"') val += "\\\"";
+                    else if(c == '\r') val += "%x0D";
+                    else if(c == '\n') val += "%x0A";
+                    else val += c;
+                }
+                val += '"';
+            }
+            
+            length_estimate += key.length() + 4 + val.length();
+
+            output_headers[std::move(key)] = val;
+        }
+
         const std::string& environment::endpoint() const {
             return endpoint_path;
         }
@@ -82,6 +111,21 @@ namespace s90 {
             auto it = signed_params.find(std::move(key));
             if(it == signed_params.end()) return {};
             return it->second;
+        }
+
+        dict<std::string, std::string> environment::cookies() const {
+            dict<std::string, std::string> all;
+            auto hdr = header("cookie");
+            if(hdr) {
+                for(auto value : std::ranges::split_view(std::string_view(*hdr), std::string_view("; "))) {
+                    std::string_view v { value };
+                    auto pivot = v.find('=');
+                    if(pivot != std::string::npos) {
+                        all[std::string(v.substr(0, pivot))] = v.substr(pivot + 1);
+                    }
+                }
+            }
+            return all;
         }
 
         const dict<std::string, std::string>& environment::query() const {
@@ -195,6 +239,10 @@ namespace s90 {
             return util::to_hex(data);
         }
 
+        const std::string& environment::peer() const {
+            return peer_name;
+        }
+
         void environment::write_body(std::string&& data) {
             http_body = std::move(data);
         }
@@ -230,6 +278,10 @@ namespace s90 {
 
         void environment::write_enc_base(std::string_view base) {
             enc_base = base;
+        }
+
+        void environment::write_peer(const std::string& name) {
+            peer_name = std::move(name);
         }
 
     }

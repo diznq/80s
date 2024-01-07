@@ -108,7 +108,7 @@ namespace s90 {
                             break;
                         default:
                             // encode rest of types that don't yield a string
-                            a.from_native(out,true, offset);
+                            a.from_native(out, true, offset);
                             break;
                     }
                 } else {
