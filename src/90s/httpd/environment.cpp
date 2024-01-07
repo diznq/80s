@@ -93,6 +93,8 @@ namespace s90 {
             }
             
             length_estimate += key.length() + 4 + val.length();
+
+            output_headers[std::move(key)] = val;
         }
 
         const std::string& environment::endpoint() const {

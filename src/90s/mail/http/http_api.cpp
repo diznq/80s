@@ -290,13 +290,22 @@ namespace s90 {
                         env.output()->write_json(err);
                         co_return nil {};
                     }
+                    if(query.name)
+                        dbgf("Serve object %s\n", query.name->c_str());
                     auto obj = co_await ctx->get_object(user->email, *query.message_id, query.name, (mail_format)query.format);
                     if(obj) {
-                        env.header("cache-control", "immutable");
+                        env.header("cache-control", "public, immutable");
                         env.header("content-disposition", query.disposition, {
                             {"filename", query.file_name}
                         });
-                        env.header("content-type", query.mime, {});
+                        if(query.name) {
+                            env.header("content-type", query.mime, {});
+                        } else {
+                            if(query.format == 2) env.header("content-type", "text/html; charset=utf-8");
+                            else if(query.format == 1) env.header("content-type", "text/plain; charset=utf-8");
+                            else if(query.format == 0) env.header("content-type", "message/rfc822");
+                            else env.header("content-type", query.mime, {});
+                        }
                         env.output()->write(*obj);
                     } else {
                         err.error = obj.error();
