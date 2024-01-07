@@ -547,6 +547,22 @@ namespace s90 {
             }
             co_return std::unexpected("invalid session");
         }
+        
+        aiopromise<std::expected<mail_user, std::string>> indexed_mail_storage::get_user_by_email(std::string email) {
+            auto db = co_await get_db();
+            auto result = co_await db->select<mail_user>("SELECT * FROM mail_users WHERE email = '{}' LIMIT 1", email);
+            if(result && result.size() == 1) {
+                dbgf("E-mail %s found!\n", email.c_str());
+                co_return *result;
+            } else {
+                if(!result) {
+                    dbgf("Err: %s\n", result.error_message.c_str());
+                } else {
+                    dbgf("User %s not found\n", email.c_str());
+                }
+            }
+            co_return std::unexpected("not found");
+        }
 
         aiopromise<std::expected<
                     std::tuple<sql::sql_result<mail_record>, uint64_t>, std::string
@@ -661,7 +677,7 @@ namespace s90 {
             std::vector<mail_parsed_user> users_outside;
 
             // insert sender if they are within this mail server
-            if(mail.from.user) mail.to.insert(mail.from);
+            if(outbounding && mail.from.user) mail.to.insert(mail.from);
             
             // prepare the data to be saved to disk
             dbgf("Saving e-mails to disk, total recipients: %zu\n", mail.to.size());
@@ -740,7 +756,7 @@ namespace s90 {
                     dbgf("Length: %zu\n", sv.length());
                 }
 
-                dbgf("Save to disk\n");
+                dbgf("Save to disk for user %s\n", user.user->email.c_str());
                 for(auto& [file_name, data_ptr, data_size] : to_save) {
                     FILE *f = fopen((path + file_name).c_str(), "wb");
                     if(f) {

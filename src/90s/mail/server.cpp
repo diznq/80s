@@ -125,7 +125,6 @@ namespace s90 {
                         } else if(knowledge.to.size() > 50) {
                             if(!co_await write(fd, "501 Limit for number of recipients is 50\r\n")) co_return nil {};
                         } else {
-                            knowledge.to.insert(parsed_mail);
                             bool is_ok = true;
                             if(storage) {
                                 auto user = co_await storage->get_user_by_email(parsed_mail.email);
@@ -135,9 +134,12 @@ namespace s90 {
                                 } else if(user->used_space + knowledge.from.requested_size * 2 > user->quota) {
                                     is_ok = false;
                                     if(!co_await write(fd, "522 Recipient has exceeded mailbox limit\r\n")) co_return nil {};
+                                } else {
+                                    parsed_mail.user = *user;
                                 }
                             }
                             if(is_ok) {
+                                knowledge.to.insert(parsed_mail);
                                 if(!co_await write(fd, "250 OK\r\n")) co_return nil {};
                             }
                         }

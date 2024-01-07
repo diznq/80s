@@ -71,7 +71,7 @@ namespace s90 {
             }
 
             T* operator->() const {
-                return &value_;
+                return const_cast<T*>(&value_);
             }
 
             explicit operator bool() const {
