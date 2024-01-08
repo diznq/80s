@@ -2,6 +2,8 @@
 #include "context.hpp"
 #include "sql/mysql.hpp"
 
+#include "dns/doh.hpp"
+
 namespace s90 {
 
     context::context(node_id *id, reload_context *rctx) : id(id), rld(rctx) {}
@@ -239,4 +241,11 @@ namespace s90 {
         return *id;
     }
     
+    std::shared_ptr<dns::idns> context::get_dns() {
+        if(dns_provider) return dns_provider;
+        const char *DNS_PROVIDER = getenv("DNS_PROVIDER");
+        if(DNS_PROVIDER == NULL) DNS_PROVIDER = "dns.google";
+        dns_provider = std::make_shared<dns::doh>(this, DNS_PROVIDER);
+        return dns_provider;
+    }
 }

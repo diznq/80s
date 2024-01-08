@@ -418,6 +418,12 @@ namespace s90 {
                 }
             }
 
+            if(crypto_ssl_is_init_finished(ssl_bio)) {
+                ssl_cycle(read_buffer);
+                ssl_status = ssl_state::client_ready;
+                co_return {false, ""};
+            }
+
             dbgf("SSL read any\n");
             auto arg = co_await read_any();
             if(arg.error) {

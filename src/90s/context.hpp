@@ -4,6 +4,7 @@
 #include "afd.hpp"
 #include "aiopromise.hpp"
 #include "sql/sql.hpp"
+#include "dns/dns.hpp"
 #include <memory>
 #include <expected>
 
@@ -21,10 +22,10 @@ namespace s90 {
     };
 
     enum class dns_type {
-        A,
-        CNAME,
-        MX,
-        AAAA
+        A = 1,
+        CNAME = 5,
+        MX = 15,
+        AAAA = 28
     };
 
     struct connect_result {
@@ -109,6 +110,8 @@ namespace s90 {
         /// @brief Get node info
         /// @return node info
         virtual node_id get_node_id() const = 0;
+
+        virtual std::shared_ptr<dns::idns> get_dns() = 0;
     };
 
     class context : public icontext {
@@ -121,6 +124,7 @@ namespace s90 {
         dict<std::string, void*> ssl_contexts;
         std::shared_ptr<connection_handler> handler;
         std::function<void(context*)> init_callback;
+        std::shared_ptr<dns::idns> dns_provider;
 
     public:
         context(node_id *id, reload_context *reload_ctx);
@@ -156,5 +160,7 @@ namespace s90 {
         std::expected<void*, std::string> new_ssl_server_context(const char *pubkey = NULL, const char *privkey = NULL) override;
 
         node_id get_node_id() const override;
+
+        std::shared_ptr<dns::idns> get_dns() override;
     };
 }
