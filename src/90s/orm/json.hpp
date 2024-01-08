@@ -121,7 +121,7 @@ namespace s90 {
                 const size_t j = a.size(offset);
                 for(size_t i = 0; i < j; i++) {
                     auto item = a.at(i, offset);
-                    escape(out, item, (uintptr_t)&item);
+                    escape(out, item, 0);
                     if(i != j - 1) [[unlikely]] out << ',';
                 }
                 out << ']';
@@ -411,7 +411,7 @@ namespace s90 {
                                         carried = c;
                                         //in.seekg(-1, std::ios_base::cur);
                                         orm::any el = a.push_back({}, offset);
-                                        auto res = decode(in, el, el.get_ref(), carried, depth + 1, max_depth);
+                                        auto res = decode(in, el, 0, carried, depth + 1, max_depth);
                                         if(res.length() > 0) return res;
                                         read_next_c(in, c, carried);
                                         if(!in) return "unexpected EOF on reading next array item";

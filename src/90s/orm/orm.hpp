@@ -543,7 +543,9 @@ namespace s90 {
             /// @brief Push an item to the underlying array
             /// @param v item to be pushed
             any push_back(const any& v, uintptr_t offset = 0) const {
-                if(auto fn = internals.push_back) return fn(ref + offset, v);
+                if(auto fn = internals.push_back) {
+                    return fn(ref + offset, v);
+                }
                 return {};
             }
 
