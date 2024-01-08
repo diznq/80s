@@ -64,9 +64,10 @@ namespace s90 {
                     if(!co_await write(fd, 
                         std::format(
                             "250-{} is my domain name. Hello {}!\r\n"
+                            "250-PIPELINING\r\n"
                             "250-8BITMIME\r\n"
                             "{}"
-                            "250 SIZE 1000000\r\n",
+                            "250 SIZE 102400000\r\n",
                             config.smtp_host,
                             cmd->substr(5),
                             config.sv_tls_enabled ? "250-STARTTLS\r\n" : ""
@@ -130,8 +131,10 @@ namespace s90 {
                             if(storage) {
                                 auto user = co_await storage->get_user_by_email(parsed_mail.email);
                                 if(!user) {
-                                    is_ok = false;
-                                    if(!co_await write(fd, "511 Mailbox not found\r\n")) co_return nil {};
+                                    if(!knowledge.from.authenticated) {
+                                        is_ok = false;
+                                        if(!co_await write(fd, "511 Mailbox not found\r\n")) co_return nil {};
+                                    }
                                 } else if(user->used_space + knowledge.from.requested_size * 2 > user->quota) {
                                     is_ok = false;
                                     if(!co_await write(fd, "522 Recipient has exceeded mailbox limit\r\n")) co_return nil {};
@@ -158,7 +161,7 @@ namespace s90 {
                             if(!storage) {
                                 handled = std::unexpected("no storage handler");
                             } else {
-                                auto prom = storage->store_mail(knowledge);
+                                auto prom = storage->store_mail(knowledge, knowledge.from.authenticated);
                                 handled = co_await prom;
                                 if(prom.has_exception()) {
                                     dbgf("Failed to handle e-mail\n");
