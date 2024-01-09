@@ -71,7 +71,13 @@ namespace s90 {
 
         doh::doh(icontext *ctx, const std::string& dns_provider) : ctx(ctx), dns_provider(dns_provider) {
             std::lock_guard guard(mtx);
-            std::ifstream ifs("/etc/hosts");
+            std::ifstream ifs(
+            #ifdef _WIN32
+                "C:\\Windows\\system32\\drivers\\etc\\hosts"
+            #else
+                "/etc/hosts"
+            #endif
+            );
             if(ifs) {
                 std::string line;
                 while(std::getline(ifs, line)) {
@@ -84,6 +90,7 @@ namespace s90 {
                     }
                 }
             }
+            responses["localhost"] = dns_response { "127.0.0.1" };
         }
         
         doh::~doh() {
@@ -91,32 +98,22 @@ namespace s90 {
         }
 
         aiopromise<std::expected<std::shared_ptr<iafd>, std::string>> doh::obtain_connection() {
-            if(fd && !fd->is_closed() && !fd->is_error()) {
-                co_return fd;
-            }
-            if(is_connecting) {
-                aiopromise<std::expected<std::shared_ptr<iafd>, std::string>> prom;
-                connecting.push(prom.weak());
-                co_return co_await prom;
+            auto result = co_await ctx->connect(dns_provider, dns_type::A, 443, proto::tls, "dns.doh." + dns_provider);
+            if(!result) {
+                co_return std::unexpected(result.error_message);
             } else {
-                is_connecting = true;
-                auto ok = co_await ctx->connect(dns_provider, dns_type::A, 443, proto::tls);
-                if(ok) {
-                    fd = *ok;
-                    while(connecting.size() > 0) {
-                        auto popped = connecting.front();
-                        if(auto ptr = popped.lock()) {
-                            aiopromise(ptr).resolve(fd);
-                        }
-                        connecting.pop();
-                    }
-                    co_return fd;
-                }
-                co_return std::unexpected(ok.error_message);
+                co_return result.fd;
             }
         }
 
+        void doh::memorize(const std::string& host, const std::string& addr) {
+            mtx.lock();
+            responses[host] = dns_response { addr };
+            mtx.unlock();
+        }
+
         aiopromise<std::expected<dns_response, std::string>> doh::query(std::string name, dns_type type, bool prefer_ipv6) {
+            if(likely_ip(name)) co_return dns_response { name };
             std::string main_key = std::format("{}_{}", (int)type, name);
             mtx.lock();
             auto it = responses.find(main_key);
@@ -134,7 +131,11 @@ namespace s90 {
                 mtx.unlock();
             } else {
                 mtx.unlock();
-                auto conn = co_await obtain_connection();
+                auto conn_result = co_await obtain_connection();
+                if(!conn_result) {
+                    co_return std::unexpected(conn_result.error());
+                }
+                auto fd = *conn_result;
                 std::string str_type;
 
                 // Construct a HTTP request to be sent to DoH

@@ -141,6 +141,10 @@ namespace s90 {
         /// @brief Get raw file descriptor handle
         /// @return file descriptor handle
         virtual fd_t get_fd() const = 0;
+
+        /// @brief Determine if socket uses TLS/SSL
+        /// @return true if secure
+        virtual bool is_secure() const = 0;
     };
 
     class afd : public iafd {
@@ -235,6 +239,8 @@ namespace s90 {
         aiopromise<ssl_result> enable_server_ssl(void *ssl_context) override;
 
         fd_t get_fd() const override;
+
+        bool is_secure() const override;
     };
 
 }
