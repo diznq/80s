@@ -4,6 +4,7 @@
 #include "afd.hpp"
 #include "aiopromise.hpp"
 #include "sql/sql.hpp"
+#include "dns/dns.hpp"
 #include <memory>
 #include <expected>
 
@@ -20,11 +21,17 @@ namespace s90 {
         tls
     };
 
+    enum class tls_mode {
+        best_effort,
+        always,
+        never
+    };
+
     enum class dns_type {
-        A,
-        CNAME,
-        MX,
-        AAAA
+        A = 1,
+        CNAME = 5,
+        MX = 15,
+        AAAA = 28
     };
 
     struct connect_result {
@@ -64,8 +71,9 @@ namespace s90 {
         /// @param record_type DNS record type
         /// @param port port
         /// @param proto protocol
+        /// @param name socket name, if set, connections are cached and re-retrieved later on
         /// @return return an already connected file descriptor
-        virtual aiopromise<connect_result> connect(const std::string& addr, dns_type record_type, int port, proto protocol) = 0;
+        virtual aiopromise<connect_result> connect(const std::string& addr, dns_type record_type, int port, proto protocol, std::optional<std::string> name = {}) = 0;
 
         /// @brief Create a new SQL instance
         /// @param type SQL type, currently only "mysql" is accepted
@@ -109,6 +117,8 @@ namespace s90 {
         /// @brief Get node info
         /// @return node info
         virtual node_id get_node_id() const = 0;
+
+        virtual std::shared_ptr<dns::idns> get_dns() = 0;
     };
 
     class context : public icontext {
@@ -116,11 +126,17 @@ namespace s90 {
         reload_context *rld;
         fd_t elfd;
         dict<fd_t, std::weak_ptr<iafd>> fds;
+
+        dict<std::string, std::shared_ptr<iafd>> named_fds;
+        dict<std::string, std::queue<aiopromise<connect_result>::weak_type>> named_fd_promises;
+        dict<std::string, bool> named_fd_connecting;
+
         dict<fd_t, aiopromise<std::shared_ptr<iafd>>> connect_promises;
         dict<std::string, std::shared_ptr<storable>> stores;
         dict<std::string, void*> ssl_contexts;
         std::shared_ptr<connection_handler> handler;
         std::function<void(context*)> init_callback;
+        std::shared_ptr<dns::idns> dns_provider;
 
     public:
         context(node_id *id, reload_context *reload_ctx);
@@ -142,7 +158,7 @@ namespace s90 {
         void on_message(message_params params);
         void on_init(init_params params);
 
-        aiopromise<connect_result> connect(const std::string& addr, dns_type record_type, int port, proto protocol) override;
+        aiopromise<connect_result> connect(const std::string& addr, dns_type record_type, int port, proto protocol, std::optional<std::string> name = {}) override;
         std::shared_ptr<sql::isql> new_sql_instance(const std::string& type) override;
 
         const dict<fd_t, std::weak_ptr<iafd>>& get_fds() const override;
@@ -156,5 +172,7 @@ namespace s90 {
         std::expected<void*, std::string> new_ssl_server_context(const char *pubkey = NULL, const char *privkey = NULL) override;
 
         node_id get_node_id() const override;
+
+        std::shared_ptr<dns::idns> get_dns() override;
     };
 }

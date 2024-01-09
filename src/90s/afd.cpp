@@ -160,7 +160,8 @@ namespace s90 {
             
             // make sure we iterate over every promise to check the fullfilment
             while(!write_back_buffer_info.empty()) {
-                auto promise = write_back_buffer_info.front();
+                auto& promise = write_back_buffer_info.front();
+                dbg_infof("promise.sent: %d + written: %d (%d) >= promise.length: %d?\n", promise.sent, written_bytes, promise.sent + written_bytes, promise.length);
                 if(promise.sent + written_bytes >= promise.length) [[likely]] {
                     written_bytes -= promise.length - promise.sent;
                     promise.sent = promise.length;
@@ -418,6 +419,12 @@ namespace s90 {
                 }
             }
 
+            if(crypto_ssl_is_init_finished(ssl_bio)) {
+                ssl_cycle(read_buffer);
+                ssl_status = ssl_state::client_ready;
+                co_return {false, ""};
+            }
+
             dbgf("SSL read any\n");
             auto arg = co_await read_any();
             if(arg.error) {
@@ -490,6 +497,11 @@ namespace s90 {
 
     fd_t afd::get_fd() const {
         return fd;
+    }
+
+
+    bool afd::is_secure() const {
+        return ssl_status != ssl_state::none;
     }
 
 }

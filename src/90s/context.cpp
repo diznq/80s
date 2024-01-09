@@ -2,6 +2,8 @@
 #include "context.hpp"
 #include "sql/mysql.hpp"
 
+#include "dns/doh.hpp"
+
 namespace s90 {
 
     context::context(node_id *id, reload_context *rctx) : id(id), rld(rctx) {}
@@ -95,10 +97,34 @@ namespace s90 {
         
     }
 
-    aiopromise<connect_result> context::connect(const std::string& addr, dns_type record_type, int port, proto protocol) {
+    aiopromise<connect_result> context::connect(const std::string& addr, dns_type record_type, int port, proto protocol, std::optional<std::string> name) {
+        if(name) {
+            auto it = named_fds.find(*name);
+            if(it != named_fds.end()) {
+                auto ptr = it->second;
+                if(ptr->is_closed() || ptr->is_error()) [[unlikely]] {
+                    named_fds.erase(it);
+                } else [[likely]] {
+                    co_return {false, ptr, ""};
+                }
+            }
+            auto connect_it = named_fd_connecting.find(*name);
+            if(connect_it != named_fd_connecting.end()) {
+                aiopromise<connect_result> prom;
+                auto queue_it = named_fd_promises.find(*name);
+                if(queue_it == named_fd_promises.end()) {
+                    queue_it = named_fd_promises.emplace(std::make_pair(*name, std::queue<aiopromise<connect_result>::weak_type>())).first;
+                }
+                queue_it->second.push(prom.weak());
+                co_return std::move(co_await prom);
+            } else {
+                named_fd_connecting[*name] = true;
+            }
+        }
         fd_t fd = s80_connect(this, elfd, addr.c_str(), port, protocol == proto::udp);
+        connect_result result;
         if(fd == (fd_t)-1) {
-            co_return {
+            result = {
                 true,
                 static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, true)),
                 "failed to create fd"
@@ -106,7 +132,7 @@ namespace s90 {
         } else if(protocol == proto::udp) {
             auto ptr = static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, fd, S80_FD_SOCKET));
             this->fds[fd] = ptr;
-            co_return {
+            result = {
                 false,
                 std::move(ptr),
                 ""
@@ -134,23 +160,46 @@ namespace s90 {
                     }
                 }
                 if(!ok) {
-                    co_return {
+                    result = {
                         true,
                         static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, true)),
                         ssl_error
                     };
+                } else {
+                    result = {false, std::move(ptr), ""};
                 }
-                co_return {false, std::move(ptr), ""};
             } else {
                 ptr = co_await promise;
                 bool is_error = !ptr;
-                co_return {
+                result = {
                     is_error,
                     std::move(ptr),
                     !is_error ? "" : "failed to connect"
                 };
             }
         }
+        if(name) {
+            if(!result.error) {
+                named_fds[*name] = result.fd;
+            }
+            auto queue_it = named_fd_promises.find(*name);
+            if(queue_it != named_fd_promises.end()) {
+                while(queue_it->second.size() > 0) {
+                    if(auto ptr = queue_it->second.front().lock()) {
+                        queue_it->second.pop();
+                        aiopromise(ptr).resolve(connect_result(result));
+                    } else {
+                        queue_it->second.pop();
+                    }
+                }
+                named_fd_promises.erase(queue_it);
+            }
+            auto connect_it = named_fd_connecting.find(*name);
+            if(connect_it != named_fd_connecting.end()) {
+                named_fd_connecting.erase(connect_it);
+            }
+        }
+        co_return std::move(result);
     }
 
     std::shared_ptr<sql::isql> context::new_sql_instance(const std::string& type) {
@@ -239,4 +288,11 @@ namespace s90 {
         return *id;
     }
     
+    std::shared_ptr<dns::idns> context::get_dns() {
+        if(dns_provider) return dns_provider;
+        const char *DNS_PROVIDER = getenv("DNS_PROVIDER");
+        if(DNS_PROVIDER == NULL) DNS_PROVIDER = "dns.google";
+        dns_provider = std::make_shared<dns::doh>(this, DNS_PROVIDER);
+        return dns_provider;
+    }
 }
