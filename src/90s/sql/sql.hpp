@@ -26,7 +26,7 @@ namespace s90 {
         template<class T>
         struct sql_result {
             bool error = false, has_rows = false;
-            std::shared_ptr<std::vector<T>> rows;
+            ptr<std::vector<T>> rows;
             int last_insert_id = 0;
             
             bool eof = false;
@@ -40,7 +40,7 @@ namespace s90 {
             sql_result() {}
             sql_result(const std::string& err) : error(true), error_message(err) {}
             sql_result(bool error) : error(error) {}
-            sql_result(const std::shared_ptr<std::vector<T>>& result) : error(false), has_rows(true), rows(result) {}
+            sql_result(const ptr<std::vector<T>>& result) : error(false), has_rows(true), rows(result) {}
 
             /// @brief Create a new SQL result with error
             /// @param err error message
@@ -56,7 +56,7 @@ namespace s90 {
             /// @brief Create a new SQL result with result of a SELECT command
             /// @param rows selected rows
             /// @return SELECT SQL result
-            static inline sql_result with_rows(const std::shared_ptr<std::vector<T>>& rows) {
+            static inline sql_result with_rows(const ptr<std::vector<T>>& rows) {
                 sql_result result;
                 result.has_rows = true;
                 result.rows = rows;

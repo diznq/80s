@@ -9,13 +9,13 @@ namespace s90 {
 
         class mail_http_api : public connection_handler {
             std::vector<httpd::page*> pages;
-            std::shared_ptr<httpd::httpd_server> http_base;
+            ptr<httpd::httpd_server> http_base;
             smtp_server *parent;
 
         public:
             mail_http_api(smtp_server *parent);
             
-            aiopromise<nil> on_accept(std::shared_ptr<iafd> fd) override;
+            aiopromise<nil> on_accept(ptr<iafd> fd) override;
             void on_load() override;
             void on_pre_refresh() override;
             void on_refresh() override;

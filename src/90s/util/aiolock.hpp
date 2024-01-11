@@ -12,8 +12,8 @@ namespace s90 {
                 while(waiters.size() > 0) {
                     auto w = waiters.front();
                     waiters.pop();
-                    if(auto ptr = w.lock())
-                        aiopromise(ptr).resolve(false);
+                    if(auto p = w.lock())
+                        aiopromise(p).resolve(false);
                 }
             }
 
@@ -27,8 +27,8 @@ namespace s90 {
                     auto first = waiters.front();
                     waiters.pop();
                     waiters.push(result.weak());
-                    if(auto ptr = first.lock())
-                        aiopromise(ptr).resolve(true);
+                    if(auto p = first.lock())
+                        aiopromise(p).resolve(true);
                 } else {
                     waiters.push(result.weak());
                 }
@@ -40,8 +40,8 @@ namespace s90 {
                     sem = 0;
                     auto first = waiters.front();
                     waiters.pop();
-                    if(auto ptr = first.lock())
-                        aiopromise(ptr).resolve(true);
+                    if(auto p = first.lock())
+                        aiopromise(p).resolve(true);
                 } else {
                     sem = 1;
                 }

@@ -154,7 +154,7 @@ namespace s90 {
                     result = *cache::cache<std::expected<std::string, std::string>>(
                         global_context_ptr, query_string + std::string(endpoint), cache::never,
                         [&query_string, &endpoint, this]() -> auto {
-                            return std::make_shared<std::expected<std::string, std::string>>(std::move(util::cipher(query_string, enc_base + std::string(endpoint), true, false)));
+                            return ptr_new<std::expected<std::string, std::string>>(std::move(util::cipher(query_string, enc_base + std::string(endpoint), true, false)));
                         });
                 } else {
                     result = util::cipher(query_string, enc_base + std::string(endpoint), true, encrypt == encryption::full);
@@ -188,7 +188,7 @@ namespace s90 {
             status_line = std::move(status_code);
         }
 
-        std::shared_ptr<irender_context> environment::output() const {
+        ptr<irender_context> environment::output() const {
             return static_pointer_cast<irender_context>(output_context);
         }
 

@@ -19,7 +19,7 @@ namespace s90 {
             }
         }
 
-        aiopromise<std::expected<std::string, std::string>> read_smtp_response(std::shared_ptr<iafd> fd) {
+        aiopromise<std::expected<std::string, std::string>> read_smtp_response(ptr<iafd> fd) {
             std::string total;
             while(true) {
                 auto resp = co_await fd->read_until("\r\n");
@@ -38,7 +38,7 @@ namespace s90 {
             }
         }
 
-        aiopromise<std::optional<std::string>> roundtrip(std::shared_ptr<iafd> conn, dict<std::string, std::string>& errors, std::span<std::string> v, const std::string cmd, const std::string params, const std::string& expect = "250") {
+        aiopromise<std::optional<std::string>> roundtrip(ptr<iafd> conn, dict<std::string, std::string>& errors, std::span<std::string> v, const std::string cmd, const std::string params, const std::string& expect = "250") {
             if(!co_await conn->write(cmd + params + "\r\n")) {
                 fail_many_with(errors, v, "write on " + cmd + " failed");
                 co_return {};

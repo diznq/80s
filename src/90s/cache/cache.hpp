@@ -8,9 +8,9 @@ namespace s90 {
 
         constexpr size_t never = -1;
         template<class T>
-        using cached = std::shared_ptr<T>;
+        using cached = ptr<T>;
         template<class T>
-        using async_cached = aiopromise<std::shared_ptr<T>>;
+        using async_cached = aiopromise<ptr<T>>;
         template<class T>
         using async_vec = std::vector<async_cached<T>>;
 
@@ -47,16 +47,16 @@ namespace s90 {
 
         template<class T>
         class async_cache_layer : public cache_layer<T> {
-            dict<std::string, std::shared_ptr<async_vec<T>>> races;
+            dict<std::string, ptr<async_vec<T>>> races;
         public:
-            std::shared_ptr<async_vec<T>> get_races(const std::string& key) const {
+            ptr<async_vec<T>> get_races(const std::string& key) const {
                 auto it = races.find(key);
                 if(it != races.end()) return it->second;
                 return {};
             }
 
-            std::shared_ptr<async_vec<T>> create_races(const std::string& key) {
-                auto ref = std::make_shared<async_vec<T>>();
+            ptr<async_vec<T>> create_races(const std::string& key) {
+                auto ref = ptr_new<async_vec<T>>();
                 races[key] = ref;
                 return ref;
             }
@@ -81,7 +81,7 @@ namespace s90 {
             const auto store_key = typeid(T).name();
             auto layer = static_pointer_cast<cache_layer<T>>(ctx->store(store_key));
             if(!layer) {
-                layer = std::make_shared<cache_layer<T>>();
+                layer = ptr_new<cache_layer<T>>();
                 ctx->store(store_key, layer);
             }
             auto found = layer->get(key);
@@ -108,7 +108,7 @@ namespace s90 {
             auto layer = static_pointer_cast<async_cache_layer<T>>(ctx->store(store_key));
             
             if(!layer) {
-                layer = std::make_shared<async_cache_layer<T>>();
+                layer = ptr_new<async_cache_layer<T>>();
                 ctx->store(store_key, layer);
             }
 

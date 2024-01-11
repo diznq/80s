@@ -31,7 +31,7 @@ namespace s90 {
             /// @param mail e-mail knowledge
             /// @param outbounding true if the e-mail outbound from our network, i.e. user of our server sent an e-mail to someone else
             /// @return 
-            virtual aiopromise<std::expected<std::string, std::string>> store_mail(mail_knowledge mail, bool outbounding = false) = 0;
+            virtual aiopromise<std::expected<std::string, std::string>> store_mail(ptr<mail_knowledge> mail, bool outbounding = false) = 0;
 
             /// @brief Perform login and return user
             /// @param name user name

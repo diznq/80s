@@ -494,7 +494,7 @@ namespace s90 {
 
         }
 
-        aiopromise<std::shared_ptr<sql::isql>> indexed_mail_storage::get_db() {
+        aiopromise<ptr<sql::isql>> indexed_mail_storage::get_db() {
             if(!db->is_connected()) {
                 co_await db->connect(config.db_host, config.db_port, config.db_user, config.db_password, config.db_name);
             }
@@ -706,30 +706,30 @@ namespace s90 {
             }
         }
 
-        aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::store_mail(mail_knowledge mail, bool outbounding) {
+        aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::store_mail(ptr<mail_knowledge> mail, bool outbounding) {
             auto db = co_await get_db();
             orm::json_encoder encoder;
             size_t  stored_to_disk = 0, stored_to_db = 0,
-                    users_total = mail.to.size();
+                    users_total = mail->to.size();
             node_id id = global_context->get_node_id();
-            auto folder = mail.created_at.ymd('/');
-            auto msg_id = std::format("{}/{}-{}-{}", folder, mail.created_at.his('_'), id.id, counter++);
+            auto folder = mail->created_at.ymd('/');
+            auto msg_id = std::format("{}/{}-{}-{}", folder, mail->created_at.his('_'), id.id, counter++);
             if(config.sv_mail_storage_dir.ends_with("/"))
                 config.sv_mail_storage_dir = config.sv_mail_storage_dir.substr(0, config.sv_mail_storage_dir.length() - 1);
             
-            auto parsed = parse_mail(msg_id, mail.data);
+            auto parsed = parse_mail(msg_id, mail->data);
 
             // first try to get the users from DB
             std::vector<mail_parsed_user> users_outside;
 
             // insert sender if they are within this mail server
-            if(outbounding && mail.from.user) mail.to.insert(mail.from);
+            if(outbounding && mail->from.user) mail->to.insert(mail->from);
             
             // prepare the data to be saved to disk
-            dbgf("Saving e-mails to disk, total recipients: %zu\n", mail.to.size());
+            dbgf("Saving e-mails to disk, total recipients: %zu\n", mail->to.size());
 
             std::vector<std::tuple<std::string, const char*, size_t>> to_save = {
-                {"/raw.eml", mail.data.data(), mail.data.size()}
+                {"/raw.eml", mail->data.data(), mail->data.size()}
             };
 
             std::string saved_html, saved_text;
@@ -737,13 +737,13 @@ namespace s90 {
             std::set<uint64_t> affected_users;
 
             if(parsed.formats & (int)mail_format::html) {
-                decode_block(saved_html, mail.data, parsed.html_start, parsed.html_end, parsed.html_charset, parsed.html_headers, false);
+                decode_block(saved_html, mail->data, parsed.html_start, parsed.html_end, parsed.html_charset, parsed.html_headers, false);
                 std::string_view sv(saved_html);
                 to_save.push_back({"/raw.html", sv.begin(), sv.length()});
             }
 
             if(parsed.formats & (int)mail_format::text) {
-                decode_block(saved_text, mail.data, parsed.text_start, parsed.text_end, parsed.text_charset, parsed.text_headers, false);
+                decode_block(saved_text, mail->data, parsed.text_start, parsed.text_end, parsed.text_charset, parsed.text_headers, false);
                 std::string_view sv(saved_text);
                 to_save.push_back({"/raw.txt", sv.begin(), sv.length()});
             }
@@ -755,7 +755,7 @@ namespace s90 {
             bool is_space_avail = true;
 
             // verify if everyone has enough space in their mailbox
-            for(auto& user : mail.to) {
+            for(auto& user : mail->to) {
                 if(!user.user) continue;
                 if(user.user->used_space + size_on_disk > user.user->quota) is_space_avail = false;
             }
@@ -765,13 +765,13 @@ namespace s90 {
             }
 
             // save the data to the disk
-            for(auto& user : mail.to) {
+            for(auto& user : mail->to) {
                 if(!user.user) {
                     dbgf("Recipient %s not found, skipping\n", user.email.c_str());
                     // if the user is outside of our internal DB, record it
                     // so we later know if it is 100% delivered internally
                     // or not
-                    if(user.direction == (int)mail_direction::inbound)
+                    if(user.direction == (int)mail_direction::inbound && !user.local)
                         users_outside.push_back(user);
                     continue;
                 }
@@ -841,18 +841,18 @@ namespace s90 {
             }
 
             // create a large query
-            for(auto& user : mail.to) {
+            for(auto& user : mail->to) {
                 const auto& found_user = user.user;
                 if(!found_user) {
                     // if recipient is not within this server, but sender is within this server, it means
                     // that this e-mail is outbound to somewhere else
-                    if(outbounding && user.direction == (int)mail_direction::inbound && mail.from.user) {
+                    if(outbounding && user.direction == (int)mail_direction::inbound && mail->from.user && !user.local) {
                         mail_outgoing_record outgoing_record = {
-                            .user_id = mail.from.user->user_id,
+                            .user_id = mail->from.user->user_id,
                             .message_id = msg_id,
                             .target_email= user.original_email,
                             .target_server = user.original_email_server,
-                            .disk_path = std::format("{}/{}/{}", config.sv_mail_storage_dir, mail.from.email, msg_id),
+                            .disk_path = std::format("{}/{}/{}", config.sv_mail_storage_dir, mail->from.email, msg_id),
                             .status = (int)mail_status::sent,
                             .last_retried_at = orm::datetime::now(),
                             .retries = 0,
@@ -885,17 +885,17 @@ namespace s90 {
                     .return_path = parsed.return_path,
                     .reply_to = parsed.reply_to,
                     .disk_path = std::format("{}/{}/{}", config.sv_mail_storage_dir, user.email, msg_id),
-                    .mail_from = mail.from.original_email,
+                    .mail_from = mail->from.original_email,
                     .rcpt_to = user.original_email,
                     .parsed_from = parsed.from,
                     .folder = user.folder,
                     .subject = parsed.subject,
                     .indexable_text = parsed.indexable_text,
                     .dkim_domain = parsed.dkim_domain,
-                    .sender_address = mail.client_address,
-                    .sender_name = mail.client_name,
-                    .created_at = mail.created_at,
-                    .sent_at = mail.created_at,
+                    .sender_address = mail->client_address,
+                    .sender_name = mail->client_name,
+                    .created_at = mail->created_at,
+                    .sent_at = mail->created_at,
                     .delivered_at = orm::datetime::now(),
                     .seen_at = orm::datetime::now(),
                     .size = size_on_disk,

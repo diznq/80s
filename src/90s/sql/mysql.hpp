@@ -22,7 +22,7 @@ namespace s90 {
 
         struct cache_entry {
             std::chrono::steady_clock::time_point expire;
-            std::shared_ptr<std::vector<sql_row>> rows;
+            ptr<std::vector<sql_row>> rows;
         };
 
         class mysql : public isql {
@@ -34,14 +34,14 @@ namespace s90 {
             bool is_connecting = false;
             bool login_provided = false;
             util::aiolock command_lock;
-            std::shared_ptr<iafd> connection_ref;
-            std::queue<aiopromise<std::tuple<sql_connect, std::shared_ptr<iafd>>>::weak_type> connecting;
+            ptr<iafd> connection_ref;
+            std::queue<aiopromise<std::tuple<sql_connect, ptr<iafd>>>::weak_type> connecting;
 
-            aiopromise<mysql_packet> read_packet(std::shared_ptr<iafd> connection);
-            aiopromise<sql_connect> handshake(std::shared_ptr<iafd> connection);
+            aiopromise<mysql_packet> read_packet(ptr<iafd> connection);
+            aiopromise<sql_connect> handshake(ptr<iafd> connection);
 
-            aiopromise<std::tuple<sql_connect, std::shared_ptr<iafd>>> obtain_connection();
-            aiopromise<std::tuple<sql_result<sql_row>, std::shared_ptr<iafd>>> raw_exec(const std::string&& query);
+            aiopromise<std::tuple<sql_connect, ptr<iafd>>> obtain_connection();
+            aiopromise<std::tuple<sql_result<sql_row>, ptr<iafd>>> raw_exec(const std::string&& query);
         public:
             using isql::escape;
             mysql(context *ctx);

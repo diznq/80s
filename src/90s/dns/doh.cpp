@@ -97,7 +97,7 @@ namespace s90 {
 
         }
 
-        aiopromise<std::expected<std::shared_ptr<iafd>, std::string>> doh::obtain_connection() {
+        aiopromise<std::expected<ptr<iafd>, std::string>> doh::obtain_connection() {
             auto result = co_await ctx->connect(dns_provider, dns_type::A, 443, proto::tls, "dns.doh." + dns_provider);
             if(!result) {
                 co_return std::unexpected(result.error_message);

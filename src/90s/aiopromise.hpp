@@ -1,4 +1,5 @@
 #pragma once
+#include "shared.hpp"
 #include <optional>
 #include <functional>
 #include <memory>
@@ -27,13 +28,13 @@ namespace s90 {
     template<typename T>
     class aiopromise {
     public:
-        using weak_type = std::weak_ptr<aiopromise_state<T>>;
-        using shared_type = std::shared_ptr<aiopromise_state<T>>;
+        using weak_type = wptr<aiopromise_state<T>>;
+        using shared_type = ptr<aiopromise_state<T>>;
 
         struct promise_type {
-            std::shared_ptr<aiopromise_state<T>> state;
+            ptr<aiopromise_state<T>> state;
 
-            promise_type() : state(std::make_shared<aiopromise_state<T>>()) {}
+            promise_type() : state(ptr_new<aiopromise_state<T>>()) {}
             promise_type(const shared_type& c) : state(c) {}
 
             aiopromise<T> get_return_object() {
@@ -94,7 +95,7 @@ namespace s90 {
             
         }
 
-        std::shared_ptr<aiopromise_state<T>> state() const {
+        ptr<aiopromise_state<T>> state() const {
             return p.state;
         }
 
@@ -149,7 +150,7 @@ namespace s90 {
             return std::move(s->result);
         }
 
-        std::weak_ptr<aiopromise_state<T>> weak() const {
+        wptr<aiopromise_state<T>> weak() const {
             return p.state;
         }
 

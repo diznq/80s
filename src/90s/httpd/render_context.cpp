@@ -51,8 +51,8 @@ namespace s90 {
             }
         }
 
-        std::shared_ptr<irender_context> render_context::append_context() {
-            auto ctx = std::make_shared<render_context>();
+        ptr<irender_context> render_context::append_context() {
+            auto ctx = ptr_new<render_context>();
             blocks.emplace_back(output_block { output_type::block, {}, ctx });
             if(disabled) ctx->disable();
             return static_pointer_cast<irender_context>(ctx);

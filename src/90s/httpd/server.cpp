@@ -243,7 +243,7 @@ namespace s90 {
             pages[webpage->name()] = {webpage, false};
         }
 
-        aiopromise<nil> httpd_server::on_accept(std::shared_ptr<iafd> fd) {
+        aiopromise<nil> httpd_server::on_accept(ptr<iafd> fd) {
             std::string peer_name;
             dict<std::string, page*>::iterator it;
             page *current_page = default_page;

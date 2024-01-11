@@ -431,10 +431,10 @@ namespace s90 {
                 new alter_page, new folders_page
             };
 
-            http_base = std::make_shared<httpd::httpd_server>(parent->get_context(), cfg);
+            http_base = ptr_new<httpd::httpd_server>(parent->get_context(), cfg);
         }
 
-        aiopromise<nil> mail_http_api::on_accept(std::shared_ptr<iafd> fd) {
+        aiopromise<nil> mail_http_api::on_accept(ptr<iafd> fd) {
             co_return co_await http_base->on_accept(fd);
         }
         

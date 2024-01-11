@@ -116,6 +116,7 @@ namespace s90 {
             std::string email;
             std::string folder;
             uint64_t requested_size = 0;
+            bool local = false;
             bool authenticated = false;
             int direction = (int)mail_direction::inbound;
 
