@@ -300,6 +300,7 @@ namespace s90 {
             mail_parsed_user from;
             std::set<mail_parsed_user> to = {};
             std::string data = "";
+            std::vector<mail_parsed_user> outside = {};
         };
     }
 }

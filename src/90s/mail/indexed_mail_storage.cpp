@@ -717,6 +717,7 @@ namespace s90 {
             if(config.sv_mail_storage_dir.ends_with("/"))
                 config.sv_mail_storage_dir = config.sv_mail_storage_dir.substr(0, config.sv_mail_storage_dir.length() - 1);
             
+            mail->store_id = msg_id;
             auto parsed = parse_mail(msg_id, mail->data);
 
             // first try to get the users from DB
@@ -953,7 +954,9 @@ namespace s90 {
                 if(!write_status) {
                     co_return std::unexpected("failed to submit e-mails to the outgoing queue");
                 }
+                mail->outside = std::move(users_outside);
             }
+
             
             co_return std::move(msg_id);
         }

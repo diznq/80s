@@ -27,6 +27,7 @@ namespace s90 {
             }
 
             storage = ptr_new<indexed_mail_storage>(ctx, config);
+            client = ptr_new<smtp_client>(ctx);
 
             if(config.sv_http_api) {
                 http_api = ptr_new<mail_http_api>(this);

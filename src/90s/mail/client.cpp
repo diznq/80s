@@ -67,7 +67,7 @@ namespace s90 {
 
         }
 
-        aiopromise<dict<std::string, std::string>> smtp_client::deliver_mail(mail_knowledge mail, std::vector<std::string> recipients, tls_mode mode) {
+        aiopromise<dict<std::string, std::string>> smtp_client::deliver_mail(ptr<mail_knowledge> mail, std::vector<std::string> recipients, tls_mode mode) {
             auto dns = ctx->get_dns();
             dict<std::string, std::vector<std::string>> per_server;
             dict<std::string, std::string> errors;
@@ -84,6 +84,7 @@ namespace s90 {
                 }
                 it->second.push_back(recip);
             }
+
             std::vector<std::string> successful, rcpt;
             for(auto& [k, v] : per_server) {
                 auto ip = co_await dns->query(k, dns_type::MX, false);
@@ -91,7 +92,7 @@ namespace s90 {
                     fail_many_with(errors, v, "DNS lookup failed: " + ip.error());
                     continue;
                 }
-                auto conn_result = co_await ctx->connect(ip->address, dns_type::A, 8025, proto::tcp);
+                auto conn_result = co_await ctx->connect(ip->address, dns_type::A, 25, proto::tcp, "smtp." + ip->address);
                 if(!conn_result) {
                     fail_many_with(errors, v, "connection establishment failed: " + conn_result.error_message);
                     continue;
@@ -130,7 +131,7 @@ namespace s90 {
                 auto resp = co_await roundtrip(conn, errors, v, "RSET", "", "250");
                 if(!resp) continue;
 
-                resp = co_await roundtrip(conn, errors, v, "MAIL FROM:", std::format("<{}>", mail.from.original_email), "250");
+                resp = co_await roundtrip(conn, errors, v, "MAIL FROM:", std::format("<{}>", mail->from.original_email), "250");
                 if(!resp) continue;
 
                 bool rcpt_to_ok = true;
@@ -151,7 +152,7 @@ namespace s90 {
                     continue;
                 }
 
-                if(!co_await conn->write(mail.data)) {
+                if(!co_await conn->write(mail->data)) {
                     fail_many_with(errors, rcpt, "failed to write DATA section");
                 }
                 auto data_resp = co_await read_smtp_response(conn);

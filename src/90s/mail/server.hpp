@@ -2,6 +2,7 @@
 #include "shared.hpp"
 #include "../context.hpp"
 #include "../httpd/server.hpp"
+#include "client.hpp"
 #include "mail_storage.hpp"
 #include "http/http_api.hpp"
 
@@ -15,6 +16,7 @@ namespace s90 {
             void *ssl_context = NULL;
             icontext *global_context = NULL;
             ptr<mail_storage> storage;
+            ptr<smtp_client> client;
             ptr<mail_http_api> http_api;
         public:
             smtp_server(icontext *ctx, mail_server_config config = {});
@@ -33,6 +35,7 @@ namespace s90 {
             void close(ptr<iafd> fd);
 
             ptr<mail_storage> get_storage() { return storage; }
+            ptr<ismtp_client> get_client() { return client; }
             mail_server_config& get_config() { return config; }
             icontext *get_context() { return global_context; }
             void *get_ssl_context() { return ssl_context; }
