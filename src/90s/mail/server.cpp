@@ -106,6 +106,7 @@ namespace s90 {
                         } else {
                             bool is_ok = true;
                             knowledge->from = parsed_mail;
+                            knowledge->from.authenticated = false;
                             knowledge->from.direction = (int)mail_direction::outbound;
                             if(storage) {
                                 auto user = co_await storage->get_user_by_email(parsed_mail.email);
@@ -322,7 +323,17 @@ namespace s90 {
             }
             at_pos = email.find('@');
             original_email_server = email.substr(at_pos + 1); 
-            return mail_parsed_user {false, original_email, original_email_server, email, folder, requested_size, local};
+            return mail_parsed_user {
+                .error = false,
+                .original_email = original_email,
+                .original_email_server = original_email_server,
+                .email = email, 
+                .folder = folder,
+                .requested_size = requested_size,
+                .local = local,
+                .authenticated = false,
+                .direction = (int)mail_direction::inbound
+            };
         }
     }
 }
