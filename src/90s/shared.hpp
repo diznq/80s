@@ -12,7 +12,7 @@ namespace s90 {
 
     template<typename A, typename ... Args>
     static ptr<A> ptr_new(Args&& ...args) {
-        return ptr_new<A>(args...);
+        return std::make_shared<A>(std::forward<Args>(args)...);
     }
 
     template<typename A>

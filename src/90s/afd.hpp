@@ -1,6 +1,7 @@
 #pragma once
 #include <80s/80s.h>
 #include "aiopromise.hpp"
+#include "util/aiolock.hpp"
 
 #include <list>
 #include <queue>
@@ -116,8 +117,6 @@ namespace s90 {
         /// @return true on success
         virtual aiopromise<ssl_result> enable_server_ssl(void *ssl_context) = 0;
 
-        // Events
-
         /// @brief Called on accept
         virtual void on_accept() = 0;
 
@@ -133,7 +132,6 @@ namespace s90 {
         /// @brief Called when fd is closed
         virtual void on_close() = 0;
 
-
         /// @brief Set callback that gets called when read command queue becomes empty
         /// @param on_empty callback
         virtual void set_on_empty_queue(std::function<void()> on_empty) = 0;
@@ -145,6 +143,17 @@ namespace s90 {
         /// @brief Determine if socket uses TLS/SSL
         /// @return true if secure
         virtual bool is_secure() const = 0;
+
+        /// @brief Lock the FD
+        /// @return lock
+        virtual aiopromise<bool> lock() = 0;
+
+        /// @brief Unlock the fd
+        virtual void unlock() = 0;
+
+        /// @brief Determine if the FD is locked
+        /// @return true if locked
+        virtual bool is_locked() const = 0;
     };
 
     class afd : public iafd {
@@ -201,6 +210,7 @@ namespace s90 {
         ssl_state ssl_status = ssl_state::none;
         std::vector<char> write_back_buffer;
         std::queue<back_buffer> write_back_buffer_info;
+        util::aiolock internal_lock;
 
         size_t read_offset = 0;
         kmp_state delim_state;
@@ -239,8 +249,11 @@ namespace s90 {
         aiopromise<ssl_result> enable_server_ssl(void *ssl_context) override;
 
         fd_t get_fd() const override;
-
         bool is_secure() const override;
+
+        aiopromise<bool> lock() override;
+        void unlock() override;
+        bool is_locked() const override;
     };
 
 }

@@ -17,6 +17,10 @@ namespace s90 {
                 }
             }
 
+            bool is_locked() const {
+                return sem == 0;
+            }
+
             aiopromise<bool> lock() {
                 aiopromise<bool> result;
                 if(sem == 1 && waiters.size() == 0) {

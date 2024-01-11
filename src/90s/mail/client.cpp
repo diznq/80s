@@ -1,4 +1,5 @@
 #include "client.hpp"
+#include "../util/util.hpp"
 #include <string>
 #include <vector>
 
@@ -98,6 +99,9 @@ namespace s90 {
 
                 auto conn = *conn_result;
                 auto name = conn->name();
+
+                co_await conn->lock();
+                util::call_on_destroy([conn](){ conn->unlock(); });
 
                 // only do EHLO + STARTTLS if we never did it before
                 if(name.find("smtp") == std::string::npos) {

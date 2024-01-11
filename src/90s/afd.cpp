@@ -504,4 +504,16 @@ namespace s90 {
         return ssl_status != ssl_state::none;
     }
 
+    aiopromise<bool> afd::lock() {
+        return internal_lock.lock();
+    }
+
+    void afd::unlock() {
+        internal_lock.unlock();
+    }
+
+    bool afd::is_locked() const {
+        return internal_lock.is_locked();
+    }
+
 }
