@@ -572,6 +572,7 @@ namespace s90 {
                 query += ")";
                 auto update_ok = co_await db->exec(query);
                 if(!update_ok) {
+                    printf("[deliver %zu%s] update status failed: %s, q: (%s)\n", update_ok.error_message.c_str(), query.c_str());
                     co_return std::unexpected("failed to update failed status");
                 }
                 for(auto& [k, v] : result) {
@@ -600,6 +601,10 @@ namespace s90 {
                 if(!del_ok) {
                     fprintf(stderr, "failed to delete successful deliveries from queue!");
                     co_return std::unexpected("failed to delete unsuccessful deliveries");
+                } else {
+                    if(result.size() == 0) {
+                        co_await db->exec("UPDATE mail_indexed SET status = '{}' WHERE user_id = '{}' AND message_id = '{}' LIMIT 1", (int)mail_status::delivered, user_id, message_id);
+                    }
                 }
             }
             co_return mail_delivery_result {
