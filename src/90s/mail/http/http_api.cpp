@@ -509,11 +509,12 @@ namespace s90 {
                                     resp.sent = store_result->inside.size();
                                     if(store_result->outside.size() > 0) {
                                         // detach
-                                        storage->deliver_message(
-                                            store_result->owner_id,
-                                            store_result->message_id,
-                                            ctx->get_smtp()->get_client()
-                                        ).then([](std::expected<mail_delivery_result, std::string>&& result) -> void {
+                                        ([storage, store_result, ctx]() -> aiopromise<nil> {
+                                            auto result = co_await storage->deliver_message(
+                                                store_result->owner_id,
+                                                store_result->message_id,
+                                                ctx->get_smtp()->get_client()
+                                            );
                                             if(!result) {
                                                 printf("mail delivery failure: %s\n", result.error().c_str());
                                             } else {
@@ -522,7 +523,8 @@ namespace s90 {
                                                     printf("mail delivery failed for %s: %s\n", k.c_str(), v.c_str());
                                                 }
                                             }
-                                        });
+                                            co_return nil {};
+                                        })();
                                         for(auto& outsider : store_result->outside) {
                                             resp.enqueued.push_back(outsider.original_email);
                                         }

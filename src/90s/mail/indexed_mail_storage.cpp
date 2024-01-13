@@ -254,6 +254,8 @@ namespace s90 {
             if(outbounding) {
                 mail->data = "Message-ID: <" + msg_id + ">\r\n" + mail->data;
             }
+
+            if(mail->from.user) owner_id = mail->from.user->user_id;
             
             if(config.sv_mail_storage_dir.ends_with("/"))
                 config.sv_mail_storage_dir = config.sv_mail_storage_dir.substr(0, config.sv_mail_storage_dir.length() - 1);
@@ -517,7 +519,7 @@ namespace s90 {
             auto db = co_await get_db();
             printf("[deliver %zu/%s] began\n", user_id, message_id.c_str());
 
-            auto user = co_await db->select<mail_outgoing_record>("SELECT * FROM mail_users WHERE id = '{}' LIMIT 1", user_id);
+            auto user = co_await db->select<mail_outgoing_record>("SELECT * FROM mail_users WHERE user_id = '{}' LIMIT 1", user_id);
             if(!user) co_return std::unexpected("database error on fetching user");
             else if(user.empty()) co_return std::unexpected("sender doesn't exist");
             printf("[deliver %zu/%s] user ok\n", user_id, message_id.c_str());
