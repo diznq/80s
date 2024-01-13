@@ -515,13 +515,13 @@ namespace s90 {
                                             ctx->get_smtp()->get_client()
                                         );
                                         if(!result) {
-                                            printf("mail delivery failure: %s\n", result.error().c_str()); fflush(stdout);
+                                            dbgf("mail delivery failure: %s\n", result.error().c_str()); 
                                         } else {
-                                            printf("mail delivery theoretically ok\n");
+                                            dbgf("mail delivery theoretically ok\n");
                                             for(auto& [k, v] : result->delivery_errors) {
-                                                printf("mail delivery failed for %s: %s\n", k.c_str(), v.c_str());
+                                                dbgf("mail delivery failed for %s: %s\n", k.c_str(), v.c_str());
                                             }
-                                            fflush(stdout);
+                                            
                                         }
                                         // / detach in future
 

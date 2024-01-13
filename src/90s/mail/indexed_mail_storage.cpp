@@ -517,19 +517,19 @@ namespace s90 {
 
         aiopromise<std::expected<mail_delivery_result, std::string>> indexed_mail_storage::deliver_message(uint64_t user_id, std::string message_id, ptr<ismtp_client> client) {
             auto db = co_await get_db();
-            printf("[deliver %zu/%s] began\n", user_id, message_id.c_str()); fflush(stdout);
+            dbgf("[deliver %zu/%s] began\n", user_id, message_id.c_str()); 
 
             auto user = co_await db->select<mail_outgoing_record>("SELECT * FROM mail_users WHERE user_id = '{}' LIMIT 1", user_id);
             if(!user) co_return std::unexpected("database error on fetching user");
             else if(user.empty()) co_return std::unexpected("sender doesn't exist");
-            printf("[deliver %zu/%s] user ok\n", user_id, message_id.c_str()); fflush(stdout);
+            dbgf("[deliver %zu/%s] user ok\n", user_id, message_id.c_str()); 
             
             auto where = std::format("user_id = '{}' AND message_id = '{}'", db->escape(user_id), db->escape(message_id));
             auto rec = co_await db->select<mail_outgoing_record>("SELECT * FROM mail_outgoing_queue WHERE " + where);
             if(!rec) co_return std::unexpected("database error on fetching mail");
             if(rec.empty()) co_return mail_delivery_result { .delivery_errors = {} };
 
-            printf("[deliver %zu/%s] outgoing queue records: %zu\n", user_id, message_id.c_str(), rec.size()); fflush(stdout);
+            dbgf("[deliver %zu/%s] outgoing queue records: %zu\n", user_id, message_id.c_str(), rec.size()); 
 
             std::ifstream ifs(rec->disk_path + "/raw.eml", std::ios_base::binary);
             if(!ifs || !ifs.is_open()) {
@@ -551,11 +551,11 @@ namespace s90 {
             }
 
             mail->data = ss.str();
-            printf("[deliver %zu/%s] disk, from, to ok\n", user_id, message_id.c_str()); fflush(stdout);
+            dbgf("[deliver %zu/%s] disk, from, to ok\n", user_id, message_id.c_str()); 
             auto result = co_await client->deliver_mail(mail, recipients, tls_mode::best_effort);
 
             if(result.size() > 0) {
-                printf("[deliver %zu/%s] there were %zu failures\n", user_id, message_id.c_str(), result.size()); fflush(stdout);
+                dbgf("[deliver %zu/%s] there were %zu failures\n", user_id, message_id.c_str(), result.size()); 
                 auto query = std::format("UPDATE mail_outgoing_queue SET retries = retries + 1, last_retried_at = '{}' WHERE ", orm::datetime::now());
                 query += where;
                 query += " AND target_email IN (";
@@ -568,17 +568,17 @@ namespace s90 {
                 query += ")";
                 auto update_ok = co_await db->exec(query);
                 if(!update_ok) {
-                    printf("[deliver %zu%s] update status failed: %s, q: (%s)\n", user_id, message_id.c_str(), update_ok.error_message.c_str(), query.c_str());
+                    dbgf("[deliver %zu%s] update status failed: %s, q: (%s)\n", user_id, message_id.c_str(), update_ok.error_message.c_str(), query.c_str());
                     co_return std::unexpected("failed to update failed status");
                 }
                 for(auto& [k, v] : result) {
                     auto reason_ok = co_await db->exec("UPDATE mail_outgoing_queue SET reason = '{}' WHERE user_id = '{}' AND message_id = '{}' AND target_email = '{}' LIMIT 1", v, user_id, message_id, k);
                     if(!reason_ok) {
-                        fprintf(stderr, "failed to update failure reason for %s to %s\n", k.c_str(), v.c_str());
+                        dbgf("failed to update failure reason for %s to %s\n", k.c_str(), v.c_str());
                     }
                 }
             } else {
-                printf("[deliver %zu/%s] was ok\n", user_id, message_id.c_str()); fflush(stdout);
+                dbgf("[deliver %zu/%s] was ok\n", user_id, message_id.c_str()); 
             }
             
             size_t successes = 0;
@@ -595,7 +595,7 @@ namespace s90 {
                 del_query += " LIMIT " + std::to_string(successes);
                 auto del_ok = co_await db->exec(del_query);
                 if(!del_ok) {
-                    fprintf(stderr, "failed to delete successful deliveries from queue!");
+                    dbgf("failed to delete successful deliveries from queue!");
                     co_return std::unexpected("failed to delete unsuccessful deliveries");
                 } else {
                     if(result.size() == 0) {
