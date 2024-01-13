@@ -508,23 +508,22 @@ namespace s90 {
                                     response resp;
                                     resp.sent = store_result->inside.size();
                                     if(store_result->outside.size() > 0) {
-                                        // detach
-                                        ([storage, store_result, ctx]() -> aiopromise<nil> {
-                                            auto result = co_await storage->deliver_message(
-                                                store_result->owner_id,
-                                                store_result->message_id,
-                                                ctx->get_smtp()->get_client()
-                                            );
-                                            if(!result) {
-                                                printf("mail delivery failure: %s\n", result.error().c_str());
-                                            } else {
-                                                printf("mail delivery theoreteically ok\n");
-                                                for(auto& [k, v] : result->delivery_errors) {
-                                                    printf("mail delivery failed for %s: %s\n", k.c_str(), v.c_str());
-                                                }
+                                        // detach in future
+                                        auto result = co_await storage->deliver_message(
+                                            store_result->owner_id,
+                                            store_result->message_id,
+                                            ctx->get_smtp()->get_client()
+                                        );
+                                        if(!result) {
+                                            printf("mail delivery failure: %s\n", result.error().c_str());
+                                        } else {
+                                            printf("mail delivery theoreteically ok\n");
+                                            for(auto& [k, v] : result->delivery_errors) {
+                                                printf("mail delivery failed for %s: %s\n", k.c_str(), v.c_str());
                                             }
-                                            co_return nil {};
-                                        })();
+                                        }
+                                        // / detach in future
+
                                         for(auto& outsider : store_result->outside) {
                                             resp.enqueued.push_back(outsider.original_email);
                                         }
