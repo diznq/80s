@@ -528,8 +528,8 @@ namespace s90 {
             else if(user.empty()) co_return std::unexpected("sender doesn't exist");
             printf("[deliver %zu/%s] user ok\n", user_id, message_id.c_str()); fflush(stdout);
             
-            auto where = std::format("WHERE user_id = '{}' AND message_id = '{}'", db->escape(user_id), db->escape(message_id));
-            auto rec = co_await db->select<mail_outgoing_record>("SELECT * FROM mail_outgoing_queue " + where);
+            auto where = std::format("user_id = '{}' AND message_id = '{}'", db->escape(user_id), db->escape(message_id));
+            auto rec = co_await db->select<mail_outgoing_record>("SELECT * FROM mail_outgoing_queue WHERE " + where);
             if(!rec) co_return std::unexpected("database error on fetching mail");
             if(rec.empty()) co_return mail_delivery_result { .delivery_errors = {} };
 
@@ -586,7 +586,7 @@ namespace s90 {
             }
             
             size_t successes = 0;
-            auto del_query = "DELETE FROM mail_outgoing_queue WHERE " + where + "AND target_email IN(";
+            auto del_query = "DELETE FROM mail_outgoing_queue WHERE " + where + " AND target_email IN(";
             for(auto& recip : recipients) {
                 auto found = result.find(recip);
                 if(found == result.end()) {
