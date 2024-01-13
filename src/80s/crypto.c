@@ -462,9 +462,11 @@ int crypto_ssl_bio_new_connect(void *ssl_ctxt, const char *hostport, fd_t elfd, 
     SSL_set_connect_state(ctx->ssl);
     SSL_set_bio(ctx->ssl, ctx->rdbio, ctx->wrbio);
 
-    SSL_set_verify(ctx->ssl, SSL_VERIFY_PEER, NULL);
-    SSL_set1_host(ctx->ssl, hostport);
-    SSL_set_tlsext_host_name(ctx->ssl, hostport);
+    if(hostport && strlen(hostport) > 0) {
+        SSL_set_verify(ctx->ssl, SSL_VERIFY_PEER, NULL);
+        SSL_set1_host(ctx->ssl, hostport);
+        SSL_set_tlsext_host_name(ctx->ssl, hostport);
+    }
 
     *output_bio_ctx = (void*)ctx;
     return 0;
