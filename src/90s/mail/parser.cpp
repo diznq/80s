@@ -1,0 +1,472 @@
+#include "shared.hpp"
+#include "parser.hpp"
+#include <iconv.h>
+#include "../util/util.hpp"
+#include "../util/regex.hpp"
+
+namespace s90 {
+    namespace mail {
+
+        /// @brief Convert text from specified charset to UTF-8
+        /// @param decoded text to be decoded
+        /// @param charset origin charset name
+        /// @return utf-8 text
+        std::string convert_charset(const std::string& decoded, const std::string& charset) {
+            if(charset == "utf-8" || charset == "us-ascii" || charset == "ascii"
+            || charset == "UTF-8" || charset == "US-ASCII" || charset == "ASCII") return decoded;
+            iconv_t conv = iconv_open("UTF-8", charset.c_str());
+            if(conv == (iconv_t)-1) {
+                return decoded;
+            } else {
+                std::vector<char> in_buffer;
+                std::vector<char> out_buffer;
+                out_buffer.resize(decoded.length() * 8);
+                in_buffer.insert(in_buffer.end(), decoded.begin(), decoded.end());
+                char *in_ptr = in_buffer.data();
+                size_t in_left = in_buffer.size();
+                
+                char *out_ptr = out_buffer.data();
+                size_t out_left = out_buffer.size();
+                size_t status = iconv(conv, &in_ptr, &in_left, &out_ptr, &out_left);
+                iconv_close(conv);
+                if(status == -1) return decoded;
+                return std::string(out_buffer.data(), out_buffer.data() + out_buffer.size() - out_left);
+            }
+        }
+
+        /// @brief Decode quote encoded string (i.e. Hello=20World -> Hello World)
+        /// @param m string to be decoded
+        /// @param replace_underscores if true, underscores are replaced with space
+        /// @return decoded string
+        std::string q_decoder(const std::string& m, bool replace_underscores) {
+            std::string new_str, new_data;
+
+            // phase1: if line on quoted printable ends with =, it means text continues on the next line
+            // and = has to be dropped
+            for(size_t i = 0; i < m.length(); i++) {
+                char c = m[i];
+                if(c == '=' && i + 1 < m.length()) {
+                    char nc = m[i + 1];
+                    if(nc == '\n') {
+                        i++;
+                        continue;
+                    } else if(nc == '\r' && i + 2 < m.length() && m[i + 2] == '\n') {
+                        i += 2;
+                        continue;
+                    } else {
+                        new_str += c;
+                    }
+                } else if(c == '_' && replace_underscores) {
+                    new_str += ' ';
+                } else {
+                    new_str += c;
+                }
+            }
+            for(size_t i = 0; i < new_str.length(); i++) {
+                char c = new_str[i];
+                if(c == '=') {
+                    if(i + 2 < new_str.length()) {
+                        char b1 = new_str[i + 1];
+                        char b2 = new_str[i + 2];
+                        if(b1 >= '0' && b1 <= '9') b1 = b1 - '0';
+                        else if(b1 >= 'a' && b1 <= 'f') b1 = b1 - 'a' + 10;
+                        else if(b1 >= 'A' && b1 <= 'F') b1 = b1 - 'A' + 10;
+
+                        if(b2 >= '0' && b2 <= '9') b2 = b2 - '0';
+                        else if(b2 >= 'a' && b2 <= 'f') b2 = b2 - 'a' + 10;
+                        else if(b2 >= 'A' && b2 <= 'F') b2 = b2 - 'A' + 10;
+
+                        if(b1 >= 0 && b1 <= 15 && b2 >= 0 && b2 <= 15) {
+                            new_data += (char)((b1 << 4) | (b2));
+                            i += 2;
+                        } else {
+                            new_data += c;
+                        }
+                    } else {
+                        new_data += c;
+                    }
+                } else {
+                    new_data += c;
+                }
+            }
+            return new_data;
+        }
+        
+        /// @brief Decode base64 encoded string
+        /// @param b base64 encoded string
+        /// @return decoded string, or original string in case of failure
+        std::string b_decoder(const std::string& b) {
+            auto decoded = util::from_b64(b);
+            if(decoded) {
+                return *decoded;
+            } else {
+                return b;
+            }
+        }
+
+        /// @brief Parse message ID from header value
+        /// @param id header value
+        /// @return message ID
+        std::string_view parse_message_id(std::string_view id) {
+            if(id.starts_with('<')) {
+                id = id.substr(1);
+            }
+            if(id.ends_with('>')) {
+                id = id.substr(0, id.length() - 1);
+            }
+            return id;
+        }
+
+        /// @brief Decode SMTP encoded value
+        /// @param data SMTP encoded value
+        /// @return decoded value
+        std::string decode_smtp_value(std::string_view data) {
+            std::string result(data);
+            std::regex re("=\\?(.+?)\\?([QBqb])\\?(.+?)\\?=");
+            return std::regex_replace(result, re, [](const std::smatch& match) -> std::string {
+                std::string charset = match.str(1);
+                const char encoding = tolower(match.str(2)[0]);
+                const std::string& text = match.str(3);
+                for(char& c : charset) c = tolower(c);
+                std::string decoded;
+                if(encoding == 'b') {
+                    decoded = b_decoder(text);
+                } else if(encoding == 'q'){
+                    decoded = q_decoder(text, true);
+                } else {
+                    return match.str(0);
+                }
+                if(charset == "utf-8" || charset == "us-ascii" || charset == "ascii") {
+                    return decoded;
+                } else {
+                    return convert_charset(decoded, charset);
+                }
+            });
+        }
+
+        /// @brief Parse e-mail headers and return body view
+        /// @param data input data
+        /// @param headers output headers
+        /// @return body view
+        std::string_view parse_mail_headers(std::string_view data, std::vector<std::pair<std::string, std::string>>& headers) {
+            enum parse_state {
+                header_key, header_value, header_value_begin, header_value_end, header_value_extend, email_body
+            };
+            std::string key, value;
+            parse_state state = header_key;
+            auto header_split = data.find("\r\n\r\n");
+            if(header_split == std::string::npos) header_split = data.length();
+            auto header = data.substr(0, header_split);
+            auto body = data.substr(0, 0);
+            if(header_split + 4 < data.length()) body = data.substr(header_split + 4);
+            for(char c : header) {
+                switch(c) {
+                    case '\r':
+                    case '\n':
+                        if(state == header_value)
+                            state = header_value_end;
+                        break;
+                    case ' ':
+                    case '\t':
+                        if(state == header_value)
+                            value += c;
+                        else if(state == header_key) {
+                            if(!key.empty())
+                                key += tolower(c);
+                        } else if(state == header_value_end) {
+                            value += ' ';
+                            state = header_value_extend;
+                        }
+                        break;
+                    case ':':
+                        if(state == header_key) {
+                            state = header_value_begin;
+                        } else if(state == header_value) {
+                            value += c;
+                        }
+                        break;
+                    default:
+                        if(state == header_value_extend || state == header_value_begin) {
+                            value += c;
+                            state = header_value;
+                        } else if(state == header_value_end) {
+                            headers.push_back(std::make_pair(key, value));
+                            key = tolower(c);
+                            value = "";
+                            state = header_key;
+                        } else if(state == header_key) {
+                            key += tolower(c);
+                        } else if(state == header_value) {
+                            value += c;
+                        }
+                        break;
+                }
+            }
+            if(key.length() > 0 && value.length() > 0 && (state == header_value || state == header_value_extend || state == header_value_end)) {
+                headers.push_back(std::make_pair(key, value));
+            }
+            return util::trim(body);
+        }
+
+        /// @brief Parse content type header
+        /// @param v header value
+        /// @return [content type, values]
+        std::tuple<std::string, dict<std::string, std::string>> parse_smtp_property(const std::string& v) {
+            std::string content_type;
+            dict<std::string, std::string> values;
+            size_t i = 0;
+            for(const auto& match : std::views::split(std::string_view{v}, std::string_view{"; "})) {
+                std::string_view word { match };
+                auto pivot = word.find('=');
+                if(pivot == std::string::npos) {
+                    if(i == 0) {
+                        content_type = word;
+                    }
+                    i++;
+                    continue;
+                }
+                auto key = util::trim(word.substr(0, pivot));
+                std::string value { word.substr(pivot + 1) };
+                if(value.starts_with('"') && value.ends_with('"')) {
+                    std::stringstream ss; ss<<value;
+                    ss >> std::quoted(value);
+                }
+                values[std::string(key)] = std::string(value);
+                i++;
+            }
+            return std::make_tuple(content_type, values);
+        }
+
+        /// @brief Parse alternative section into HTML and text
+        /// @param parsed output
+        /// @param base e-mail base
+        /// @param body body view
+        /// @param boundary boundary name
+        void parse_mail_alternative(mail_parsed& parsed, const char *base, std::string_view body, std::string_view boundary) {
+            for(const auto match : std::views::split(body, boundary)) {
+                if(match.size()) {
+                    std::string_view view = util::trim(std::string_view{match});
+                    if(view.size() == 0 || view == "--" || view == "--\r\n" || view == "--\n") {
+                        continue;
+                    }
+                    std::vector<std::pair<std::string, std::string>> headers;
+                    auto atch_body = parse_mail_headers(view, headers);
+
+                    for(auto& [k, v] : headers) {
+                        if(k == "content-type") {
+                            auto [content_type, extra] = parse_smtp_property(v);
+                            if(content_type == "text/html") {
+                                if(!(parsed.formats & (int)mail_format::html)) {
+                                    parsed.formats |= (int)mail_format::html;
+                                    auto charset = extra.find("charset");
+                                    if(charset != extra.end()) parsed.html_charset = charset->second;
+                                    parsed.html_headers = headers;
+                                    parsed.html_start = (size_t)(atch_body.begin() - base);
+                                    parsed.html_end = (size_t)(atch_body.end() - base);
+                                }
+                            } else if(content_type == "text/plain") {
+                                if(!(parsed.formats & (int)mail_format::text)) {
+                                    parsed.formats |= (int)mail_format::text;
+                                    auto charset = extra.find("charset");
+                                    if(charset != extra.end()) parsed.html_charset = charset->second;
+                                    parsed.text_headers = headers;
+                                    parsed.text_start = (size_t)(atch_body.begin() - base);
+                                    parsed.text_end = (size_t)(atch_body.end() - base);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        /// @brief Decode SMTP message HTML/text block
+        /// @param out output
+        /// @param data input data as whole .eml
+        /// @param start start offset
+        /// @param end end offset
+        /// @param charset active charset
+        /// @param headers headers
+        void decode_block(std::string& out, std::string_view data, uint64_t start, uint64_t end, const std::string& charset, const std::vector<std::pair<std::string, std::string>>& headers, bool ignore_replies) {
+            auto sv = std::string_view(data.begin() + start, data.begin() + end);
+            auto contains_replies = sv.find("\r\n>");
+            if(ignore_replies && contains_replies != std::string::npos) {
+                sv = sv.substr(0, contains_replies);
+                auto line_before = sv.rfind("\r\n");
+                if(line_before != std::string::npos)
+                    sv = sv.substr(0, line_before);
+                out = sv;
+            } else {
+                out = sv;
+            }
+            if(out.length() > 0) {
+                std::string encoding = "";
+                for(const auto& [k, v] : headers) {
+                    if(k == "content-transfer-encoding") {
+                        encoding = v;
+                        break;
+                    }
+                }
+                if(encoding == "quoted-printable") {
+                    out = q_decoder(out);
+                } else if(encoding == "base64") {
+                    out = b_decoder(out);
+                }
+                out = convert_charset(out, charset);
+            }
+        }
+
+        /// @brief Parse e-mail body into HTML, text and attachments
+        /// @param parsed output
+        /// @param base pointer to e-mail beginning
+        /// @param body body view
+        /// @param root_content_type main content type
+        /// @param ct_values content type values
+        /// @param headers e-mail headeers
+        void parse_mail_body(mail_parsed& parsed, const char *base, std::string_view body, std::string_view root_content_type, const dict<std::string, std::string>& ct_values, const std::vector<std::pair<std::string, std::string>>& headers, int depth, int max_depth) {
+            if(depth >= max_depth) return;
+            auto boundary = ct_values.find("boundary");
+            if((root_content_type == "multipart/related" || root_content_type == "multipart/mixed") && boundary != ct_values.end()) {
+                auto attachments = "--" + boundary->second;
+                for(const auto match : std::views::split(body, attachments)) {
+                    if(match.size() > 0) {
+                        std::string_view view = util::trim(std::string_view{match});
+                        if(view.size() == 0 || view == "--" || view == "--\r\n" || view == "--\n") {
+                            continue;
+                        }
+
+                        bool is_attachment = false;
+                        std::string content_type, attachment_id;
+                        dict<std::string, std::string> content_type_values;
+                        std::vector<std::pair<std::string, std::string>> headers;
+                        auto atch_body = parse_mail_headers(view, headers);
+
+                        mail_attachment attachment;
+
+                        // determine if we are dealing with an attachment or alternative
+                        for(auto& [k, v] : headers) {
+                            if(k == "content-id" || k == "x-attachment-id") {
+                                if(attachment_id.size() == 0) attachment_id = parse_message_id(v);
+                                attachment.attachment_id = attachment_id;
+                                is_attachment = true;
+                            } else if(k == "content-type") {
+                                std::tie(content_type, content_type_values) = parse_smtp_property(v);
+                                attachment.mime = content_type;
+                                auto name = content_type_values.find("name");
+                                if(name != content_type_values.end()) {
+                                    attachment.name = name->second;
+                                }
+                            } else if(k == "content-disposition") {
+                                auto [disp, extra] = parse_smtp_property(v);
+                                attachment.disposition = disp;
+                                auto filename = extra.find("filename");
+                                if(filename != extra.end()) {
+                                    attachment.file_name = filename->second;
+                                }
+                            }
+                        }
+
+                        if(is_attachment && attachment_id.size() > 0) {
+                            attachment.start = (size_t)(match.begin() - base);
+                            attachment.end = (size_t)(match.end() - base);
+                            attachment.size = attachment.end - attachment.start;
+                            attachment.headers = headers;
+                            decode_block(attachment.content, body, atch_body.begin() - body.begin(), atch_body.end() - body.begin(), "us-ascii", attachment.headers, false);
+                            parsed.attachments.push_back(std::move(attachment));
+                        } else if(!is_attachment) {
+                            auto boundary = content_type_values.find("boundary");
+                            if(content_type == "multipart/alternative" && boundary != content_type_values.end()) {
+                                parse_mail_alternative(parsed, base, atch_body, "--" + boundary->second);
+                            } else if((content_type == "multipart/mixed" || content_type == "multipart/related") && boundary != content_type_values.end()) {
+                                parse_mail_body(parsed, base, atch_body, content_type, content_type_values, headers, depth + 1, max_depth);
+                            } else if(content_type == "text/html") {
+                                if(!(parsed.formats & (int)mail_format::html)) {
+                                    parsed.formats |= (int)mail_format::html;
+                                    auto charset = content_type_values.find("charset");
+                                    if(charset != content_type_values.end()) parsed.html_charset = charset->second;
+
+                                    parsed.html_headers = headers;
+                                    parsed.html_start = (size_t)(atch_body.begin() - base);
+                                    parsed.html_end = (size_t)(atch_body.end() - base);
+                                }
+                            } else if(content_type == "text/plain") {
+                                if(!(parsed.formats & (int)mail_format::text)) {
+                                    parsed.formats |= (int)mail_format::text;
+                                    auto charset = content_type_values.find("charset");
+                                    if(charset != content_type_values.end()) parsed.html_charset = charset->second;
+
+                                    parsed.text_headers = headers;
+                                    parsed.text_start = (size_t)(atch_body.begin() - base);
+                                    parsed.text_end = (size_t)(atch_body.end() - base);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if(root_content_type == "multipart/alternative" && boundary != ct_values.end()) {
+                parse_mail_alternative(parsed, base, body, "--" + boundary->second);
+            } else if(root_content_type == "text/html") {
+                if(!(parsed.formats & (int)mail_format::html)) {
+                    parsed.formats |= (int)mail_format::html;
+                    auto charset = ct_values.find("charset");
+                    if(charset != ct_values.end()) parsed.html_charset = charset->second;
+
+                    parsed.html_headers = headers;
+                    parsed.html_start = (size_t)(body.begin() - base);
+                    parsed.html_end = (size_t)(body.end() - base);
+                }
+            } else if(root_content_type == "text/plain" || root_content_type == "") {
+                if(!(parsed.formats & (int)mail_format::text)) {
+                    parsed.formats |= (int)mail_format::text;
+                    auto charset = ct_values.find("charset");
+                    if(charset != ct_values.end()) parsed.html_charset = charset->second;
+
+                    parsed.text_headers = headers;
+                    parsed.text_start = (size_t)(body.begin() - base);
+                    parsed.text_end = (size_t)(body.end() - base);
+                }
+            } else {
+                // ... dunno, ignore ...
+            }
+        }
+
+        /// @brief Parse mail information from .eml data
+        /// @param message_id internal message ID
+        /// @param data .eml data
+        /// @return parsed email
+        mail_parsed parse_mail(std::string_view message_id, std::string_view data) {
+            mail_parsed parsed;
+            
+            parsed.thread_id = message_id;
+            auto body = parse_mail_headers(data, parsed.headers);
+
+            for(auto& [k ,v] : parsed.headers) {
+                v = decode_smtp_value(v);
+            }
+
+            std::string content_type;
+            dict<std::string, std::string> content_type_values;
+
+            for(auto& [k, v] : parsed.headers) {
+                if(k == "subject") parsed.subject = v;
+                else if(k == "from") parsed.from = v;
+                else if(k == "reply-to") parsed.reply_to = v;
+                else if(k == "in-reply-to") parsed.thread_id = parsed.in_reply_to = parse_message_id(v);
+                else if(k == "return-path") parsed.return_path = v;
+                else if(k == "thread-id") parsed.thread_id = v;
+                else if(k == "message-id") parsed.external_message_id = parse_message_id(v);
+                else if(k == "content-type") {
+                    std::tie(content_type, content_type_values) = parse_smtp_property(v);
+                }
+            }
+
+            parse_mail_body(parsed, data.begin(), body, content_type, content_type_values, parsed.headers);
+
+            if(parsed.formats & (int)mail_format::text) {
+                decode_block(parsed.indexable_text, data, parsed.text_start, parsed.text_end, parsed.text_charset, parsed.text_headers, true);
+            }
+
+            return parsed;
+        }
+    }
+}
