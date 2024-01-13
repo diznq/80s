@@ -535,7 +535,7 @@ namespace s90 {
 
             printf("[deliver %zu/%s] outgoing queue records: %zu\n", user_id, message_id.c_str(), rec.size()); fflush(stdout);
 
-            std::ifstream ifs(rec->disk_path, std::ios_base::binary);
+            std::ifstream ifs(rec->disk_path + "/raw.eml", std::ios_base::binary);
             if(!ifs || !ifs.is_open()) {
                 auto del_result = co_await db->exec("DELETE FROM mail_outgoing_queue WHERE " + where);
                 if(!del_result) co_return std::unexpected("failed to delete deleted e-mail from queue");
@@ -572,7 +572,7 @@ namespace s90 {
                 query += ")";
                 auto update_ok = co_await db->exec(query);
                 if(!update_ok) {
-                    printf("[deliver %zu%s] update status failed: %s, q: (%s)\n", update_ok.error_message.c_str(), query.c_str());
+                    printf("[deliver %zu%s] update status failed: %s, q: (%s)\n", user_id, message_id.c_str(), update_ok.error_message.c_str(), query.c_str());
                     co_return std::unexpected("failed to update failed status");
                 }
                 for(auto& [k, v] : result) {
