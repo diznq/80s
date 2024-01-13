@@ -515,15 +515,19 @@ namespace s90 {
 
         aiopromise<std::expected<mail_delivery_result, std::string>> indexed_mail_storage::deliver_message(uint64_t user_id, std::string message_id, ptr<ismtp_client> client) {
             auto db = co_await get_db();
+            printf("[deliver %zu/%s] began\n", user_id, message_id.c_str());
 
             auto user = co_await db->select<mail_outgoing_record>("SELECT * FROM mail_users WHERE id = '{}' LIMIT 1", user_id);
             if(!user) co_return std::unexpected("database error on fetching user");
             else if(user.empty()) co_return std::unexpected("sender doesn't exist");
+            printf("[deliver %zu/%s] user ok\n", user_id, message_id.c_str());
             
             auto where = std::format("WHERE user_id = '{}' AND message_id = '{}'", db->escape(user_id), db->escape(message_id));
             auto rec = co_await db->select<mail_outgoing_record>("SELECT * FROM mail_outgoing_queue " + where);
             if(!rec) co_return std::unexpected("database error on fetching mail");
             if(rec.empty()) co_return mail_delivery_result { .delivery_errors = {} };
+
+            printf("[deliver %zu/%s] outgoing queue records: %zu\n", user_id, message_id.c_str(), rec.size());
 
             std::ifstream ifs(rec->disk_path, std::ios_base::binary);
             if(!ifs || !ifs.is_open()) {
@@ -545,9 +549,11 @@ namespace s90 {
             }
 
             mail->data = ss.str();
+            printf("[deliver %zu/%s] disk, from, to ok\n", user_id, message_id.c_str());
             auto result = co_await client->deliver_mail(mail, recipients, tls_mode::best_effort);
 
             if(result.size() > 0) {
+                printf("[deliver %zu/%s] there were %zu failures\n", user_id, message_id.c_str(), result.size());
                 auto query = std::format("UPDATE mail_outgoing_queue SET retries = retries + 1, last_retried_at = '{}' WHERE ", orm::datetime::now());
                 query += where;
                 query += " AND target_email IN (";
@@ -568,6 +574,8 @@ namespace s90 {
                         fprintf(stderr, "failed to update failure reason for %s to %s\n", k.c_str(), v.c_str());
                     }
                 }
+            } else {
+                printf("[deliver %zu/%s] was ok\n", user_id, message_id.c_str());
             }
             co_return mail_delivery_result {
                 .delivery_errors = std::move(result)
