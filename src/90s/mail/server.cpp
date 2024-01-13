@@ -160,12 +160,12 @@ namespace s90 {
                             if(!co_await write(fd, "500 Message is missing\r\n")) co_return nil {};
                         } else {
                             knowledge->data = msg.data;
-                            std::expected<std::string, std::string> handled;
+                            std::expected<mail_store_result, std::string> handled;
                             if(!storage) {
                                 handled = std::unexpected("no storage handler");
                             } else {
                                 auto prom = storage->store_mail(knowledge, knowledge->from.authenticated);
-                                handled = co_await prom;
+                                handled = std::move(co_await prom);
                                 if(prom.has_exception()) {
                                     dbgf("Failed to handle e-mail\n");
                                     handled = std::unexpected("unhandled error while storing");

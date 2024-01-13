@@ -2,6 +2,7 @@
 #include "../context.hpp"
 #include "../sql/sql.hpp"
 #include "shared.hpp"
+#include "client.hpp"
 
 namespace s90 {
     namespace mail {
@@ -31,7 +32,7 @@ namespace s90 {
             /// @param mail e-mail knowledge
             /// @param outbounding true if the e-mail outbound from our network, i.e. user of our server sent an e-mail to someone else
             /// @return 
-            virtual aiopromise<std::expected<std::string, std::string>> store_mail(ptr<mail_knowledge> mail, bool outbounding = false) = 0;
+            virtual aiopromise<std::expected<mail_store_result, std::string>> store_mail(ptr<mail_knowledge> mail, bool outbounding = false) = 0;
 
             /// @brief Perform login and return user
             /// @param name user name
@@ -90,6 +91,12 @@ namespace s90 {
             /// @param action action to perform
             /// @return true if success, error otherwise
             virtual aiopromise<std::expected<uint64_t, std::string>> alter(uint64_t user_id, std::string email, std::vector<std::string> message_ids, mail_action action = mail_action::set_seen) = 0;
+
+            /// @brief Deliver message
+            /// @param user_id owner ID
+            /// @param message_id message ID
+            /// @return delivery status
+            virtual aiopromise<std::expected<std::string, std::string>> deliver_message(uint64_t user_id, std::string message_id, ptr<ismtp_client> client) = 0;
         };
     }
 }

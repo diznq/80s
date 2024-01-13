@@ -14,7 +14,9 @@ namespace s90 {
             ~indexed_mail_storage();
             aiopromise<ptr<sql::isql>> get_db();
 
-            aiopromise<std::expected<std::string, std::string>> store_mail(ptr<mail_knowledge> mail, bool outbounding = false) override;
+            aiopromise<std::expected<mail_store_result, std::string>> store_mail(ptr<mail_knowledge> mail, bool outbounding = false) override;
+            aiopromise<std::expected<std::string, std::string>> deliver_message(uint64_t user_id, std::string message_id, ptr<ismtp_client> client) override;
+            
             aiopromise<std::expected<mail_user, std::string>> login(std::string name, std::string password, orm::optional<mail_session> session = {}) override;
             aiopromise<std::expected<bool, std::string>> destroy_session(std::string session_id, uint64_t user_id) override;
             aiopromise<std::expected<mail_user, std::string>> get_user(std::string session_id, uint64_t user_id) override;

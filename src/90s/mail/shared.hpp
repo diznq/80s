@@ -290,6 +290,13 @@ namespace s90 {
             }
         };
 
+        struct mail_store_result {
+            uint64_t owner_id;
+            std::string message_id;
+            std::vector<mail_parsed_user> outside;
+            std::vector<uint64_t> inside;
+        };
+
         struct mail_knowledge {
             bool hello = false;
             bool tls = false;
@@ -300,7 +307,6 @@ namespace s90 {
             mail_parsed_user from;
             std::set<mail_parsed_user> to = {};
             std::string data = "";
-            std::vector<mail_parsed_user> outside = {};
         };
     }
 }

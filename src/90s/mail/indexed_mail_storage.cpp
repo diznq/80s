@@ -245,14 +245,20 @@ namespace s90 {
             }
         }
 
-        aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::store_mail(ptr<mail_knowledge> mail, bool outbounding) {
+        aiopromise<std::expected<mail_store_result, std::string>> indexed_mail_storage::store_mail(ptr<mail_knowledge> mail, bool outbounding) {
             auto db = co_await get_db();
             orm::json_encoder encoder;
             size_t  stored_to_disk = 0, stored_to_db = 0,
                     users_total = mail->to.size();
             node_id id = global_context->get_node_id();
             auto folder = mail->created_at.ymd('/');
+            uint64_t owner_id = 0;
             auto msg_id = std::format("{}/{}-{}-{}", folder, mail->created_at.his('_'), id.id, counter++);
+            
+            if(outbounding) {
+                mail->data = "Message-ID: <" + msg_id + ">\r\n" + mail->data;
+            }
+            
             if(config.sv_mail_storage_dir.ends_with("/"))
                 config.sv_mail_storage_dir = config.sv_mail_storage_dir.substr(0, config.sv_mail_storage_dir.length() - 1);
             
@@ -261,6 +267,7 @@ namespace s90 {
 
             // first try to get the users from DB
             std::vector<mail_parsed_user> users_outside;
+            std::vector<uint64_t> inside;
 
             // insert sender if they are within this mail server
             if(outbounding && mail->from.user) mail->to.insert(mail->from);
@@ -315,6 +322,8 @@ namespace s90 {
                         users_outside.push_back(user);
                     continue;
                 }
+
+                inside.push_back(user.user->user_id);
 
                 auto path = std::format("{}/{}/{}", config.sv_mail_storage_dir, user.email, msg_id);
                 auto fs_path = std::filesystem::path(path);
@@ -493,11 +502,18 @@ namespace s90 {
                 if(!write_status) {
                     co_return std::unexpected("failed to submit e-mails to the outgoing queue");
                 }
-                mail->outside = std::move(users_outside);
             }
-
             
-            co_return std::move(msg_id);
+            co_return mail_store_result {
+                .owner_id = owner_id,
+                .message_id = msg_id,
+                .outside = std::move(users_outside),
+                .inside = std::move(inside)
+            };
+        }
+
+        aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::deliver_message(uint64_t user_id, std::string message_id, ptr<ismtp_client> client) {
+            co_return "123";
         }
     }
 }

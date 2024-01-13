@@ -10,10 +10,7 @@ namespace s90 {
     template<typename A>
     using ptr = std::shared_ptr<A>;
 
-    template<typename A, typename ... Args>
-    static ptr<A> ptr_new(Args&& ...args) {
-        return std::make_shared<A>(std::forward<Args>(args)...);
-    }
+    #define ptr_new std::make_shared
 
     template<typename A>
     using wptr = std::weak_ptr<A>;
