@@ -73,5 +73,10 @@ namespace s90 {
         /// @param data .eml data
         /// @return parsed email
         mail_parsed parse_mail(std::string_view message_id, std::string_view data);
+
+        /// @brief Parse user SMTP address
+        /// @param addr SMTP address
+        /// @return parsed user
+        mail_parsed_user parse_smtp_address(std::string_view addr, mail_server_config& config);
     }
 }

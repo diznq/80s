@@ -3,6 +3,7 @@
 #include "server.hpp"
 #include "mail_storage.hpp"
 #include "indexed_mail_storage.hpp"
+#include "parser.hpp"
 #include "http/http_api.hpp"
 #include "../util/util.hpp"
 #include <ranges>
@@ -100,7 +101,7 @@ namespace s90 {
                     } else if(knowledge->from) {
                         if(!co_await write(fd, "503 MAIL FROM was already sent previously!\r\n")) co_return nil {};
                     } else {
-                        auto parsed_mail = parse_smtp_address(cmd->substr(10));
+                        auto parsed_mail = parse_smtp_address(cmd->substr(10), config);
                         if(!parsed_mail) {
                             if(!co_await write(fd, "501 Invalid address\r\n")) co_return nil {};
                         } else {
@@ -123,7 +124,7 @@ namespace s90 {
                     if(!knowledge->from) {
                         if(!co_await write(fd, "503 MAIL FROM was not sent previously!\r\n")) co_return nil {};
                     } else {
-                        auto parsed_mail = parse_smtp_address(cmd->substr(8));
+                        auto parsed_mail = parse_smtp_address(cmd->substr(8), config);
                         if(!parsed_mail) {
                             if(!co_await write(fd, "501 Invalid address\r\n")) co_return nil {};
                         } else if(knowledge->to.size() > 50) {
@@ -255,85 +256,6 @@ namespace s90 {
                 std::cout << "x-- " << fd->name() << std::endl;
             }
             fd->close();
-        }
-
-        mail_parsed_user smtp_server::parse_smtp_address(std::string_view address) {
-            address = util::trim(address);
-            uint64_t requested_size = 0;
-            if(!address.starts_with("<")) return mail_parsed_user { true };
-            auto end = address.find('>');
-            if(end == std::string::npos) return mail_parsed_user { true };
-            auto after_end = util::trim(address.substr(end + 1));
-            address = address.substr(1, end - 1);
-            int ats = 0;
-            int prefix_invalid = 0, postfix_invalid = 0;
-            int prefix_length = 0, postfix_length = 0;
-            std::string original_email(address);
-            std::string original_email_server;
-            std::string email = original_email;
-            for(char c : address) {
-                bool valid = false;
-                if(c == '@') {
-                    ats++;
-                }else if(ats == 0) {
-                    valid = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '=' || c == '+';
-                    if(!valid) prefix_invalid++;
-                    else prefix_length++;
-                } else {
-                    valid = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_';
-                    if(!valid) postfix_invalid++;
-                    else postfix_length++;
-                }
-            }
-            if(ats != 1 || prefix_invalid > 0 || postfix_invalid > 0 || prefix_length == 0 || postfix_length == 0) return mail_parsed_user { true };
-            
-            for(auto v : std::ranges::split_view(after_end, std::string_view(";"))) {
-                auto value = std::string_view(v);
-                auto pivot = value.find('=');
-                if(pivot != std::string::npos) {
-                    auto extra_key = util::trim(value.substr(0, pivot));
-                    auto extra_value = util::trim(value.substr(pivot + 1));
-                    if(extra_key == "SIZE" || extra_key == "size") {
-                        if(std::from_chars(extra_value.begin(), extra_value.end(), requested_size, 10).ec != std::errc()) {
-                            requested_size = 0;
-                        }
-                    }
-                }
-            }
-            
-            auto at_pos = address.find('@');
-            std::string folder = "";
-            bool local = false;
-            for(const auto& sv : config.get_smtp_hosts()) {
-                auto postfix = "." + sv;
-                if(original_email.ends_with(postfix)) {
-                    local = true;
-                    folder = original_email.substr(0, at_pos);
-                    email = original_email.substr(at_pos + 1, original_email.length() - at_pos - 1 - postfix.length()) + "@" + sv;
-                    break;
-                } else if(original_email.ends_with("@" + sv)) {
-                    local = true;
-                    auto mbox = original_email.find(".mbox.");
-                    if(mbox != 0 && mbox != std::string::npos) {
-                        folder = original_email.substr(0, mbox);
-                        email = original_email.substr(mbox + 6);
-                        break;
-                    }
-                }
-            }
-            at_pos = email.find('@');
-            original_email_server = email.substr(at_pos + 1); 
-            return mail_parsed_user {
-                .error = false,
-                .original_email = original_email,
-                .original_email_server = original_email_server,
-                .email = email, 
-                .folder = folder,
-                .requested_size = requested_size,
-                .local = local,
-                .authenticated = false,
-                .direction = (int)mail_direction::inbound
-            };
         }
     }
 }
