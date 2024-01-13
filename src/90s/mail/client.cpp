@@ -155,7 +155,7 @@ namespace s90 {
                     continue;
                 }
 
-                if(!co_await conn->write(mail->data)) {
+                if(!co_await conn->write(mail->data + "\r\n.\r\n")) {
                     fail_many_with(errors, rcpt, "failed to write DATA section");
                 }
                 auto data_resp = co_await read_smtp_response(conn);
