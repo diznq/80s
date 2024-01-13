@@ -1,5 +1,6 @@
 #include "../shared.hpp"
 #include "http_api.hpp"
+#include "../parser.hpp"
 #include "../../util/util.hpp"
 #include <ranges>
 
@@ -49,6 +50,7 @@ namespace s90 {
             }
 
             aiopromise<std::expected<nil, httpd::status>> render(httpd::ienvironment& env) const {
+                env.content_type("application/json; charset=\"utf-8\"");
                 auto req = env.form<input>();
                 if(req.name && req.password) {
                     mail_session sess;
@@ -131,6 +133,7 @@ namespace s90 {
                     err.error = "empty session";
                 }
 
+                env.content_type("application/json; charset=\"utf-8\"");
                 env.status("401 Unauthorized");
                 if(err.error) {
                     env.output()->write_json(err);
@@ -177,6 +180,7 @@ namespace s90 {
             const char *name() const { return "GET /api/mail/inbox"; }
 
             aiopromise<std::expected<nil, httpd::status>> render(httpd::ienvironment& env) const {
+                env.content_type("application/json; charset=\"utf-8\"");
                 auto user = co_await verify_login(env);
                 if(user) {
                     response resp;
@@ -230,6 +234,7 @@ namespace s90 {
             const char *name() const { return "GET /api/mail/folders"; }
 
             aiopromise<std::expected<nil, httpd::status>> render(httpd::ienvironment& env) const {
+                env.content_type("application/json; charset=\"utf-8\"");
                 auto user = co_await verify_login(env);
                 if(user) {
                     response resp;
@@ -285,6 +290,7 @@ namespace s90 {
                     auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
                     auto query = env.query<input>();
                     if(!query.message_id) {
+                        env.content_type("application/json; charset=\"utf-8\"");
                         err.error = "missing message id";
                         env.status("400 Bad request");
                         env.output()->write_json(err);
@@ -308,6 +314,7 @@ namespace s90 {
                         env.header("cache-control", "private, immutable, max-age=604800");
                         env.output()->write(*obj);
                     } else {
+                        env.content_type("application/json; charset=\"utf-8\"");
                         err.error = obj.error();
                         env.status("400 Bad request");
                         env.output()->write_json(err);
@@ -351,6 +358,7 @@ namespace s90 {
 
             aiopromise<std::expected<nil, httpd::status>> render(httpd::ienvironment& env) const {
                 auto user = co_await verify_login(env);
+                env.content_type("application/json; charset=\"utf-8\"");
                 if(user) {
                     mail_action action = mail_action::set_seen;
                     error_response err;
@@ -374,7 +382,6 @@ namespace s90 {
                     }
                     auto result = co_await ctx->alter(user->user_id, user->email, message_ids, action);
                     if(result) {
-                        env.content_type("application/json");
                         response resp;
                         resp.ok = true;
                         resp.affected = *result;
@@ -422,13 +429,133 @@ namespace s90 {
             }
         };
 
+        class new_mail_page : public authenticated_page {
+            struct input : public orm::with_orm {
+                WITH_ID;
+
+                orm::optional<std::string> to;
+                orm::optional<std::string> subject;
+                orm::optional<std::string> text;
+                orm::mapper get_orm() {
+                    return {
+                        {"to", to},
+                        {"subject", subject},
+                        {"text", text}
+                    };
+                }
+            };
+
+            struct response : public orm::with_orm {
+                WITH_ID;
+
+                uint64_t sent = 0;
+                std::vector<std::string> enqueued = {};
+
+                orm::mapper get_orm() {
+                    return {
+                        {"sent", sent},
+                        {"enqueued", enqueued}
+                    };
+                }
+            };
+            
+        public:
+            const char *name() const { return "POST /api/mail/new"; }
+
+            aiopromise<std::expected<nil, httpd::status>> render(httpd::ienvironment& env) const {
+                auto user = co_await verify_login(env);
+                env.content_type("application/json; charset=\"utf-8\"");
+                if(user) {
+                    error_response err;
+                    auto params = env.form<input>();
+                    if(params.to && params.subject && params.text) {
+
+                        std::string mail_envelope;
+                        auto ctx = env.local_context<mail_http_api>();
+                        auto storage = ctx->get_smtp()->get_storage();
+                        ptr<mail_knowledge> mail = ptr_new<mail_knowledge>();
+                        
+                        mail->from = parse_smtp_address("<" + user->email + ">", ctx->get_smtp()->get_config());
+                        mail->from.authenticated = true;
+                        mail->from.direction = (int)mail_direction::outbound;
+                        mail->from.user = *user;
+                        mail_envelope += "From: " + user->email + "\r\n";
+                        mail_envelope += "Subject: " + *params.subject + "\r\n";
+
+                        auto to_parsed = parse_smtp_address(*params.to, ctx->get_smtp()->get_config());
+                        if(to_parsed) {
+                            auto to_user = co_await storage->get_user_by_email(to_parsed.email);
+                            if(!to_user && to_parsed.local) {
+                                env.status("400 Bad request");
+                                err.error = to_parsed.original_email + " not found";
+                                env.output()->write_json(err);
+                            } else {
+                                mail_envelope += "To: " + to_parsed.original_email + "\r\n";
+                                
+                                if(to_user) {
+                                    to_parsed.user = std::move(*to_user);
+                                }
+                                mail->to.insert(to_parsed);
+                                
+                                auto boundary = util::to_hex(util::sha256(*params.text));
+                                mail_envelope += "Content-type: text/plain; charset=\"UTF-8\"\r\n\r\n";
+                                mail_envelope += *params.text;
+
+                                mail->data = mail_envelope;
+
+                                auto store_result = co_await storage->store_mail(mail, true);
+                                if(store_result) {
+                                    response resp;
+                                    resp.sent = store_result->inside.size();
+                                    if(store_result->outside.size() > 0) {
+                                        // detach
+                                        storage->deliver_message(
+                                            store_result->owner_id,
+                                            store_result->message_id,
+                                            ctx->get_smtp()->get_client()
+                                        ).then([](std::expected<mail_delivery_result, std::string>&& result) -> void {
+                                            if(!result) {
+                                                printf("mail delivery failure: %s\n", result.error().c_str());
+                                            } else {
+                                                printf("mail delivery theoreteically ok\n");
+                                                for(auto& [k, v] : result->delivery_errors) {
+                                                    printf("mail delivery failed for %s: %s\n", k.c_str(), v.c_str());
+                                                }
+                                            }
+                                        });
+                                        for(auto& outsider : store_result->outside) {
+                                            resp.enqueued.push_back(outsider.original_email);
+                                        }
+                                    }
+                                    env.output()->write_json(resp);
+                                } else {
+                                    env.status("400 Bad request");
+                                    err.error = "failed to store e-mail to database: " + store_result.error();
+                                    env.output()->write_json(err);
+                                }
+                            }
+                        } else {
+                            env.status("400 Bad request");
+                            err.error = "couldn't parse address: " + *params.to;
+                            env.output()->write_json(err);
+                        }
+                    } else {
+                        env.status("400 Bad request");
+                        err.error = "to, subject, text required";
+                        env.output()->write_json(err);
+                    }
+                }
+                co_return nil {};
+            }
+        };
+
         mail_http_api::mail_http_api(smtp_server *parent) : parent(parent) {
             httpd::httpd_config cfg = httpd::httpd_config::env();
             cfg.initializer = [this](icontext *ctx, void*) { return this; };
 
             cfg.pages = {
                 new login_page, new inbox_page, new object_page, new me_page, 
-                new alter_page, new folders_page
+                new alter_page, new folders_page, new new_mail_page
             };
 
             http_base = ptr_new<httpd::httpd_server>(parent->get_context(), cfg);

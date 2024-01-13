@@ -268,24 +268,28 @@ namespace s90 {
             varstr<64> message_id;
             varstr<64> target_email;
             varstr<48> target_server;
+            varstr<64> source_email;
             sql_text disk_path;
             int status;
             orm::datetime last_retried_at;
             int retries;
             size_t session_id;
             int locked;
+            std::string reason;
 
             orm::mapper get_orm() {
                 return {
                     { "user_id", user_id },
                     { "message_id", message_id },
                     { "target_email", target_email },
+                    { "source_email", source_email },
                     { "disk_path", disk_path },
                     { "status", status },
                     { "last_retried_at", last_retried_at },
                     { "retries", retries },
                     { "session_id", session_id },
-                    { "locked", locked }
+                    { "locked", locked },
+                    { "reason", reason }
                 };
             }
         };
@@ -295,6 +299,10 @@ namespace s90 {
             std::string message_id;
             std::vector<mail_parsed_user> outside;
             std::vector<uint64_t> inside;
+        };
+
+        struct mail_delivery_result {
+            dict<std::string, std::string> delivery_errors;
         };
 
         struct mail_knowledge {

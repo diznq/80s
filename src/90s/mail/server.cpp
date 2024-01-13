@@ -182,7 +182,7 @@ namespace s90 {
                                 knowledge->tls = had_tls;
                                 knowledge->client_name = client_name;
                                 knowledge->client_address = peer_name;
-                                if(!co_await write(fd, std::format("250 OK: Queued as {}\r\n", *handled))) {
+                                if(!co_await write(fd, std::format("250 OK: Queued as {}\r\n", handled->message_id))) {
                                     co_return nil {};
                                 }
                             } else {

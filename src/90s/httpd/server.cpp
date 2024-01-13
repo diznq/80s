@@ -79,6 +79,11 @@ namespace s90 {
             }
 
             aiopromise<std::expected<nil, status>> render_exception(ienvironment& env, std::exception_ptr ptr) const {
+                try {
+                    std::rethrow_exception(ptr);
+                } catch(std::exception& ex) {
+                    fprintf(stderr, "[%s] Exception: %s\n", env.endpoint().c_str(), ex.what());
+                }
                 return render_error(env, status::internal_server_error);
             }
 

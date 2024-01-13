@@ -17,10 +17,6 @@ namespace s90 {
     namespace mail {
 
         /*
-         * Utilities
-         */
-
-        /*
          *  Indexed Mail Storage implementation 
          */
 
@@ -379,7 +375,8 @@ namespace s90 {
                                 "INSERT INTO mail_outgoing_queue("
                                     "user_id, message_id, target_email, target_server, "
                                     "disk_path, status, last_retried_at, retries, "
-                                    "session_id, locked) VALUES";
+                                    "source_email, "
+                                    "session_id, locked, reason) VALUES";
             size_t outgoing_count = 0;
 
             std::string attachment_ids = "";
@@ -401,23 +398,27 @@ namespace s90 {
                             .message_id = msg_id,
                             .target_email= user.original_email,
                             .target_server = user.original_email_server,
+                            .source_email = mail->from.original_email,
                             .disk_path = std::format("{}/{}/{}", config.sv_mail_storage_dir, mail->from.email, msg_id),
                             .status = (int)mail_status::sent,
                             .last_retried_at = orm::datetime::now(),
                             .retries = 0,
                             .session_id = 0,
-                            .locked = 0
+                            .locked = 0,
+                            .reason = ""
                         };
 
                         outbounding_query += std::format(
                             "("
                             "'{}', '{}', '{}', '{}', "
                             "'{}', '{}', '{}', '{}', "
-                            "'{}', '{}'"
+                            "'{}', "
+                            "'{}', '{}', '{}'"
                             "),",
                             db->escape(outgoing_record.user_id), db->escape(outgoing_record.message_id), db->escape(outgoing_record.target_email), db->escape(outgoing_record.target_server),
                             db->escape(outgoing_record.disk_path), db->escape(outgoing_record.status), db->escape(outgoing_record.last_retried_at), db->escape(outgoing_record.retries),
-                            db->escape(outgoing_record.session_id), db->escape(outgoing_record.locked)
+                            db->escape(outgoing_record.source_email),
+                            db->escape(outgoing_record.session_id), db->escape(outgoing_record.locked), db->escape(outgoing_record.reason)
                         );
 
                         outgoing_count++;
@@ -512,8 +513,65 @@ namespace s90 {
             };
         }
 
-        aiopromise<std::expected<std::string, std::string>> indexed_mail_storage::deliver_message(uint64_t user_id, std::string message_id, ptr<ismtp_client> client) {
-            co_return "123";
+        aiopromise<std::expected<mail_delivery_result, std::string>> indexed_mail_storage::deliver_message(uint64_t user_id, std::string message_id, ptr<ismtp_client> client) {
+            auto db = co_await get_db();
+
+            auto user = co_await db->select<mail_outgoing_record>("SELECT * FROM mail_users WHERE id = '{}' LIMIT 1", user_id);
+            if(!user) co_return std::unexpected("database error on fetching user");
+            else if(user.empty()) co_return std::unexpected("sender doesn't exist");
+            
+            auto where = std::format("WHERE user_id = '{}' AND message_id = '{}'", db->escape(user_id), db->escape(message_id));
+            auto rec = co_await db->select<mail_outgoing_record>("SELECT * FROM mail_outgoing_queue " + where);
+            if(!rec) co_return std::unexpected("database error on fetching mail");
+            if(rec.empty()) co_return mail_delivery_result { .delivery_errors = {} };
+
+            std::ifstream ifs(rec->disk_path, std::ios_base::binary);
+            if(!ifs || !ifs.is_open()) {
+                auto del_result = co_await db->exec("DELETE FROM mail_outgoing_queue WHERE " + where);
+                if(!del_result) co_return std::unexpected("failed to delete deleted e-mail from queue");
+                co_return std::unexpected("mail doesn't exist anymore, dequeueing it");
+            }
+
+            std::stringstream ss; ss << ifs.rdbuf(); ifs.close();
+
+            auto mail = ptr_new<mail_knowledge>();
+            std::vector<std::string> recipients;
+            mail->from = parse_smtp_address(rec->source_email, config);
+            
+            for(auto& to : rec) {
+                auto recip = parse_smtp_address(rec->target_email, config);
+                recipients.push_back(rec->target_email);
+                mail->to.insert(std::move(recip));
+            }
+
+            mail->data = ss.str();
+            auto result = co_await client->deliver_mail(mail, recipients, tls_mode::best_effort);
+
+            if(result.size() > 0) {
+                auto query = std::format("UPDATE mail_outgoing_queue SET retries = retries + 1, last_retried_at = '{}' WHERE ", orm::datetime::now());
+                query += where;
+                query += " AND target_email IN (";
+                bool first = true;
+                for(auto& [k, v] : result) {
+                    if(!first) query += ',';
+                    query += std::format("'{}'", db->escape(k));
+                    first = false;
+                }
+                query += ")";
+                auto update_ok = co_await db->exec(query);
+                if(!update_ok) {
+                    co_return std::unexpected("failed to update failed status");
+                }
+                for(auto& [k, v] : result) {
+                    auto reason_ok = co_await db->exec("UPDATE mail_outgoing_queue SET reason = '{}' WHERE user_id = '{}' AND message_id = '{}' AND target_email = '{}' LIMIT 1", v, user_id, message_id, k);
+                    if(!reason_ok) {
+                        fprintf(stderr, "failed to update failure reason for %s to %s\n", k.c_str(), v.c_str());
+                    }
+                }
+            }
+            co_return mail_delivery_result {
+                .delivery_errors = std::move(result)
+            };
         }
     }
 }

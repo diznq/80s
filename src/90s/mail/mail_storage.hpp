@@ -96,7 +96,7 @@ namespace s90 {
             /// @param user_id owner ID
             /// @param message_id message ID
             /// @return delivery status
-            virtual aiopromise<std::expected<std::string, std::string>> deliver_message(uint64_t user_id, std::string message_id, ptr<ismtp_client> client) = 0;
+            virtual aiopromise<std::expected<mail_delivery_result, std::string>> deliver_message(uint64_t user_id, std::string message_id, ptr<ismtp_client> client) = 0;
         };
     }
 }
