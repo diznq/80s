@@ -542,7 +542,7 @@ namespace s90 {
 
             auto mail = ptr_new<mail_knowledge>();
             std::vector<std::string> recipients;
-            mail->from = parse_smtp_address(rec->source_email, config);
+            mail->from = parse_smtp_address("<" + rec->source_email + ">", config);
             
             for(auto& to : rec) {
                 auto recip = parse_smtp_address(rec->target_email, config);
@@ -578,6 +578,25 @@ namespace s90 {
                 }
             } else {
                 printf("[deliver %zu/%s] was ok\n", user_id, message_id.c_str()); fflush(stdout);
+            }
+            
+            size_t successes = 0;
+            auto del_query = "DELETE FROM mail_outgoing_queue WHERE " + where + "AND target_email IN(";
+            for(auto& recip : recipients) {
+                auto found = result.find(recip);
+                if(found == result.end()) {
+                    del_query += std::format("'{}',", db->escape(recip));
+                    successes++;
+                }
+            }
+            if(successes > 0) {
+                del_query[del_query.length() - 1] = ')';
+                del_query += " LIMIT " + std::to_string(successes);
+                auto del_ok = co_await db->exec(del_query);
+                if(!del_ok) {
+                    fprintf(stderr, "failed to delete successful deliveries from queue!");
+                    co_return std::unexpected("failed to delete unsuccessful deliveries");
+                }
             }
             co_return mail_delivery_result {
                 .delivery_errors = std::move(result)

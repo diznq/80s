@@ -517,7 +517,7 @@ namespace s90 {
                                         if(!result) {
                                             printf("mail delivery failure: %s\n", result.error().c_str()); fflush(stdout);
                                         } else {
-                                            printf("mail delivery theoreteically ok\n");
+                                            printf("mail delivery theoretically ok\n");
                                             for(auto& [k, v] : result->delivery_errors) {
                                                 printf("mail delivery failed for %s: %s\n", k.c_str(), v.c_str());
                                             }

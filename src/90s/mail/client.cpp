@@ -161,6 +161,8 @@ namespace s90 {
                 auto data_resp = co_await read_smtp_response(conn);
                 if(!data_resp) {
                     fail_many_with(errors, rcpt, "failed to transfer data: " + data_resp.error());
+                } else if(!data_resp->starts_with("250")) {
+                    fail_many_with(errors, rcpt, "failed to send data: " + *data_resp);
                 }
             }
 
