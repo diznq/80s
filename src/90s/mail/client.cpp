@@ -29,11 +29,11 @@ namespace s90 {
                 } else if(resp.data.length() < 4) {
                     co_return std::unexpected("unexpected SMTP response: " + std::string(resp.data));
                 } else if(total.length() == 0){
-                    printf("<-- %s\n", resp.data.data()); fflush(stdout);
+                    printf("<-- %s\n", std::string(resp.data).c_str()); fflush(stdout);
                     total = resp.data;
                     total[3] = ' ';
                 } else {
-                    printf("<-| %s\n", resp.data.data()); fflush(stdout);
+                    printf("<-| %s\n", std::string(resp.data).c_str()); fflush(stdout);
                     total += "\n";
                     total += resp.data.substr(4);
                 }
@@ -155,7 +155,9 @@ namespace s90 {
                     continue;
                 }
 
-                if(!co_await conn->write(mail->data + "\r\n.\r\n")) {
+                mail->data += "\r\n.\r\n";
+                printf("====\n%s\n====\n", mail->data.c_str());
+                if(!co_await conn->write(mail->data)) {
                     fail_many_with(errors, rcpt, "failed to write DATA section");
                 }
                 auto data_resp = co_await read_smtp_response(conn);
