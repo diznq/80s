@@ -29,9 +29,11 @@ namespace s90 {
                 } else if(resp.data.length() < 4) {
                     co_return std::unexpected("unexpected SMTP response: " + std::string(resp.data));
                 } else if(total.length() == 0){
+                    printf("<-- %s\n", resp.data.data()); fflush(stdout);
                     total = resp.data;
                     total[3] = ' ';
                 } else {
+                    printf("<-| %s\n", resp.data.data()); fflush(stdout);
                     total += "\n";
                     total += resp.data.substr(4);
                 }
@@ -40,6 +42,7 @@ namespace s90 {
         }
 
         aiopromise<std::optional<std::string>> roundtrip(ptr<iafd> conn, dict<std::string, std::string>& errors, std::span<std::string> v, const std::string cmd, const std::string params, const std::string& expect = "250") {
+            printf("--> %s%s\n", cmd.c_str(), params.c_str()); fflush(stdout);
             if(!co_await conn->write(cmd + params + "\r\n")) {
                 fail_many_with(errors, v, "write on " + cmd + " failed");
                 co_return {};
