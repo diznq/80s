@@ -252,7 +252,7 @@ namespace s90 {
             auto msg_id = std::format("{}/{}-{}-{}", folder, mail->created_at.his('_'), id.id, counter++);
             
             if(outbounding) {
-                mail->data = "Message-ID: <" + msg_id + ">\r\n" + mail->data;
+                mail->data = "Message-ID: <msg-fs-" + msg_id + "@" + mail->from.original_email_server + ">\r\n" + mail->data;
             }
 
             if(mail->from.user) owner_id = mail->from.user->user_id;
