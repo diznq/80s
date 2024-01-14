@@ -481,7 +481,7 @@ namespace s90 {
                     .user_id = found_user->user_id,
                     .message_id = msg_id,
                     .external_message_id = parsed.external_message_id,
-                    .thread_id = parsed.thread_id,
+                    .thread_id = thread_id,
                     .in_reply_to = parsed.in_reply_to,
                     .return_path = parsed.return_path,
                     .reply_to = parsed.reply_to,
