@@ -380,7 +380,7 @@ namespace s90 {
                 auto reply_ref = co_await db->select<mail_record>(
                     "SELECT user_id, thread_id FROM mail_indexed WHERE user_id IN ({}) AND ext_message_id = '{}'",
                     affected_users,
-                    parsed.external_message_id
+                    parsed.in_reply_to
                 );
                 if(reply_ref) {
                     for(auto& row : reply_ref) {
