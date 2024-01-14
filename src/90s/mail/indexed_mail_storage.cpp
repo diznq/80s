@@ -662,7 +662,7 @@ namespace s90 {
                     co_return std::unexpected("failed to delete unsuccessful deliveries");
                 } else {
                     if(result.size() == 0) {
-                        co_await db->exec("UPDATE mail_indexed SET status = '{}' WHERE user_id = '{}' AND message_id = '{}' LIMIT 1", (int)mail_status::delivered, user_id, message_id);
+                        co_await db->exec("UPDATE mail_indexed SET status = '{}', delivered_at = '{}' WHERE user_id = '{}' AND message_id = '{}' LIMIT 1", (int)mail_status::delivered, orm::datetime::now(), user_id, message_id);
                     }
                 }
             }
