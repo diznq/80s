@@ -194,8 +194,8 @@ namespace s90 {
 
             uint64_t user_id;
             varstr<64> message_id;
-            sql_text external_message_id;
-            varstr<64> thread_id;
+            varstr<128> external_message_id;
+            varstr<128> thread_id;
             varstr<64> in_reply_to;
             varstr<64> return_path;
             varstr<64> reply_to;

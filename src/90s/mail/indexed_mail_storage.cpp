@@ -252,7 +252,7 @@ namespace s90 {
             auto msg_id = std::format("{}/{}-{}-{}", folder, mail->created_at.his('_'), id.id, counter++);
             
             if(outbounding) {
-                mail->data = "Message-ID: <msg-fs-" + msg_id + "@" + mail->from.original_email_server + ">\r\n" + mail->data;
+                mail->data = "Message-ID: <" + msg_id + "@" + mail->from.original_email_server + ">\r\n" + mail->data;
             }
 
             if(mail->from.user) owner_id = mail->from.user->user_id;
@@ -374,6 +374,21 @@ namespace s90 {
                 affected_users.insert(user.user->user_id);
             }
 
+            dict<uint64_t, std::string> thread_ids;
+
+            if(affected_users.size() > 0 && parsed.in_reply_to.length() > 0) {
+                auto reply_ref = co_await db->select<mail_record>(
+                    "SELECT user_id, thread_id FROM mail_indexed WHERE user_id IN ({}) AND ext_message_id = '{}'",
+                    affected_users,
+                    parsed.external_message_id
+                );
+                if(reply_ref) {
+                    for(auto& row : reply_ref) {
+                        thread_ids[row.user_id] = row.thread_id;
+                    }
+                }
+            }
+
             // save the data to the db!
             std::string query = 
                                 "INSERT INTO mail_indexed("
@@ -440,6 +455,14 @@ namespace s90 {
                         outgoing_count++;
                     }
                     continue;
+                }
+
+                std::string thread_id;
+                auto thread_it = thread_ids.find(found_user->user_id);
+                if(thread_it != thread_ids.end()) {
+                    thread_id = thread_it->second;
+                } else {
+                    thread_id = parsed.external_message_id;
                 }
 
                 mail_record record {

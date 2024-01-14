@@ -150,6 +150,7 @@ namespace s90 {
                 orm::optional<std::string> folder;
                 orm::optional<std::string> thread_id;
                 orm::optional<std::string> message_id;
+                orm::optional<int> direction;
                 orm::optional<int> page = 1;
                 orm::optional<int> per_page = 25;
 
@@ -158,6 +159,7 @@ namespace s90 {
                         {"folder", folder},
                         {"message_id", message_id},
                         {"thread_id", thread_id},
+                        {"direction", direction},
                         {"page", page},
                         {"per_page", per_page}
                     };
