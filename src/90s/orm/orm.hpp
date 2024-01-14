@@ -684,8 +684,8 @@ namespace s90 {
         /// @return transformed result
         template<class T>
         requires with_orm_trait<T>
-        inline std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<dict<std::string, std::string>>>&& items) {
-            auto result = std::make_shared<std::vector<T>>();
+        inline ptr<std::vector<T>> transform(ptr<std::vector<dict<std::string, std::string>>>&& items) {
+            auto result = ptr_new<std::vector<T>>();
             auto orm_base = ((T*)NULL)->get_orm();
             std::transform(items->cbegin(), items->cend(), std::back_inserter(*result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
                 T new_item;
@@ -698,7 +698,7 @@ namespace s90 {
         template<class T>
         requires with_orm_trait<T>
         inline any::any(T& obj) : type(reftype::obj), ref((uintptr_t)&obj) {
-            //internals = internals ? internals : std::make_shared<any_internals>();
+            //internals = internals ? internals : ptr_new<any_internals>();
             internals.orm_id = obj.get_orm_id();
             internals.get_orm = [](uintptr_t r, bool nulled) -> std::vector<std::pair<orm_key_t, any>> {
                 if(nulled) {
@@ -712,7 +712,7 @@ namespace s90 {
 
         template<class T>
         any::any(std::vector<T>& vec) : type(reftype::arr), ref((uintptr_t)&vec) {
-            //internals = internals ? internals : std::make_shared<any_internals>();
+            //internals = internals ? internals : ptr_new<any_internals>();
             internals.push_back = [](uintptr_t ref, const any& value) -> any {
                 std::vector<T> *tr = (std::vector<T>*)ref;
                 if(value.get_type() == reftype::empty) {

@@ -103,7 +103,7 @@ namespace s90 {
 
             /// @brief Get output context
             /// @return output context
-            virtual std::shared_ptr<irender_context> output() const = 0;
+            virtual ptr<irender_context> output() const = 0;
 
             /// @brief Redirect. This resets the state, disables any furher writes and sets Location header & 302 HTTP status code
             /// @param target redirect URL
@@ -187,7 +187,7 @@ namespace s90 {
 
         class environment : public ienvironment {
             std::string status_line = "200 OK";
-            std::shared_ptr<render_context> output_context = std::make_shared<render_context>();
+            ptr<render_context> output_context = ptr_new<render_context>();
             dict<std::string, std::string> output_headers;
             size_t length_estimate = 0;
             bool redirects = false;
@@ -229,7 +229,7 @@ namespace s90 {
             void content_type(std::string&& value) override;
             void status(std::string&& status_code) override;
             
-            std::shared_ptr<irender_context> output() const override;
+            ptr<irender_context> output() const override;
             void redirect(std::string_view target) override;
 
             void *const local_context() const override;

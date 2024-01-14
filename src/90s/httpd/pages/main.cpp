@@ -8,7 +8,7 @@ default_context::default_context(s90::icontext *ctx) : ctx(ctx) {
     db = ctx->new_sql_instance("mysql");
 }
 
-aiopromise<std::shared_ptr<isql>> default_context::get_db() {
+aiopromise<ptr<isql>> default_context::get_db() {
     if(!db->is_connected()) {
         auto connect_ok = co_await db->connect("localhost", 3306, "80s", "password", "db80");
         if(connect_ok.error) {

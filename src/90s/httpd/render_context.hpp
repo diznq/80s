@@ -21,7 +21,7 @@ namespace s90 {
 
             /// @brief Create a child render context
             /// @return child render context
-            virtual std::shared_ptr<irender_context> append_context() = 0;
+            virtual ptr<irender_context> append_context() = 0;
 
             /// @brief Render the text
             /// @return rendered text
@@ -66,7 +66,7 @@ namespace s90 {
             struct output_block {
                 output_type type;
                 std::string text;
-                std::shared_ptr<render_context> block;
+                ptr<render_context> block;
             };
 
             std::vector<output_block> blocks;
@@ -79,7 +79,7 @@ namespace s90 {
 
             void disable() override;
             void clear() override;
-            std::shared_ptr<irender_context> append_context() override;
+            ptr<irender_context> append_context() override;
             aiopromise<std::string> finalize() override;
             
             void write(std::string&& text) override;

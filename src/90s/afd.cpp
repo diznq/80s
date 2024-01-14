@@ -86,8 +86,8 @@ namespace s90 {
                         arg = window;
                         window = window.substr(window.size());
                         read_commands.pop();
-                        if(auto ptr = command_promise.lock())
-                            aiopromise(ptr).resolve({false, std::move(arg)});
+                        if(auto p = command_promise.lock())
+                            aiopromise(p).resolve({false, std::move(arg)});
                         iterate = false;
                         break;
                     case read_command_type::n:
@@ -100,8 +100,8 @@ namespace s90 {
                             arg = window.substr(0, command_n);
                             window = window.substr(command_n);
                             read_commands.pop();
-                            if(auto ptr = command_promise.lock())
-                                aiopromise(ptr).resolve({false, std::move(arg)});
+                            if(auto p = command_promise.lock())
+                                aiopromise(p).resolve({false, std::move(arg)});
                         }
                         break;
                     case read_command_type::until: [[likely]]
@@ -118,8 +118,8 @@ namespace s90 {
                             window = window.substr(delim_state.offset);
                             delim_state.offset = 0;
                             read_commands.pop();
-                            if(auto ptr = command_promise.lock())
-                                aiopromise(ptr).resolve({false, std::move(arg)});
+                            if(auto p = command_promise.lock())
+                                aiopromise(p).resolve({false, std::move(arg)});
                         } else if(part.offset == delim_state.offset + delim_state.match && part.length > 0) {
                             dbg_infof("%s; 2/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", name().c_str(), delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                             delim_state.match += part.length;
@@ -166,8 +166,8 @@ namespace s90 {
                     written_bytes -= promise.length - promise.sent;
                     promise.sent = promise.length;
                     write_back_buffer_info.pop();
-                    if(auto ptr = promise.promise.lock())
-                        aiopromise(ptr).resolve(true);
+                    if(auto p = promise.promise.lock())
+                        aiopromise(p).resolve(true);
                 } else if(written_bytes > 0) {
                     // there is no point iterating any further than this as this is the first
                     // only partially filled promise
@@ -237,14 +237,14 @@ namespace s90 {
         while(!read_commands.empty()) {
             auto item = read_commands.front();
             read_commands.pop();
-            if(auto ptr = item.promise.lock())
-                aiopromise(ptr).resolve({true, ""});
+            if(auto p = item.promise.lock())
+                aiopromise(p).resolve({true, ""});
         }
         while(!write_back_buffer_info.empty()) {
             auto item = write_back_buffer_info.front();
             write_back_buffer_info.pop();
-            if(auto ptr = item.promise.lock())
-                aiopromise(ptr).resolve(false);
+            if(auto p = item.promise.lock())
+                aiopromise(p).resolve(false);
         }
         write_back_offset = 0;
         write_back_buffer.clear();
@@ -502,6 +502,18 @@ namespace s90 {
 
     bool afd::is_secure() const {
         return ssl_status != ssl_state::none;
+    }
+
+    aiopromise<bool> afd::lock() {
+        return internal_lock.lock();
+    }
+
+    void afd::unlock() {
+        internal_lock.unlock();
+    }
+
+    bool afd::is_locked() const {
+        return internal_lock.is_locked();
     }
 
 }

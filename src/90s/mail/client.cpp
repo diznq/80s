@@ -1,4 +1,5 @@
 #include "client.hpp"
+#include "../util/util.hpp"
 #include <string>
 #include <vector>
 
@@ -19,7 +20,7 @@ namespace s90 {
             }
         }
 
-        aiopromise<std::expected<std::string, std::string>> read_smtp_response(std::shared_ptr<iafd> fd) {
+        aiopromise<std::expected<std::string, std::string>> read_smtp_response(ptr<iafd> fd) {
             std::string total;
             while(true) {
                 auto resp = co_await fd->read_until("\r\n");
@@ -28,9 +29,11 @@ namespace s90 {
                 } else if(resp.data.length() < 4) {
                     co_return std::unexpected("unexpected SMTP response: " + std::string(resp.data));
                 } else if(total.length() == 0){
+                    dbgf("<-- %s\n", std::string(resp.data).c_str()); 
                     total = resp.data;
                     total[3] = ' ';
                 } else {
+                    dbgf("<-| %s\n", std::string(resp.data).c_str()); 
                     total += "\n";
                     total += resp.data.substr(4);
                 }
@@ -38,7 +41,8 @@ namespace s90 {
             }
         }
 
-        aiopromise<std::optional<std::string>> roundtrip(std::shared_ptr<iafd> conn, dict<std::string, std::string>& errors, std::span<std::string> v, const std::string cmd, const std::string params, const std::string& expect = "250") {
+        aiopromise<std::optional<std::string>> roundtrip(ptr<iafd> conn, dict<std::string, std::string>& errors, std::span<std::string> v, const std::string cmd, const std::string params, const std::string& expect = "250") {
+            dbgf("--> %s%s\n", cmd.c_str(), params.c_str()); 
             if(!co_await conn->write(cmd + params + "\r\n")) {
                 fail_many_with(errors, v, "write on " + cmd + " failed");
                 co_return {};
@@ -66,7 +70,7 @@ namespace s90 {
 
         }
 
-        aiopromise<dict<std::string, std::string>> smtp_client::deliver_mail(mail_knowledge mail, std::vector<std::string> recipients, tls_mode mode) {
+        aiopromise<dict<std::string, std::string>> smtp_client::deliver_mail(ptr<mail_knowledge> mail, std::vector<std::string> recipients, tls_mode mode) {
             auto dns = ctx->get_dns();
             dict<std::string, std::vector<std::string>> per_server;
             dict<std::string, std::string> errors;
@@ -83,6 +87,7 @@ namespace s90 {
                 }
                 it->second.push_back(recip);
             }
+
             std::vector<std::string> successful, rcpt;
             for(auto& [k, v] : per_server) {
                 auto ip = co_await dns->query(k, dns_type::MX, false);
@@ -90,7 +95,7 @@ namespace s90 {
                     fail_many_with(errors, v, "DNS lookup failed: " + ip.error());
                     continue;
                 }
-                auto conn_result = co_await ctx->connect(ip->address, dns_type::A, 8025, proto::tcp);
+                auto conn_result = co_await ctx->connect(ip->address, dns_type::A, 25, proto::tcp, "smtp." + ip->address);
                 if(!conn_result) {
                     fail_many_with(errors, v, "connection establishment failed: " + conn_result.error_message);
                     continue;
@@ -98,6 +103,9 @@ namespace s90 {
 
                 auto conn = *conn_result;
                 auto name = conn->name();
+
+                co_await conn->lock();
+                util::call_on_destroy([conn](){ conn->unlock(); });
 
                 // only do EHLO + STARTTLS if we never did it before
                 if(name.find("smtp") == std::string::npos) {
@@ -126,7 +134,7 @@ namespace s90 {
                 auto resp = co_await roundtrip(conn, errors, v, "RSET", "", "250");
                 if(!resp) continue;
 
-                resp = co_await roundtrip(conn, errors, v, "MAIL FROM:", std::format("<{}>", mail.from.original_email), "250");
+                resp = co_await roundtrip(conn, errors, v, "MAIL FROM:", std::format("<{}>", mail->from.original_email), "250");
                 if(!resp) continue;
 
                 bool rcpt_to_ok = true;
@@ -145,14 +153,18 @@ namespace s90 {
                 resp = co_await roundtrip(conn, errors, rcpt, "DATA", "", "354");
                 if(!resp) {
                     continue;
-                }
+                } 
 
-                if(!co_await conn->write(mail.data)) {
+                mail->data += "\r\n.\r\n";
+                dbgf("====\n%s\n====\n", mail->data.c_str());
+                if(!co_await conn->write(mail->data)) {
                     fail_many_with(errors, rcpt, "failed to write DATA section");
                 }
                 auto data_resp = co_await read_smtp_response(conn);
                 if(!data_resp) {
                     fail_many_with(errors, rcpt, "failed to transfer data: " + data_resp.error());
+                } else if(!data_resp->starts_with("250")) {
+                    fail_many_with(errors, rcpt, "failed to send data: " + *data_resp);
                 }
             }
 

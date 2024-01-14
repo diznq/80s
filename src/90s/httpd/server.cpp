@@ -79,6 +79,11 @@ namespace s90 {
             }
 
             aiopromise<std::expected<nil, status>> render_exception(ienvironment& env, std::exception_ptr ptr) const {
+                try {
+                    std::rethrow_exception(ptr);
+                } catch(std::exception& ex) {
+                    fprintf(stderr, "[%s] Exception: %s\n", env.endpoint().c_str(), ex.what());
+                }
                 return render_error(env, status::internal_server_error);
             }
 
@@ -243,7 +248,7 @@ namespace s90 {
             pages[webpage->name()] = {webpage, false};
         }
 
-        aiopromise<nil> httpd_server::on_accept(std::shared_ptr<iafd> fd) {
+        aiopromise<nil> httpd_server::on_accept(ptr<iafd> fd) {
             std::string peer_name;
             dict<std::string, page*>::iterator it;
             page *current_page = default_page;

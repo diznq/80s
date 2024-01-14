@@ -44,6 +44,10 @@ namespace s90 {
             std::string sv_mail_storage_dir = "/tmp/mails/";
             bool sv_logging = false;
 
+            std::string dkim_privkey = "";
+            std::string dkim_domain = "";
+            std::string dkim_selector = "";
+
             std::string db_host = "localhost";
             int db_port = 3306;
             std::string db_user = "mail";
@@ -83,7 +87,10 @@ namespace s90 {
                     { "DB_HOST", db_host },
                     { "SV_MAIL_STORAGE_DIR", sv_mail_storage_dir },
                     { "USER_SALT", user_salt },
-                    { "SMTP_HOSTS", smtp_hosts }
+                    { "SMTP_HOSTS", smtp_hosts },
+                    { "DKIM_PRIVKEY", dkim_privkey },
+                    { "DKIM_DOMAIN", dkim_domain },
+                    { "DKIM_SELECTOR", dkim_selector },
                 };
             }
         };
@@ -116,17 +123,18 @@ namespace s90 {
             std::string email;
             std::string folder;
             uint64_t requested_size = 0;
+            bool local = false;
             bool authenticated = false;
             int direction = (int)mail_direction::inbound;
 
             explicit operator bool() const { return !error; }
 
             bool operator==(const mail_parsed_user& user) const {
-                return user.original_email == original_email;
+                return user.email == email;
             }
 
             bool operator<(const mail_parsed_user& user) const {
-                return original_email < user.original_email;
+                return email < user.email;
             }
 
             orm::optional<mail_user> user;
@@ -267,26 +275,47 @@ namespace s90 {
             varstr<64> message_id;
             varstr<64> target_email;
             varstr<48> target_server;
+            varstr<64> source_email;
             sql_text disk_path;
             int status;
             orm::datetime last_retried_at;
             int retries;
             size_t session_id;
             int locked;
+            std::string reason;
 
             orm::mapper get_orm() {
                 return {
                     { "user_id", user_id },
                     { "message_id", message_id },
                     { "target_email", target_email },
+                    { "source_email", source_email },
                     { "disk_path", disk_path },
                     { "status", status },
                     { "last_retried_at", last_retried_at },
                     { "retries", retries },
                     { "session_id", session_id },
-                    { "locked", locked }
+                    { "locked", locked },
+                    { "reason", reason }
                 };
             }
+        };
+
+        struct mail_store_result {
+            uint64_t owner_id;
+            std::string message_id;
+            std::vector<mail_parsed_user> outside;
+            std::vector<uint64_t> inside;
+        };
+
+        struct mail_delivery_result {
+            dict<std::string, std::string> delivery_errors;
+        };
+
+        struct dkim_params {
+            std::string privkey;
+            std::string dkim_domain;
+            std::string dkim_selector;
         };
 
         struct mail_knowledge {

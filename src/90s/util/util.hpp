@@ -51,5 +51,12 @@ namespace s90 {
                 return false;
             }
         }
+
+        class call_on_destroy {
+            std::function<void()> cb;
+        public:
+            call_on_destroy(std::function<void()> cb) : cb(cb) {}
+            ~call_on_destroy() { cb(); }
+        };
     }
 }

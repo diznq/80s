@@ -28,10 +28,10 @@ struct post : with_orm {
 
 class default_context {
     icontext *ctx;
-    std::shared_ptr<sql::isql> db;
+    ptr<sql::isql> db;
 public:
     default_context(icontext *ctx);
-    virtual aiopromise<std::shared_ptr<sql::isql>> get_db();
+    virtual aiopromise<ptr<sql::isql>> get_db();
     virtual aiopromise<sql_result<post>> get_posts();
     virtual aiopromise<int> add_post(const std::string& author, const std::string& text);
 };

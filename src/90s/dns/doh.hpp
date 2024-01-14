@@ -11,7 +11,7 @@ namespace s90 {
         class doh : public idns {
             icontext *ctx;
             std::string dns_provider;
-            aiopromise<std::expected<std::shared_ptr<iafd>, std::string>> obtain_connection();
+            aiopromise<std::expected<ptr<iafd>, std::string>> obtain_connection();
         public:
             doh(icontext *ctx, const std::string& dns_provider);
             ~doh();

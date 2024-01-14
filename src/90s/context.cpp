@@ -17,7 +17,7 @@ namespace s90 {
 
     fd_t context::event_loop() const { return elfd; }
 
-    void context::set_handler(std::shared_ptr<connection_handler> conn_handler) {
+    void context::set_handler(ptr<connection_handler> conn_handler) {
         handler = conn_handler;
     }
 
@@ -84,7 +84,7 @@ namespace s90 {
                 fds.erase(it);
             }
         } else {
-            auto fd = std::make_shared<afd>(this, params.elfd, params.childfd, params.fdtype);
+            auto fd = ptr_new<afd>(this, params.elfd, params.childfd, params.fdtype);
             fds.insert(std::make_pair(params.childfd, fd));
             fd->on_accept();
             if(handler) {
@@ -101,11 +101,11 @@ namespace s90 {
         if(name) {
             auto it = named_fds.find(*name);
             if(it != named_fds.end()) {
-                auto ptr = it->second;
-                if(ptr->is_closed() || ptr->is_error()) [[unlikely]] {
+                auto p = it->second;
+                if(p->is_closed() || p->is_error()) [[unlikely]] {
                     named_fds.erase(it);
                 } else [[likely]] {
-                    co_return {false, ptr, ""};
+                    co_return {false, p, ""};
                 }
             }
             auto connect_it = named_fd_connecting.find(*name);
@@ -126,54 +126,54 @@ namespace s90 {
         if(fd == (fd_t)-1) {
             result = {
                 true,
-                static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, true)),
+                static_pointer_cast<iafd>(ptr_new<afd>(this, elfd, true)),
                 "failed to create fd"
             };
         } else if(protocol == proto::udp) {
-            auto ptr = static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, fd, S80_FD_SOCKET));
-            this->fds[fd] = ptr;
+            auto p = static_pointer_cast<iafd>(ptr_new<afd>(this, elfd, fd, S80_FD_SOCKET));
+            this->fds[fd] = p;
             result = {
                 false,
-                std::move(ptr),
+                std::move(p),
                 ""
             };
         } else {
             // TCP requires on_Write to be called beforehand to make sure we're connected
-            aiopromise<std::shared_ptr<iafd>> promise;
-            auto ptr = static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, fd, S80_FD_SOCKET));
-            this->fds[fd] = ptr;
+            aiopromise<ptr<iafd>> promise;
+            auto p = static_pointer_cast<iafd>(ptr_new<afd>(this, elfd, fd, S80_FD_SOCKET));
+            this->fds[fd] = p;
             connect_promises[fd] = promise;
             if(protocol == proto::tls) {
                 std::string address_copy = addr;
                 std::string ssl_error;
                 bool ok = false;
-                auto ptr = co_await promise;
+                auto p = co_await promise;
                 auto ssl_context = new_ssl_client_context();
                 if(ssl_context) {
-                    auto ssl_connect = co_await ptr->enable_client_ssl(*ssl_context, address_copy);
+                    auto ssl_connect = co_await p->enable_client_ssl(*ssl_context, address_copy);
                     if(!ssl_connect.error) {
                         ok = true;
                     } else {
                         ssl_error = ssl_connect.error_message;
-                        ptr->close();
-                        ptr.reset();
+                        p->close();
+                        p.reset();
                     }
                 }
                 if(!ok) {
                     result = {
                         true,
-                        static_pointer_cast<iafd>(std::make_shared<afd>(this, elfd, true)),
+                        static_pointer_cast<iafd>(ptr_new<afd>(this, elfd, true)),
                         ssl_error
                     };
                 } else {
-                    result = {false, std::move(ptr), ""};
+                    result = {false, std::move(p), ""};
                 }
             } else {
-                ptr = co_await promise;
-                bool is_error = !ptr;
+                p = co_await promise;
+                bool is_error = !p;
                 result = {
                     is_error,
-                    std::move(ptr),
+                    std::move(p),
                     !is_error ? "" : "failed to connect"
                 };
             }
@@ -185,9 +185,9 @@ namespace s90 {
             auto queue_it = named_fd_promises.find(*name);
             if(queue_it != named_fd_promises.end()) {
                 while(queue_it->second.size() > 0) {
-                    if(auto ptr = queue_it->second.front().lock()) {
+                    if(auto p = queue_it->second.front().lock()) {
                         queue_it->second.pop();
-                        aiopromise(ptr).resolve(connect_result(result));
+                        aiopromise(p).resolve(connect_result(result));
                     } else {
                         queue_it->second.pop();
                     }
@@ -202,9 +202,9 @@ namespace s90 {
         co_return std::move(result);
     }
 
-    std::shared_ptr<sql::isql> context::new_sql_instance(const std::string& type) {
+    ptr<sql::isql> context::new_sql_instance(const std::string& type) {
         if(type != "mysql") return nullptr;
-        return static_pointer_cast<sql::isql>(std::make_shared<sql::mysql>(this));
+        return static_pointer_cast<sql::isql>(ptr_new<sql::mysql>(this));
     }
 
     void context::on_init(init_params params) {
@@ -218,7 +218,7 @@ namespace s90 {
         this->init_callback = init_callback;
     }
 
-    const dict<fd_t, std::weak_ptr<iafd>>& context::get_fds() const {
+    const dict<fd_t, wptr<iafd>>& context::get_fds() const {
         return fds;
     }
 
@@ -230,11 +230,11 @@ namespace s90 {
         s80_reload(rld);
     }
     
-    void context::store(std::string_view name, std::shared_ptr<storable> entity) {
+    void context::store(std::string_view name, ptr<storable> entity) {
         stores[std::string(name)] = entity;
     }
 
-    std::shared_ptr<storable> context::store(std::string_view name) {
+    ptr<storable> context::store(std::string_view name) {
         auto it = stores.find(std::string(name));
         if(it != stores.end())
             return it->second;
@@ -288,11 +288,11 @@ namespace s90 {
         return *id;
     }
     
-    std::shared_ptr<dns::idns> context::get_dns() {
+    ptr<dns::idns> context::get_dns() {
         if(dns_provider) return dns_provider;
         const char *DNS_PROVIDER = getenv("DNS_PROVIDER");
         if(DNS_PROVIDER == NULL) DNS_PROVIDER = "dns.google";
-        dns_provider = std::make_shared<dns::doh>(this, DNS_PROVIDER);
+        dns_provider = ptr_new<dns::doh>(this, DNS_PROVIDER);
         return dns_provider;
     }
 }
