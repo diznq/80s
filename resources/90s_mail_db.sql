@@ -73,6 +73,8 @@ CREATE TABLE `mail_outgoing_queue` (
   `retries` int(11) DEFAULT NULL,
   `session_id` bigint(20) DEFAULT NULL,
   `locked` bigint(20) DEFAULT NULL,
+  `source_email` text DEFAULT NULL,
+  `reason` text DEFAULT NULL,
   PRIMARY KEY (`user_id`,`message_id`,`target_email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
