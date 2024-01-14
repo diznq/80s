@@ -303,7 +303,7 @@ namespace s90 {
             for(auto& user : mail->to) {
                 if(!user.user) continue;
                 // if one sends e-mail to themselves, only keep the SENT version of it
-                if(user == mail->from && user.direction == (int)mail_direction::inbound) continue;
+                if(user.email == mail->from.email && user.direction == (int)mail_direction::inbound) continue;
 
                 if(user.user->used_space + size_on_disk > user.user->quota) is_space_avail = false;
             }
@@ -315,7 +315,7 @@ namespace s90 {
             // save the data to the disk
             for(auto& user : mail->to) {
                 // if one sends e-mail to themselves, only keep the SENT version of it
-                if(user == mail->from && user.direction == (int)mail_direction::inbound) continue;
+                if(user.email == mail->from.email && user.direction == (int)mail_direction::inbound) continue;
                 if(!user.user) {
                     dbgf("Recipient %s not found, skipping\n", user.email.c_str());
                     // if the user is outside of our internal DB, record it
@@ -397,7 +397,7 @@ namespace s90 {
             for(auto& user : mail->to) {
                 const auto& found_user = user.user;
                 // if one sends e-mail to themselves, only keep the SENT version of it
-                if(user == mail->from && user.direction == (int)mail_direction::inbound) continue;
+                if(user.email == mail->from.email && user.direction == (int)mail_direction::inbound) continue;
                 if(!found_user) {
                     // if recipient is not within this server, but sender is within this server, it means
                     // that this e-mail is outbound to somewhere else
@@ -494,6 +494,7 @@ namespace s90 {
                 stored_to_db++;
             }
 
+            dbgf("E-mails to be stored: %zu, e-mails to be enqueued: %zu\n", stored_to_db, outgoing_count);
             // index the e-mails to the DB
             if(stored_to_db > 0) {
                 auto write_status = co_await db->exec(query);
