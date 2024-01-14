@@ -417,13 +417,14 @@ namespace s90 {
                             .reason = ""
                         };
 
+                        if(outgoing_count > 0) outbounding_query += ',';
                         outbounding_query += std::format(
                             "("
                             "'{}', '{}', '{}', '{}', "
                             "'{}', '{}', '{}', '{}', "
                             "'{}', "
                             "'{}', '{}', '{}'"
-                            "),",
+                            ")",
                             db->escape(outgoing_record.user_id), db->escape(outgoing_record.message_id), db->escape(outgoing_record.target_email), db->escape(outgoing_record.target_server),
                             db->escape(outgoing_record.disk_path), db->escape(outgoing_record.status), db->escape(outgoing_record.last_retried_at), db->escape(outgoing_record.retries),
                             db->escape(outgoing_record.source_email),
@@ -473,6 +474,7 @@ namespace s90 {
                     record.status = (int)mail_status::sent;
                 }
 
+                if(stored_to_db > 0) query += ',';
                 query += std::format("("
                                         "'{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}',"
                                         "'{}', '{}', '{}', '{}', '{}', '{}',"
@@ -487,14 +489,14 @@ namespace s90 {
                                     db->escape(record.created_at), db->escape(record.sent_at), db->escape(record.delivered_at), db->escape(record.seen_at),
                                     db->escape(record.size), db->escape(record.direction), db->escape(record.status), db->escape(record.security),
                                     db->escape(record.attachments), db->escape(record.attachment_ids), db->escape(record.formats)
-                                    ) + ",";
+                                    );
                 
                 stored_to_db++;
             }
 
             // index the e-mails to the DB
             if(stored_to_db > 0) {
-                auto write_status = co_await db->exec(query.substr(0, query.length() - 1));
+                auto write_status = co_await db->exec(query);
                 if(!write_status) {
                     co_return std::unexpected("failed to index the e-mail");
                 }
@@ -508,7 +510,7 @@ namespace s90 {
 
             // submit the e-mails to the outgoing queue
             if(outbounding && outgoing_count > 0) {
-                auto write_status = co_await db->exec(outbounding_query.substr(0, outbounding_query.length() - 1));
+                auto write_status = co_await db->exec(outbounding_query);
                 if(!write_status) {
                     co_return std::unexpected("failed to submit e-mails to the outgoing queue");
                 }
