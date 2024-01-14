@@ -44,6 +44,10 @@ namespace s90 {
             std::string sv_mail_storage_dir = "/tmp/mails/";
             bool sv_logging = false;
 
+            std::string dkim_privkey = "";
+            std::string dkim_domain = "";
+            std::string dkim_selector = "";
+
             std::string db_host = "localhost";
             int db_port = 3306;
             std::string db_user = "mail";
@@ -83,7 +87,10 @@ namespace s90 {
                     { "DB_HOST", db_host },
                     { "SV_MAIL_STORAGE_DIR", sv_mail_storage_dir },
                     { "USER_SALT", user_salt },
-                    { "SMTP_HOSTS", smtp_hosts }
+                    { "SMTP_HOSTS", smtp_hosts },
+                    { "DKIM_PRIVKEY", dkim_privkey },
+                    { "DKIM_DOMAIN", dkim_domain },
+                    { "DKIM_SELECTOR", dkim_selector },
                 };
             }
         };
@@ -303,6 +310,12 @@ namespace s90 {
 
         struct mail_delivery_result {
             dict<std::string, std::string> delivery_errors;
+        };
+
+        struct dkim_params {
+            std::string privkey;
+            std::string dkim_domain;
+            std::string dkim_selector;
         };
 
         struct mail_knowledge {

@@ -1,6 +1,7 @@
+#include <80s/crypto.h>
+#include <iconv.h>
 #include "shared.hpp"
 #include "parser.hpp"
-#include <iconv.h>
 #include "../util/util.hpp"
 #include "../util/regex.hpp"
 
@@ -102,6 +103,33 @@ namespace s90 {
             } else {
                 return b;
             }
+        }
+
+        std::string q_encoder(const std::string text, bool replace_underscores, unsigned max_line) {
+            std::string output;
+            unsigned line_length = 0;
+            for(char c : text) {
+                unsigned code = ((unsigned)c) & 255;
+                if(code >= 33 && code <= 126 && code != '=') {
+                    output += code;
+                    line_length++;
+                } else if(code == 32) {
+                    output += replace_underscores ? '_' : code;
+                    line_length++;
+                } else if(code == 13 || code == 10) {
+                    output += code;
+                    line_length++;
+                } else {
+                    output += '=';
+                    output += "0123456789ABCDEF"[(code >> 4)];
+                    output += "0123456789ABCDEF"[(code & 15)];
+                    line_length += 3;
+                }
+                if(line_length >= max_line) {
+                    output += "=\r\n";
+                }
+            }
+            return output;
         }
 
         /// @brief Parse message ID from header value
@@ -546,6 +574,52 @@ namespace s90 {
                 .authenticated = false,
                 .direction = (int)mail_direction::inbound
             };
+        }
+
+        std::expected<std::string, std::string> sign_with_dkim(std::string_view eml, const char *privkey, std::string_view dkim_domain, std::string_view dkim_selector) {
+            auto pivot = eml.find("\r\n\r\n");
+            std::string_view header = eml, body;
+            std::vector<std::pair<std::string, std::string>> headers;
+
+            if(pivot != std::string::npos) {
+                header = eml.substr(0, pivot);
+                body = eml.substr(pivot + 4);
+            }
+
+            auto bh = util::to_b64(util::sha256(std::string(body) + "\r\n"));
+
+            parse_mail_headers(header, headers);
+            
+            std::string header_keys;
+            for(auto& [k, v] : headers) {
+                if(header_keys.length() != 0) header_keys += ':';
+                header_keys += k;
+            }
+
+            auto dkim_val = std::format(
+                "v=1; a=rsa-sha256; c=simple/simple; d={}; s={}; t={}; x={}; h={}; bh={}; b=",
+                dkim_domain,
+                dkim_selector,
+                orm::timestamp::now(),
+                orm::timestamp::now() + 3600,
+                header_keys,
+                bh
+            );
+            auto canonized = std::format("{}\r\nDKIM-Signature: {}", header, dkim_val);
+
+            const char *err = NULL;
+            dynstr out;
+            char buff[1000];
+            dynstr_init(&out, buff, sizeof(buff));
+            auto sig = crypto_rsa_sha256(privkey, canonized.c_str(), canonized.length(), &out, &err);
+            if(sig < 0) {
+                dynstr_release(&out);
+                return std::unexpected(err);
+            } else {
+                auto sig64 = util::to_b64(std::string_view(out.ptr, out.ptr + out.length));
+                dynstr_release(&out);
+                return std::format("DKIM-Signature: {}{}\r\n{}", dkim_val, sig64, eml);
+            }
         }
     }
 }

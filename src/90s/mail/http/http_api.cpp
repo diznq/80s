@@ -436,11 +436,13 @@ namespace s90 {
                 orm::optional<std::string> to;
                 orm::optional<std::string> subject;
                 orm::optional<std::string> text;
+                std::string content_type = "text/plain; charset=\"UTF-8\"";
                 orm::mapper get_orm() {
                     return {
                         {"to", to},
                         {"subject", subject},
-                        {"text", text}
+                        {"text", text},
+                        {"content_type", content_type}
                     };
                 }
             };
@@ -479,8 +481,8 @@ namespace s90 {
                         mail->from.authenticated = true;
                         mail->from.direction = (int)mail_direction::outbound;
                         mail->from.user = *user;
-                        mail_envelope += "From: " + user->email + "\r\n";
-                        mail_envelope += "Subject: " + *params.subject + "\r\n";
+                        mail_envelope += "From: =?UTF-8?Q?" + q_encoder(user->email, true) + "?=\r\n";
+                        mail_envelope += "Subject: ?UTF-8?Q?" + q_encoder(*params.subject) + "?=\r\n";
 
                         auto to_parsed = parse_smtp_address(*params.to, ctx->get_smtp()->get_config());
                         if(to_parsed) {
@@ -490,7 +492,14 @@ namespace s90 {
                                 err.error = to_parsed.original_email + " not found";
                                 env.output()->write_json(err);
                             } else {
-                                mail_envelope += "To: " + to_parsed.original_email + "\r\n";
+                                mail_envelope += "To: =?UTF-8?Q?" + q_encoder(to_parsed.original_email) + "?=\r\n";
+
+                                auto& content_type = params.content_type;
+                                auto pivot = content_type.find_first_of("\r\n");
+                                if(pivot != std::string::npos) {
+                                    content_type = content_type.substr(0, pivot);
+                                }
+                                mail_envelope += content_type;
                                 
                                 if(to_user) {
                                     to_parsed.user = std::move(*to_user);
@@ -498,7 +507,7 @@ namespace s90 {
                                 mail->to.insert(to_parsed);
                                 
                                 auto boundary = util::to_hex(util::sha256(*params.text));
-                                mail_envelope += "Content-type: text/plain; charset=\"UTF-8\"\r\n\r\n";
+                                mail_envelope += "\r\n\r\n";
                                 mail_envelope += *params.text;
 
                                 mail->data = mail_envelope;

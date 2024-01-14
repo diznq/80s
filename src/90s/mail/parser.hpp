@@ -22,6 +22,13 @@ namespace s90 {
         /// @return decoded string, or original string in case of failure
         std::string b_decoder(const std::string& b);
 
+        /// @brief Encode the string into quoted encoded string
+        /// @param text string to be encoded
+        /// @param replace_underscores if true, spaces are replaced with underscore
+        /// @param max_line max line length
+        /// @return encoded string
+        std::string q_encoder(const std::string text, bool replace_underscores = false, unsigned max_line = -1);
+
         /// @brief Parse message ID from header value
         /// @param id header value
         /// @return message ID
@@ -78,5 +85,13 @@ namespace s90 {
         /// @param addr SMTP address
         /// @return parsed user
         mail_parsed_user parse_smtp_address(std::string_view addr, mail_server_config& config);
+
+        /// @brief Generate a DKIM signature for the e-mail
+        /// @param eml email in raw form
+        /// @param privkey private key path
+        /// @param dkim_domain DKIM domain name
+        /// @param dkim_selectro DKIM selector
+        /// @return DKIm signature
+        std::expected<std::string, std::string> sign_with_dkim(std::string_view eml, const char *privkey, std::string_view dkim_domain, std::string_view dkim_selector);
     }
 }

@@ -236,7 +236,7 @@ struct std::formatter<s90::orm::timestamp> {
         return ctx.begin();
     }
 
-    auto format(const s90::orm::datetime& obj, std::format_context& ctx) const {
+    auto format(const s90::orm::timestamp& obj, std::format_context& ctx) const {
         return std::format_to(ctx.out(), "{}", obj.from_native());
     }
 };

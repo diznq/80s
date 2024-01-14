@@ -749,7 +749,7 @@ int crypto_rsa_sha256(const char *key, const char *data, size_t data_size, dynst
         return -1;
     }
 
-    status = EVP_DigestSignFinal(md_ctx, out->ptr, &sig_len); // finalize the signing operation and get the signature
+    status = EVP_DigestSignFinal(md_ctx, (unsigned char*)out->ptr, &sig_len); // finalize the signing operation and get the signature
     if(status != 1) {
         EVP_PKEY_free(pkey);
         EVP_MD_CTX_free(md_ctx);

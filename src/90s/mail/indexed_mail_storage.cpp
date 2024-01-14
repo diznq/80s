@@ -550,7 +550,19 @@ namespace s90 {
                 mail->to.insert(std::move(recip));
             }
 
-            mail->data = ss.str();
+            if(config.dkim_domain.length() > 0 && config.dkim_selector.length() > 0 && config.dkim_privkey.length() > 0) {
+                auto data = ss.str();
+                auto dkim_result = sign_with_dkim(data, config.dkim_privkey.c_str(), config.dkim_domain, config.dkim_selector);
+                if(dkim_result) {
+                    mail->data = std::move(*dkim_result);
+                } else {
+                    fprintf(stderr, "[dkim] signing failed: %s\n", dkim_result.error().c_str());
+                    mail->data = std::move(data);
+                }
+            } else {
+                mail->data = ss.str();
+            }
+
             dbgf("[deliver %zu/%s] disk, from, to ok\n", user_id, message_id.c_str()); 
             auto result = co_await client->deliver_mail(mail, recipients, tls_mode::best_effort);
 
