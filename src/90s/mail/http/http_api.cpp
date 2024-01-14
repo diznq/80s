@@ -471,7 +471,9 @@ namespace s90 {
                     error_response err;
                     auto params = env.form<input>();
                     if(params.to && params.subject && params.text) {
-
+                        if(params.subject->length() == 0) {
+                            params.subject = "No subject";
+                        }
                         std::string mail_envelope;
                         auto ctx = env.local_context<mail_http_api>();
                         auto storage = ctx->get_smtp()->get_storage();
