@@ -494,7 +494,7 @@ namespace s90 {
                             } else {
                                 mail_envelope += "To: =?UTF-8?Q?" + q_encoder(to_parsed.original_email) + "?=\r\n";
 
-                                auto& content_type = params.content_type;
+                                auto content_type(std::move(params.content_type));
                                 auto pivot = content_type.find_first_of("\r\n");
                                 if(pivot != std::string::npos) {
                                     content_type = content_type.substr(0, pivot);
