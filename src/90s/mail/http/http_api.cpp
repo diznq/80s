@@ -501,6 +501,7 @@ namespace s90 {
                                 if(pivot != std::string::npos) {
                                     content_type = content_type.substr(0, pivot);
                                 }
+                                mail_envelope += "Content-type: ";
                                 mail_envelope += content_type;
                                 
                                 if(to_user) {
