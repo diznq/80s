@@ -130,11 +130,11 @@ namespace s90 {
             explicit operator bool() const { return !error; }
 
             bool operator==(const mail_parsed_user& user) const {
-                return user.original_email == original_email;
+                return user.email == email;
             }
 
             bool operator<(const mail_parsed_user& user) const {
-                return original_email < user.original_email;
+                return email < user.email;
             }
 
             orm::optional<mail_user> user;
