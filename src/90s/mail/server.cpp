@@ -170,7 +170,7 @@ namespace s90 {
                                     dbgf("Failed to handle e-mail\n");
                                     handled = std::unexpected("unhandled error while storing");
                                 } else {
-                                    dbgf("E-mail %s successfully handled\n", handled->c_str());
+                                    dbgf("E-mail %s successfully handled\n", handled->message_id.c_str());
                                 }
                             }
                             if(handled) {
