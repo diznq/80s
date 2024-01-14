@@ -85,7 +85,17 @@ namespace s90 {
         class authenticated_page : public httpd::page {
         public:
             aiopromise<std::optional<mail_user>> verify_login(httpd::ienvironment& env) const {
+                auto user_id_csrf = env.signed_query("u");
                 error_response err;
+
+                if(env.method() == "POST" && !user_id_csrf) {
+                    env.content_type("application/json; charset=\"utf-8\"");
+                    env.status("401 Unauthorized");
+                    err.error = "missing csrf";
+                    env.output()->write_json(err);
+                    co_return {};
+                }
+
                 std::optional<mail_user> user;
                 auto session_info = env.header("x-session-id");
                 std::string session_id;
@@ -111,11 +121,15 @@ namespace s90 {
                                 auto conv_result = std::from_chars(user_id_str.c_str(), user_id_str.c_str() + user_id_str.length(), user_id, 10);
                                 if(conv_result.ec == std::errc() && conv_result.ptr == user_id_str.c_str() + user_id_str.length()) {
                                     auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
-                                    auto db_user = co_await ctx->get_user(session_id, user_id);
-                                    if(db_user) {
-                                        co_return *db_user;
+                                    if(env.method() != "POST" || std::to_string(user_id) == *user_id_csrf) {
+                                        auto db_user = co_await ctx->get_user(session_id, user_id);
+                                        if(db_user) {
+                                            co_return *db_user;
+                                        } else {
+                                            err.error = db_user.error();
+                                        }
                                     } else {
-                                        err.error = db_user.error();
+                                        err.error = "csrf mismatch";
                                     }
                                 } else {
                                     err.error = "corrupted user id";
@@ -565,13 +579,49 @@ namespace s90 {
             }
         };
 
+        class csrf_page : public authenticated_page {
+            struct response : public orm::with_orm {
+                WITH_ID;
+
+                std::string post_new;
+                std::string post_alter;
+
+                orm::mapper get_orm() {
+                    return {
+                        {"/api/mail/new", post_new},
+                        {"/api/mail/alter", post_alter}
+                    };
+                }
+            };
+        public:
+            const char *name() const { return "GET /api/mail/tokens"; }
+
+            aiopromise<std::expected<nil, httpd::status>> render(httpd::ienvironment& env) const {
+                auto user = co_await verify_login(env);
+                env.content_type("application/json; charset=\"utf-8\"");
+                if(!user) {
+                    env.status("400 Bad request");
+                    error_response err;
+                    err.error = "not logged in";
+                    env.output()->write_json(err);
+                } else {
+                    response resp;
+                    resp.post_new = env.url("/api/mail/new", {{"u", std::to_string(user->user_id)}}, httpd::encryption::full);
+                    resp.post_alter = env.url("/api/mail/alter", {{"u", std::to_string(user->user_id)}}, httpd::encryption::full);
+                    env.output()->write_json(resp);
+                }
+                co_return nil {};
+            }
+        };
+
         mail_http_api::mail_http_api(smtp_server *parent) : parent(parent) {
             httpd::httpd_config cfg = httpd::httpd_config::env();
             cfg.initializer = [this](icontext *ctx, void*) { return this; };
 
             cfg.pages = {
                 new login_page, new inbox_page, new object_page, new me_page, 
-                new alter_page, new folders_page, new new_mail_page
+                new alter_page, new folders_page, new new_mail_page,
+                new csrf_page
             };
 
             http_base = ptr_new<httpd::httpd_server>(parent->get_context(), cfg);
