@@ -268,7 +268,13 @@ namespace s90 {
             std::vector<uint64_t> inside;
 
             // insert sender if they are within this mail server
-            if(outbounding && mail->from.user) mail->to.insert(mail->from);
+            if(outbounding && mail->from.user) {
+                // it can so happen that one sends e-mail to themselves, in that case make sure
+                // the outbound user is always here, not the inbound that would get ignored
+                if(mail->to.contains(mail->from))
+                    mail->to.erase(mail->from);
+                mail->to.insert(mail->from);
+            }
             
             // prepare the data to be saved to disk
             dbgf("Saving e-mails to disk, total recipients: %zu\n", mail->to.size());
