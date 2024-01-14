@@ -465,6 +465,18 @@ namespace s90 {
                     thread_id = parsed.external_message_id;
                 }
 
+                auto rcpt_to = user.original_email;
+                // in case we are saving the copy for sender, rcpt to = all the others
+                if(user.email == mail->from.email && user.direction == (int)mail_direction::outbound) {
+                    rcpt_to = "";
+                    for(auto& recip : mail->to) {
+                        if(recip.email != user.email) {
+                            if(rcpt_to.length() > 0) rcpt_to += ",";
+                            rcpt_to += recip.original_email;
+                        }
+                    }
+                }
+
                 mail_record record {
                     .user_id = found_user->user_id,
                     .message_id = msg_id,
@@ -475,7 +487,7 @@ namespace s90 {
                     .reply_to = parsed.reply_to,
                     .disk_path = std::format("{}/{}/{}", config.sv_mail_storage_dir, user.email, msg_id),
                     .mail_from = mail->from.original_email,
-                    .rcpt_to = user.original_email,
+                    .rcpt_to = rcpt_to,
                     .parsed_from = parsed.from,
                     .folder = user.folder,
                     .subject = parsed.subject,
