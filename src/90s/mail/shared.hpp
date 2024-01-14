@@ -282,7 +282,7 @@ namespace s90 {
             int retries;
             size_t session_id;
             int locked;
-            std::string reason;
+            sql_text reason;
 
             orm::mapper get_orm() {
                 return {
