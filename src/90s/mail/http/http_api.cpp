@@ -484,7 +484,7 @@ namespace s90 {
                         mail->from.direction = (int)mail_direction::outbound;
                         mail->from.user = *user;
                         mail_envelope += "From: =?UTF-8?Q?" + q_encoder(user->email, true) + "?=\r\n";
-                        mail_envelope += "Subject: ?UTF-8?Q?" + q_encoder(*params.subject) + "?=\r\n";
+                        mail_envelope += "Subject: =?UTF-8?Q?" + q_encoder(*params.subject) + "?=\r\n";
 
                         auto to_parsed = parse_smtp_address(*params.to, ctx->get_smtp()->get_config());
                         if(to_parsed) {

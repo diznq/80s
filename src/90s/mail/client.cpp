@@ -153,7 +153,7 @@ namespace s90 {
                 resp = co_await roundtrip(conn, errors, rcpt, "DATA", "", "354");
                 if(!resp) {
                     continue;
-                }
+                } 
 
                 mail->data += "\r\n.\r\n";
                 dbgf("====\n%s\n====\n", mail->data.c_str());
