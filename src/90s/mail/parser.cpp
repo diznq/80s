@@ -389,6 +389,7 @@ namespace s90 {
                 attachment.size = attachment.end - attachment.start;
                 attachment.headers = headers;
                 decode_block(attachment.content, body, atch_body.begin() - body.begin(), atch_body.end() - body.begin(), "us-ascii", attachment.headers, false);
+                attachment.size = attachment.content.size();
                 parsed.attachments.push_back(std::move(attachment));
                 return true;
             } else {
