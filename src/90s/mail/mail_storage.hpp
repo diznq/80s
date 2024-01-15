@@ -62,12 +62,15 @@ namespace s90 {
             /// @param user_id user ID
             /// @param folder folder name, #direct for direct, none for all
             /// @param message_id message ID
+            /// @param thread_id thread ID
+            /// @param direction mail direction
+            /// @param compact if true, threads are compacted to single rows
             /// @param page page number, starts with 1
             /// @param per_page per page
             /// @return (inbox, total count)
             virtual aiopromise<std::expected<
                                std::tuple<sql::sql_result<mail_record>, uint64_t>, std::string
-                                            >> get_inbox(uint64_t user_id, orm::optional<std::string> folder, orm::optional<std::string> message_id, orm::optional<std::string> thread_id, uint64_t page, uint64_t per_page) = 0;
+                                            >> get_inbox(uint64_t user_id, orm::optional<std::string> folder, orm::optional<std::string> message_id, orm::optional<std::string> thread_id, orm::optional<int> direction, bool compact, uint64_t page, uint64_t per_page) = 0;
 
             /// @brief Get object ID from FS storage
             /// @param email owner email

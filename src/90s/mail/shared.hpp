@@ -220,6 +220,7 @@ namespace s90 {
             int attachments;
             sql_text attachment_ids;
             int formats;
+            int thread_size = 1;
 
             orm::mapper get_orm() {
                 return {
@@ -250,7 +251,8 @@ namespace s90 {
                     { "security", security },
                     { "attachments", attachments },
                     { "attachment_ids", attachment_ids },
-                    { "formats", formats }
+                    { "formats", formats },
+                    { "thread_size", thread_size }
                 };
             }
         };
