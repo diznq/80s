@@ -72,7 +72,7 @@ namespace s90 {
                             "250 SIZE 102400000\r\n",
                             config.smtp_host,
                             cmd->substr(5),
-                            config.sv_tls_enabled ? "250-STARTTLS\r\n" : ""
+                            config.sv_tls_enabled && !knowledge->tls ? "250-STARTTLS\r\n" : ""
                         )
                     )) co_return nil {};
                     knowledge->hello = true;
