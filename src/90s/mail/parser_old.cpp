@@ -344,58 +344,6 @@ namespace s90 {
             }
         }
 
-        bool try_parse_attachments(
-            mail_parsed& parsed, 
-            std::string_view body, 
-            std::string_view view, 
-            const char *base,
-            std::string& content_type, 
-            dict<std::string, std::string>& content_type_values,
-            std::vector<std::pair<std::string, std::string>>& headers,
-            std::string_view& atch_body
-        ) {
-            bool is_attachment = false;
-            std::string attachment_id;
-            atch_body = parse_mail_headers(view, headers);
-
-            mail_attachment attachment;
-
-            // determine if we are dealing with an attachment or alternative
-            for(auto& [k, v] : headers) {
-                if(k == "content-id" || k == "x-attachment-id") {
-                    if(attachment_id.size() == 0) attachment_id = parse_message_id(v);
-                    attachment.attachment_id = attachment_id;
-                    is_attachment = true;
-                } else if(k == "content-type") {
-                    std::tie(content_type, content_type_values) = parse_smtp_property(v);
-                    attachment.mime = content_type;
-                    auto name = content_type_values.find("name");
-                    if(name != content_type_values.end()) {
-                        attachment.name = name->second;
-                    }
-                } else if(k == "content-disposition") {
-                    auto [disp, extra] = parse_smtp_property(v);
-                    attachment.disposition = disp;
-                    auto filename = extra.find("filename");
-                    if(filename != extra.end()) {
-                        attachment.file_name = filename->second;
-                    }
-                }
-            }
-
-            if(is_attachment && attachment_id.size() > 0) {
-                attachment.start = (size_t)(view.begin() - base);
-                attachment.end = (size_t)(view.end() - base);
-                attachment.size = attachment.end - attachment.start;
-                attachment.headers = headers;
-                decode_block(attachment.content, body, atch_body.begin() - body.begin(), atch_body.end() - body.begin(), "us-ascii", attachment.headers, false);
-                parsed.attachments.push_back(std::move(attachment));
-                return true;
-            } else {
-                return false;
-            }
-        }
-
         /// @brief Parse e-mail body into HTML, text and attachments
         /// @param parsed output
         /// @param base pointer to e-mail beginning
@@ -406,7 +354,7 @@ namespace s90 {
         void parse_mail_body(mail_parsed& parsed, const char *base, std::string_view body, std::string_view root_content_type, const dict<std::string, std::string>& ct_values, const std::vector<std::pair<std::string, std::string>>& headers, int depth, int max_depth) {
             if(depth >= max_depth) return;
             auto boundary = ct_values.find("boundary");
-            if(boundary != ct_values.end()) {
+            if((root_content_type == "multipart/related" || root_content_type == "multipart/mixed") && boundary != ct_values.end()) {
                 auto attachments = "--" + boundary->second;
                 for(const auto match : std::views::split(body, attachments)) {
                     if(match.size() > 0) {
@@ -415,44 +363,98 @@ namespace s90 {
                             continue;
                         }
 
-                        std::string content_type;
+                        bool is_attachment = false;
+                        std::string content_type, attachment_id;
                         dict<std::string, std::string> content_type_values;
                         std::vector<std::pair<std::string, std::string>> headers;
-                        std::string_view atch_body;
+                        auto atch_body = parse_mail_headers(view, headers);
 
-                        if(!try_parse_attachments(parsed, body, view, base, content_type, content_type_values, headers, atch_body)) {
-                            parse_mail_body(parsed, base, atch_body, content_type, content_type_values, headers, depth + 1, max_depth);
+                        mail_attachment attachment;
+
+                        // determine if we are dealing with an attachment or alternative
+                        for(auto& [k, v] : headers) {
+                            if(k == "content-id" || k == "x-attachment-id") {
+                                if(attachment_id.size() == 0) attachment_id = parse_message_id(v);
+                                attachment.attachment_id = attachment_id;
+                                is_attachment = true;
+                            } else if(k == "content-type") {
+                                std::tie(content_type, content_type_values) = parse_smtp_property(v);
+                                attachment.mime = content_type;
+                                auto name = content_type_values.find("name");
+                                if(name != content_type_values.end()) {
+                                    attachment.name = name->second;
+                                }
+                            } else if(k == "content-disposition") {
+                                auto [disp, extra] = parse_smtp_property(v);
+                                attachment.disposition = disp;
+                                auto filename = extra.find("filename");
+                                if(filename != extra.end()) {
+                                    attachment.file_name = filename->second;
+                                }
+                            }
+                        }
+
+                        if(is_attachment && attachment_id.size() > 0) {
+                            attachment.start = (size_t)(match.begin() - base);
+                            attachment.end = (size_t)(match.end() - base);
+                            attachment.size = attachment.end - attachment.start;
+                            attachment.headers = headers;
+                            decode_block(attachment.content, body, atch_body.begin() - body.begin(), atch_body.end() - body.begin(), "us-ascii", attachment.headers, false);
+                            parsed.attachments.push_back(std::move(attachment));
+                        } else if(!is_attachment) {
+                            auto boundary = content_type_values.find("boundary");
+                            if(content_type == "multipart/alternative" && boundary != content_type_values.end()) {
+                                parse_mail_alternative(parsed, base, atch_body, "--" + boundary->second);
+                            } else if((content_type == "multipart/mixed" || content_type == "multipart/related") && boundary != content_type_values.end()) {
+                                parse_mail_body(parsed, base, atch_body, content_type, content_type_values, headers, depth + 1, max_depth);
+                            } else if(content_type == "text/html") {
+                                if(!(parsed.formats & (int)mail_format::html)) {
+                                    parsed.formats |= (int)mail_format::html;
+                                    auto charset = content_type_values.find("charset");
+                                    if(charset != content_type_values.end()) parsed.html_charset = charset->second;
+
+                                    parsed.html_headers = headers;
+                                    parsed.html_start = (size_t)(atch_body.begin() - base);
+                                    parsed.html_end = (size_t)(atch_body.end() - base);
+                                }
+                            } else if(content_type == "text/plain") {
+                                if(!(parsed.formats & (int)mail_format::text)) {
+                                    parsed.formats |= (int)mail_format::text;
+                                    auto charset = content_type_values.find("charset");
+                                    if(charset != content_type_values.end()) parsed.html_charset = charset->second;
+
+                                    parsed.text_headers = headers;
+                                    parsed.text_start = (size_t)(atch_body.begin() - base);
+                                    parsed.text_end = (size_t)(atch_body.end() - base);
+                                }
+                            }
                         }
                     }
+                }
+            } else if(root_content_type == "multipart/alternative" && boundary != ct_values.end()) {
+                parse_mail_alternative(parsed, base, body, "--" + boundary->second);
+            } else if(root_content_type == "text/html") {
+                if(!(parsed.formats & (int)mail_format::html)) {
+                    parsed.formats |= (int)mail_format::html;
+                    auto charset = ct_values.find("charset");
+                    if(charset != ct_values.end()) parsed.html_charset = charset->second;
+
+                    parsed.html_headers = headers;
+                    parsed.html_start = (size_t)(body.begin() - base);
+                    parsed.html_end = (size_t)(body.end() - base);
+                }
+            } else if(root_content_type == "text/plain" || root_content_type == "") {
+                if(!(parsed.formats & (int)mail_format::text)) {
+                    parsed.formats |= (int)mail_format::text;
+                    auto charset = ct_values.find("charset");
+                    if(charset != ct_values.end()) parsed.html_charset = charset->second;
+
+                    parsed.text_headers = headers;
+                    parsed.text_start = (size_t)(body.begin() - base);
+                    parsed.text_end = (size_t)(body.end() - base);
                 }
             } else {
-                std::string content_type;
-                dict<std::string, std::string> content_type_values;
-                std::vector<std::pair<std::string, std::string>> headers;
-                std::string_view atch_body;
-                if(!try_parse_attachments(parsed, body, body, base, content_type, content_type_values, headers, atch_body)) {
-                    if(root_content_type == "text/html") {
-                        if(!(parsed.formats & (int)mail_format::html)) {
-                            parsed.formats |= (int)mail_format::html;
-                            auto charset = ct_values.find("charset");
-                            if(charset != ct_values.end()) parsed.html_charset = charset->second;
-
-                            parsed.html_headers = headers;
-                            parsed.html_start = (size_t)(body.begin() - base);
-                            parsed.html_end = (size_t)(body.end() - base);
-                        }
-                    } else if(root_content_type == "text/plain" || root_content_type == "") {
-                        if(!(parsed.formats & (int)mail_format::text)) {
-                            parsed.formats |= (int)mail_format::text;
-                            auto charset = ct_values.find("charset");
-                            if(charset != ct_values.end()) parsed.html_charset = charset->second;
-
-                            parsed.text_headers = headers;
-                            parsed.text_start = (size_t)(body.begin() - base);
-                            parsed.text_end = (size_t)(body.end() - base);
-                        }
-                    }
-                }
+                // ... dunno, ignore ...
             }
         }
 
