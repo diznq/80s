@@ -52,10 +52,10 @@ CREATE TABLE `mail_indexed` (
   `reply_to` varchar(64) DEFAULT NULL,
   `attachment_ids` text DEFAULT NULL,
   index (thread_id),
-  index (ext_message_id)
+  index (ext_message_id),
   index (folder),
   index (direction), 
-  index (created_at)
+  index (created_at),
   PRIMARY KEY (`user_id`,`message_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;

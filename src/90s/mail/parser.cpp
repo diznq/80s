@@ -351,12 +351,11 @@ namespace s90 {
             const char *base,
             std::string& content_type, 
             dict<std::string, std::string>& content_type_values,
-            std::vector<std::pair<std::string, std::string>>& headers,
-            std::string_view& atch_body
+            const std::vector<std::pair<std::string, std::string>>& headers,
+            const std::string_view atch_body
         ) {
             bool is_attachment = false;
             std::string attachment_id;
-            atch_body = parse_mail_headers(view, headers);
 
             mail_attachment attachment;
 
@@ -374,6 +373,7 @@ namespace s90 {
                         attachment.name = name->second;
                     }
                 } else if(k == "content-disposition") {
+                    is_attachment = true;
                     auto [disp, extra] = parse_smtp_property(v);
                     attachment.disposition = disp;
                     auto filename = extra.find("filename");
@@ -381,6 +381,10 @@ namespace s90 {
                         attachment.file_name = filename->second;
                     }
                 }
+            }
+
+            if(is_attachment && attachment_id.size() == 0) {
+                attachment_id = "smtp_atch_" + std::to_string(parsed.attachments.size());
             }
 
             if(is_attachment && attachment_id.size() > 0) {
@@ -421,6 +425,8 @@ namespace s90 {
                         std::vector<std::pair<std::string, std::string>> headers;
                         std::string_view atch_body;
 
+                        atch_body = parse_mail_headers(view, headers);
+
                         if(!try_parse_attachments(parsed, body, view, base, content_type, content_type_values, headers, atch_body)) {
                             parse_mail_body(parsed, base, atch_body, content_type, content_type_values, headers, depth + 1, max_depth);
                         }
@@ -429,9 +435,11 @@ namespace s90 {
             } else {
                 std::string content_type;
                 dict<std::string, std::string> content_type_values;
-                std::vector<std::pair<std::string, std::string>> headers;
-                std::string_view atch_body;
-                if(!try_parse_attachments(parsed, body, body, base, content_type, content_type_values, headers, atch_body)) {
+                if(!try_parse_attachments(parsed, body, body, base, content_type, content_type_values, headers, body)) {
+                    printf("Failed to parse attachments on\n=========\n%s\n=========\n", std::string(body).c_str());
+                    for(auto& [k, v] : headers) {
+                        printf("h[%s]: %s\n", k.c_str(), v.c_str());
+                    }
                     if(root_content_type == "text/html") {
                         if(!(parsed.formats & (int)mail_format::html)) {
                             parsed.formats |= (int)mail_format::html;
