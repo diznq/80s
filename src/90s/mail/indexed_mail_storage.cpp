@@ -520,7 +520,7 @@ namespace s90 {
                     .size = size_on_disk,
                     .direction = user.direction,
                     .status = (int)mail_status::delivered,
-                    .security = (int)mail_security::none,
+                    .security = (int)(mail->tls ? mail_security::tls : mail_security::none),
                     .attachments = (int)parsed.attachments.size(),
                     .attachment_ids = encoder.encode(parsed.attachments),
                     .formats = parsed.formats
