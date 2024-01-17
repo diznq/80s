@@ -105,24 +105,42 @@ namespace s90 {
         aiopromise<std::expected<
                     std::tuple<sql::sql_result<mail_record>, uint64_t>, std::string
                   >> 
-        indexed_mail_storage::get_inbox(uint64_t user_id, orm::optional<std::string> folder, orm::optional<std::string> message_id, orm::optional<std::string> thread_id, uint64_t page, uint64_t per_page) {
+        indexed_mail_storage::get_inbox(uint64_t user_id, orm::optional<std::string> folder, orm::optional<std::string> message_id, orm::optional<std::string> thread_id, orm::optional<int> direction, bool compact, uint64_t page, uint64_t per_page) {
             auto db = co_await get_db();
             
             auto limit_part = std::format("ORDER BY created_at DESC LIMIT {}, {}", (page - 1) * per_page, per_page);
-            auto select_part = std::format("user_id = '{}' ", db->escape(user_id));
+            auto select_part = std::format("mail_indexed.user_id = '{}' ", db->escape(user_id));
 
             if(folder) {
-                select_part += std::format("AND folder = '{}' ", db->escape(*folder));
+                select_part += std::format("AND mail_indexed.folder = '{}' ", db->escape(*folder));
             }
             if(thread_id) {
-                select_part += std::format("AND thread_id = '{}' ", db->escape(*thread_id));
+                select_part += std::format("AND mail_indexed.thread_id = '{}' ", db->escape(*thread_id));
             }
             if(message_id) {
-                select_part += std::format("AND message_id = '{}' ", db->escape(*message_id));
+                select_part += std::format("AND mail_indexed.message_id = '{}' ", db->escape(*message_id));
+            }
+            if(direction) {
+                select_part += std::format("AND mail_indexed.direction = '{}' ", db->escape(*direction));
             }
 
-            auto result = co_await db->select<mail_record>("SELECT * FROM mail_indexed WHERE " + select_part + limit_part);
-            auto total = co_await db->select<sql::count_result>("SELECT COUNT(*) AS c FROM mail_indexed WHERE " + select_part);
+            std::string with_stmt;
+            std::string join_stmt;
+            std::string count_stmt = "*";
+            std::string thread_size_stmt = "1 AS thread_size";
+
+            if(compact) {
+                count_stmt = "DISTINCT mail_indexed.thread_id";
+                with_stmt = std::format(
+                    "WITH latest_threads AS (SELECT user_id, thread_id, MAX(created_at) AS max_created_at, COUNT(*) AS num_messages FROM mail_indexed WHERE user_id = '{}' GROUP BY thread_id) ",
+                    db->escape(user_id)
+                );
+                thread_size_stmt = "latest_threads.num_messages AS thread_size";
+                join_stmt = "JOIN latest_threads ON mail_indexed.thread_id = latest_threads.thread_id AND mail_indexed.created_at = latest_threads.max_created_at ";
+            }
+
+            auto result = co_await db->select<mail_record>(with_stmt + "SELECT mail_indexed.*, " + thread_size_stmt + " FROM mail_indexed " + join_stmt + " WHERE " + select_part + limit_part);
+            auto total = co_await db->select<sql::count_result>("SELECT COUNT(" + count_stmt + ") AS c FROM mail_indexed WHERE " + select_part);
 
             if(result && total) {
                 for(auto& r : result) {
