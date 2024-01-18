@@ -436,10 +436,6 @@ namespace s90 {
                 std::string content_type;
                 dict<std::string, std::string> content_type_values;
                 if(!try_parse_attachments(parsed, body, body, base, content_type, content_type_values, headers, body)) {
-                    printf("Failed to parse attachments on\n=========\n%s\n=========\n", std::string(body).c_str());
-                    for(auto& [k, v] : headers) {
-                        printf("h[%s]: %s\n", k.c_str(), v.c_str());
-                    }
                     if(root_content_type == "text/html") {
                         if(!(parsed.formats & (int)mail_format::html)) {
                             parsed.formats |= (int)mail_format::html;

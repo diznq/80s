@@ -454,12 +454,14 @@ namespace s90 {
                 orm::optional<std::string> to;
                 orm::optional<std::string> subject;
                 orm::optional<std::string> text;
+                orm::optional<std::string> in_reply_to;
                 std::string content_type = "text/plain; charset=\"UTF-8\"";
                 orm::mapper get_orm() {
                     return {
                         {"to", to},
                         {"subject", subject},
                         {"text", text},
+                        {"in_reply_to", in_reply_to},
                         {"content_type", content_type}
                     };
                 }
@@ -503,6 +505,10 @@ namespace s90 {
                         mail->from.user = *user;
                         mail_envelope += "From: =?UTF-8?Q?" + q_encoder(user->email, true) + "?=\r\n";
                         mail_envelope += "Subject: =?UTF-8?Q?" + q_encoder(*params.subject) + "?=\r\n";
+
+                        if(params.in_reply_to) {
+                            mail_envelope += "In-Reply-To: <" + q_encoder(*params.in_reply_to) + ">\r\n";
+                        }
 
                         auto to_parsed = parse_smtp_address(*params.to, ctx->get_smtp()->get_config());
                         if(to_parsed) {
