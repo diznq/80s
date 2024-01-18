@@ -507,7 +507,7 @@ namespace s90 {
                         mail_envelope += "Subject: =?UTF-8?Q?" + q_encoder(*params.subject) + "?=\r\n";
 
                         if(params.in_reply_to) {
-                            mail_envelope += "In-Reply-To: <" + q_encoder(*params.in_reply_to) + ">\r\n";
+                            mail_envelope += "In-Reply-To: <" + *params.in_reply_to + ">\r\n";
                         }
 
                         auto to_parsed = parse_smtp_address(*params.to, ctx->get_smtp()->get_config());
