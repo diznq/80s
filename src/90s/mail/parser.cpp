@@ -588,7 +588,14 @@ namespace s90 {
                 body = eml.substr(pivot + 4);
             }
 
-            auto bh = util::to_b64(util::sha256(std::string(body) + "\r\n"));
+            auto canonized_body = body;
+            auto body_last = canonized_body.rfind("\r\n");
+            while(body_last == canonized_body.length() - 2) {
+                canonized_body = canonized_body.substr(0, body_last);
+                body_last = canonized_body.rfind("\r\n");
+            }
+
+            auto bh = util::to_b64(util::sha256(std::string(canonized_body) + "\r\n"));
 
             parse_mail_headers(header, headers);
             
@@ -634,9 +641,7 @@ int main() {
     std::stringstream ss;
     ss << ifs.rdbuf();
     std::string s = ss.str();
-    auto email = s90::mail::parse_mail("123", s);
-    for(auto& atch : email.attachments) {
-        printf("name: %s, mime: %s, disp name: %s\n", atch.name.c_str(), atch.mime.c_str(), atch.file_name.c_str());
-    }
+    auto sign = s90::mail::sign_with_dkim(s, "private/privkey.pem", "skoro.online", "core");
+    printf("%s", sign->c_str());
 }
 #endif
