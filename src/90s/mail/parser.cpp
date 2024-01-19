@@ -105,7 +105,7 @@ namespace s90 {
             }
         }
 
-        std::string q_encoder(const std::string text, bool replace_underscores, unsigned max_line) {
+        std::string q_encoder(const std::string text, bool replace_underscores, unsigned max_line, bool header) {
             std::string output;
             unsigned line_length = 0;
             for(char c : text) {
@@ -116,7 +116,7 @@ namespace s90 {
                 } else if(code == 32) {
                     output += replace_underscores ? '_' : code;
                     line_length++;
-                } else if(code == 13 || code == 10) {
+                } else if(!header && (code == 13 || code == 10)) {
                     output += code;
                     line_length++;
                 } else {

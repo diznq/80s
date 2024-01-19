@@ -503,10 +503,10 @@ namespace s90 {
                         mail->from.authenticated = true;
                         mail->from.direction = (int)mail_direction::outbound;
                         mail->from.user = *user;
-                        mail_envelope += "From: =?UTF-8?Q?" + q_encoder(user->email, true) + "?=\r\n";
-                        mail_envelope += "Subject: =?UTF-8?Q?" + q_encoder(*params.subject) + "?=\r\n";
+                        mail_envelope += "From: =?UTF-8?Q?" + q_encoder(user->email, true, -1, true) + "?=\r\n";
+                        mail_envelope += "Subject: =?UTF-8?Q?" + q_encoder(*params.subject, false, -1, true) + "?=\r\n";
 
-                        if(params.in_reply_to) {
+                        if(params.in_reply_to && params.in_reply_to->find_first_of("\r\n<>") == std::string::npos) {
                             mail_envelope += "In-Reply-To: <" + *params.in_reply_to + ">\r\n";
                         }
 
@@ -518,7 +518,7 @@ namespace s90 {
                                 err.error = to_parsed.original_email + " not found";
                                 env.output()->write_json(err);
                             } else {
-                                mail_envelope += "To: =?UTF-8?Q?" + q_encoder(to_parsed.original_email) + "?=\r\n";
+                                mail_envelope += "To: =?UTF-8?Q?" + q_encoder(to_parsed.original_email, false, -1, true) + "?=\r\n";
 
                                 auto content_type(std::move(params.content_type));
                                 auto pivot = content_type.find_first_of("\r\n");
