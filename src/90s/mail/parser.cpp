@@ -202,7 +202,6 @@ namespace s90 {
                             if(!key.empty())
                                 key += tolower(c);
                         } else if(state == header_value_end) {
-                            value += ' ';
                             state = header_value_extend;
                         }
                         break;
@@ -626,3 +625,18 @@ namespace s90 {
         }
     }
 }
+#if S90_DEBUG_PARSER
+#include <fstream>
+#include <sstream>
+
+int main() {
+    std::ifstream ifs("private/raw.eml", std::ios_base::binary);
+    std::stringstream ss;
+    ss << ifs.rdbuf();
+    std::string s = ss.str();
+    auto email = s90::mail::parse_mail("123", s);
+    for(auto& atch : email.attachments) {
+        printf("name: %s, mime: %s, disp name: %s\n", atch.name.c_str(), atch.mime.c_str(), atch.file_name.c_str());
+    }
+}
+#endif
