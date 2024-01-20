@@ -535,7 +535,8 @@ namespace s90 {
                                 
                                 auto boundary = util::to_hex(util::sha256(*params.text));
                                 mail_envelope += "\r\n\r\n";
-                                mail_envelope += *params.text;
+                                mail_envelope += mail::enforce_crlf(util::trim(*params.text));
+                                mail_envelope += "\r\n";
 
                                 mail->data = mail_envelope;
 

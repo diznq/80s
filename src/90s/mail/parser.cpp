@@ -578,6 +578,25 @@ namespace s90 {
             };
         }
 
+        std::string enforce_crlf(std::string_view eml) {
+            std::stringstream ss;
+            bool r_before = false;
+            for(char c : eml) {
+                if(c == '\n') {
+                    if(!r_before) ss.put('\r');
+                    r_before = false;
+                    ss.put('\n');
+                } else if(c == '\r') {
+                    r_before = true;
+                    ss.put(c);
+                } else {
+                    r_before = false;
+                    ss.put(c);
+                }
+            }
+            return ss.str();
+        }
+
         std::expected<std::string, std::string> sign_with_dkim(std::string_view eml, const char *privkey, std::string_view dkim_domain, std::string_view dkim_selector) {
             auto pivot = eml.find("\r\n\r\n");
             std::string_view header = eml, body;
@@ -588,14 +607,7 @@ namespace s90 {
                 body = eml.substr(pivot + 4);
             }
 
-            auto canonized_body = body;
-            auto body_last = canonized_body.rfind("\r\n");
-            while(body_last == canonized_body.length() - 2) {
-                canonized_body = canonized_body.substr(0, body_last);
-                body_last = canonized_body.rfind("\r\n");
-            }
-
-            auto bh = util::to_b64(util::sha256(std::string(canonized_body) + "\r\n"));
+            auto bh = util::to_b64(util::sha256(body));
 
             parse_mail_headers(header, headers);
             

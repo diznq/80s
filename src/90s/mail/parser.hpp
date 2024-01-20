@@ -94,5 +94,10 @@ namespace s90 {
         /// @param dkim_selectro DKIM selector
         /// @return DKIm signature
         std::expected<std::string, std::string> sign_with_dkim(std::string_view eml, const char *privkey, std::string_view dkim_domain, std::string_view dkim_selector);
+
+        /// @brief Enforce CRLF encoded text
+        /// @param eml text to be encoded
+        /// @return CRLF enforced text
+        std::string enforce_crlf(std::string_view eml);
     }
 }
