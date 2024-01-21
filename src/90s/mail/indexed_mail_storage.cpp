@@ -558,7 +558,7 @@ namespace s90 {
             if(stored_to_db > 0) {
                 auto write_status = co_await db->exec(query);
                 if(!write_status) {
-                    co_return std::unexpected("failed to index the e-mail");
+                    co_return std::unexpected("failed to index the e-mail: " + write_status.error_message);
                 }
                 if(affected_users.size() > 0) {
                     auto update_status = co_await db->exec("UPDATE mail_users SET used_space=(SELECT SUM(mail_indexed.size) FROM mail_indexed WHERE mail_indexed.user_id = mail_users.user_id) WHERE mail_users.user_id IN ({})", affected_users);

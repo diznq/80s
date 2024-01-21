@@ -169,8 +169,10 @@ namespace s90 {
                                 if(prom.has_exception()) {
                                     dbgf("Failed to handle e-mail\n");
                                     handled = std::unexpected("unhandled error while storing");
-                                } else {
+                                } else if(handled) {
                                     dbgf("E-mail %s successfully handled\n", handled->message_id.c_str());
+                                } else {
+                                    dbgf("Faled to handle e-mail: %s\n", handled.error().c_str());
                                 }
                             }
                             if(handled) {
