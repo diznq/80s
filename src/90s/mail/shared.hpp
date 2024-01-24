@@ -194,8 +194,8 @@ namespace s90 {
 
             uint64_t user_id;
             varstr<64> message_id;
-            sql_text external_message_id;
-            varstr<64> thread_id;
+            varstr<128> external_message_id;
+            varstr<128> thread_id;
             varstr<64> in_reply_to;
             varstr<64> return_path;
             varstr<64> reply_to;
@@ -220,6 +220,7 @@ namespace s90 {
             int attachments;
             sql_text attachment_ids;
             int formats;
+            int thread_size = 1;
 
             orm::mapper get_orm() {
                 return {
@@ -250,7 +251,8 @@ namespace s90 {
                     { "security", security },
                     { "attachments", attachments },
                     { "attachment_ids", attachment_ids },
-                    { "formats", formats }
+                    { "formats", formats },
+                    { "thread_size", thread_size }
                 };
             }
         };

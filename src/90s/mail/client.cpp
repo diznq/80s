@@ -6,6 +6,31 @@
 namespace s90 {
     namespace mail {
 
+        std::string smtp_encode(std::string_view data) {
+            bool is_new_line = true;
+            std::string content;
+            for(char c : data) {
+                switch(c) {
+                case '\n':
+                    is_new_line = true;
+                    content += c;
+                    break;
+                case '.':
+                    if(is_new_line) {
+                        content += '.';
+                        is_new_line = false;
+                    }
+                    content += '.';
+                    break;
+                default:
+                    is_new_line = false;
+                    content += c;
+                    break;
+                }
+            }
+            return content;
+        }
+
         std::string get_mail_server(const std::string& addr) {
             auto pivot = addr.find('@');
             if(pivot != std::string::npos) {
@@ -155,6 +180,7 @@ namespace s90 {
                     continue;
                 } 
 
+                mail->data = smtp_encode(mail->data);
                 mail->data += "\r\n.\r\n";
                 dbgf("====\n%s\n====\n", mail->data.c_str());
                 if(!co_await conn->write(mail->data)) {

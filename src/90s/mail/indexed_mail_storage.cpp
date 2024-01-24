@@ -105,24 +105,42 @@ namespace s90 {
         aiopromise<std::expected<
                     std::tuple<sql::sql_result<mail_record>, uint64_t>, std::string
                   >> 
-        indexed_mail_storage::get_inbox(uint64_t user_id, orm::optional<std::string> folder, orm::optional<std::string> message_id, orm::optional<std::string> thread_id, uint64_t page, uint64_t per_page) {
+        indexed_mail_storage::get_inbox(uint64_t user_id, orm::optional<std::string> folder, orm::optional<std::string> message_id, orm::optional<std::string> thread_id, orm::optional<int> direction, bool compact, uint64_t page, uint64_t per_page) {
             auto db = co_await get_db();
             
             auto limit_part = std::format("ORDER BY created_at DESC LIMIT {}, {}", (page - 1) * per_page, per_page);
-            auto select_part = std::format("user_id = '{}' ", db->escape(user_id));
+            auto select_part = std::format("mail_indexed.user_id = '{}' ", db->escape(user_id));
 
             if(folder) {
-                select_part += std::format("AND folder = '{}' ", db->escape(*folder));
+                select_part += std::format("AND mail_indexed.folder = '{}' ", db->escape(*folder));
             }
             if(thread_id) {
-                select_part += std::format("AND thread_id = '{}' ", db->escape(*thread_id));
+                select_part += std::format("AND mail_indexed.thread_id = '{}' ", db->escape(*thread_id));
             }
             if(message_id) {
-                select_part += std::format("AND message_id = '{}' ", db->escape(*message_id));
+                select_part += std::format("AND mail_indexed.message_id = '{}' ", db->escape(*message_id));
+            }
+            if(direction) {
+                select_part += std::format("AND mail_indexed.direction = '{}' ", db->escape(*direction));
             }
 
-            auto result = co_await db->select<mail_record>("SELECT * FROM mail_indexed WHERE " + select_part + limit_part);
-            auto total = co_await db->select<sql::count_result>("SELECT COUNT(*) AS c FROM mail_indexed WHERE " + select_part);
+            std::string with_stmt;
+            std::string join_stmt;
+            std::string count_stmt = "*";
+            std::string thread_size_stmt = "1 AS thread_size";
+
+            if(compact) {
+                count_stmt = "DISTINCT mail_indexed.thread_id";
+                with_stmt = std::format(
+                    "WITH latest_threads AS (SELECT user_id, thread_id, MAX(created_at) AS max_created_at, COUNT(*) AS num_messages FROM mail_indexed WHERE user_id = '{}' GROUP BY thread_id) ",
+                    db->escape(user_id)
+                );
+                thread_size_stmt = "latest_threads.num_messages AS thread_size";
+                join_stmt = "JOIN latest_threads ON mail_indexed.thread_id = latest_threads.thread_id AND mail_indexed.created_at = latest_threads.max_created_at ";
+            }
+
+            auto result = co_await db->select<mail_record>(with_stmt + "SELECT mail_indexed.*, " + thread_size_stmt + " FROM mail_indexed " + join_stmt + " WHERE " + select_part + limit_part);
+            auto total = co_await db->select<sql::count_result>("SELECT COUNT(" + count_stmt + ") AS c FROM mail_indexed WHERE " + select_part);
 
             if(result && total) {
                 for(auto& r : result) {
@@ -252,7 +270,7 @@ namespace s90 {
             auto msg_id = std::format("{}/{}-{}-{}", folder, mail->created_at.his('_'), id.id, counter++);
             
             if(outbounding) {
-                mail->data = "Message-ID: <msg-fs-" + msg_id + "@" + mail->from.original_email_server + ">\r\n" + mail->data;
+                mail->data = "Message-ID: <" + msg_id + "@" + mail->from.original_email_server + ">\r\n" + mail->data;
             }
 
             if(mail->from.user) owner_id = mail->from.user->user_id;
@@ -305,18 +323,60 @@ namespace s90 {
 
             bool is_space_avail = true;
 
+            // check for existing e-mails
+            for(auto& user : mail->to) {
+                if(!user.user) continue;
+                // if one sends e-mail to themselves, only keep the SENT version of it
+                if(user.email == mail->from.email && user.direction == (int)mail_direction::inbound) continue;
+                affected_users.insert(user.user->user_id);
+            }
+
+            dict<uint64_t, std::string> thread_ids;
+            dict<uint64_t, std::string> existing;
+
+            // check for existing threads
+            if(affected_users.size() > 0 && parsed.in_reply_to.length() > 0) {
+                auto reply_ref = co_await db->select<mail_record>(
+                    "SELECT user_id, thread_id FROM mail_indexed WHERE user_id IN ({}) AND ext_message_id = '{}'",
+                    affected_users,
+                    parsed.in_reply_to
+                );
+                if(reply_ref) {
+                    for(auto& row : reply_ref) {
+                        thread_ids[row.user_id] = row.thread_id;
+                    }
+                }
+            }
+
+            // check if this e-mail was already stored in past
+            if(affected_users.size() > 0) {
+                auto existing_refs = co_await db->select<mail_record>(
+                    "SELECT user_id, thread_id FROM mail_indexed WHERE user_id IN ({}) AND ext_message_id = '{}'",
+                    affected_users,
+                    parsed.external_message_id
+                );
+                if(existing_refs) {
+                    for(auto& row : existing_refs) {
+                        existing[row.user_id] = row.thread_id;
+                    }
+                }
+            }
+
             // verify if everyone has enough space in their mailbox
             for(auto& user : mail->to) {
                 if(!user.user) continue;
                 // if one sends e-mail to themselves, only keep the SENT version of it
                 if(user.email == mail->from.email && user.direction == (int)mail_direction::inbound) continue;
-
+                if(existing.find(user.user->user_id) != existing.end()) continue;
                 if(user.user->used_space + size_on_disk > user.user->quota) is_space_avail = false;
             }
 
             if(!is_space_avail) {
                 co_return std::unexpected("mailbox of one or more recipients is full");
             }
+
+            // recompute the affected users
+            affected_users.clear();
 
             // save the data to the disk
             for(auto& user : mail->to) {
@@ -331,6 +391,7 @@ namespace s90 {
                         users_outside.push_back(user);
                     continue;
                 }
+                if(existing.find(user.user->user_id) != existing.end()) continue;
 
                 inside.push_back(user.user->user_id);
 
@@ -442,17 +503,39 @@ namespace s90 {
                     continue;
                 }
 
+                if(existing.find(found_user->user_id) != existing.end()) continue;
+
+                std::string thread_id;
+                auto thread_it = thread_ids.find(found_user->user_id);
+                if(thread_it != thread_ids.end()) {
+                    thread_id = thread_it->second;
+                } else {
+                    thread_id = parsed.external_message_id;
+                }
+
+                auto rcpt_to = user.original_email;
+                // in case we are saving the copy for sender, rcpt to = all the others
+                if(user.email == mail->from.email && user.direction == (int)mail_direction::outbound) {
+                    rcpt_to = "";
+                    for(auto& recip : mail->to) {
+                        if(recip.email != user.email) {
+                            if(rcpt_to.length() > 0) rcpt_to += ",";
+                            rcpt_to += recip.original_email;
+                        }
+                    }
+                }
+
                 mail_record record {
                     .user_id = found_user->user_id,
                     .message_id = msg_id,
                     .external_message_id = parsed.external_message_id,
-                    .thread_id = parsed.thread_id,
+                    .thread_id = thread_id,
                     .in_reply_to = parsed.in_reply_to,
                     .return_path = parsed.return_path,
                     .reply_to = parsed.reply_to,
                     .disk_path = std::format("{}/{}/{}", config.sv_mail_storage_dir, user.email, msg_id),
                     .mail_from = mail->from.original_email,
-                    .rcpt_to = user.original_email,
+                    .rcpt_to = rcpt_to,
                     .parsed_from = parsed.from,
                     .folder = user.folder,
                     .subject = parsed.subject,
@@ -467,7 +550,7 @@ namespace s90 {
                     .size = size_on_disk,
                     .direction = user.direction,
                     .status = (int)mail_status::delivered,
-                    .security = (int)mail_security::none,
+                    .security = (int)(mail->tls ? mail_security::tls : mail_security::none),
                     .attachments = (int)parsed.attachments.size(),
                     .attachment_ids = encoder.encode(parsed.attachments),
                     .formats = parsed.formats
@@ -505,7 +588,7 @@ namespace s90 {
             if(stored_to_db > 0) {
                 auto write_status = co_await db->exec(query);
                 if(!write_status) {
-                    co_return std::unexpected("failed to index the e-mail");
+                    co_return std::unexpected("failed to index the e-mail: " + write_status.error_message);
                 }
                 if(affected_users.size() > 0) {
                     auto update_status = co_await db->exec("UPDATE mail_users SET used_space=(SELECT SUM(mail_indexed.size) FROM mail_indexed WHERE mail_indexed.user_id = mail_users.user_id) WHERE mail_users.user_id IN ({})", affected_users);
@@ -627,7 +710,7 @@ namespace s90 {
                     co_return std::unexpected("failed to delete unsuccessful deliveries");
                 } else {
                     if(result.size() == 0) {
-                        co_await db->exec("UPDATE mail_indexed SET status = '{}' WHERE user_id = '{}' AND message_id = '{}' LIMIT 1", (int)mail_status::delivered, user_id, message_id);
+                        co_await db->exec("UPDATE mail_indexed SET status = '{}', delivered_at = '{}' WHERE user_id = '{}' AND message_id = '{}' LIMIT 1", (int)mail_status::delivered, orm::datetime::now(), user_id, message_id);
                     }
                 }
             }

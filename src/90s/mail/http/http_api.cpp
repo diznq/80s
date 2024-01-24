@@ -85,7 +85,17 @@ namespace s90 {
         class authenticated_page : public httpd::page {
         public:
             aiopromise<std::optional<mail_user>> verify_login(httpd::ienvironment& env) const {
+                auto user_id_csrf = env.signed_query("u");
                 error_response err;
+
+                if(env.method() == "POST" && !user_id_csrf) {
+                    env.content_type("application/json; charset=\"utf-8\"");
+                    env.status("401 Unauthorized");
+                    err.error = "missing csrf";
+                    env.output()->write_json(err);
+                    co_return {};
+                }
+
                 std::optional<mail_user> user;
                 auto session_info = env.header("x-session-id");
                 std::string session_id;
@@ -111,11 +121,15 @@ namespace s90 {
                                 auto conv_result = std::from_chars(user_id_str.c_str(), user_id_str.c_str() + user_id_str.length(), user_id, 10);
                                 if(conv_result.ec == std::errc() && conv_result.ptr == user_id_str.c_str() + user_id_str.length()) {
                                     auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
-                                    auto db_user = co_await ctx->get_user(session_id, user_id);
-                                    if(db_user) {
-                                        co_return *db_user;
+                                    if(env.method() != "POST" || std::to_string(user_id) == *user_id_csrf) {
+                                        auto db_user = co_await ctx->get_user(session_id, user_id);
+                                        if(db_user) {
+                                            co_return *db_user;
+                                        } else {
+                                            err.error = db_user.error();
+                                        }
                                     } else {
-                                        err.error = db_user.error();
+                                        err.error = "csrf mismatch";
                                     }
                                 } else {
                                     err.error = "corrupted user id";
@@ -150,16 +164,20 @@ namespace s90 {
                 orm::optional<std::string> folder;
                 orm::optional<std::string> thread_id;
                 orm::optional<std::string> message_id;
+                orm::optional<int> direction;
                 orm::optional<int> page = 1;
                 orm::optional<int> per_page = 25;
+                bool compact = false;
 
                 orm::mapper get_orm() {
                     return {
                         {"folder", folder},
                         {"message_id", message_id},
                         {"thread_id", thread_id},
+                        {"direction", direction},
                         {"page", page},
-                        {"per_page", per_page}
+                        {"per_page", per_page},
+                        {"compact", compact}
                     };
                 }
             };
@@ -187,7 +205,7 @@ namespace s90 {
                     auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
                     auto query = env.query<input>();
                     auto db_response = co_await ctx->get_inbox(
-                        user->user_id, query.folder, query.message_id, query.thread_id, query.page.or_else(1), query.per_page.or_else(25)
+                        user->user_id, query.folder, query.message_id, query.thread_id, query.direction, query.compact, query.page.or_else(1), query.per_page.or_else(25)
                     );
                     if(db_response) {
                         auto [sql_res, total] = *db_response;
@@ -436,12 +454,14 @@ namespace s90 {
                 orm::optional<std::string> to;
                 orm::optional<std::string> subject;
                 orm::optional<std::string> text;
+                orm::optional<std::string> in_reply_to;
                 std::string content_type = "text/plain; charset=\"UTF-8\"";
                 orm::mapper get_orm() {
                     return {
                         {"to", to},
                         {"subject", subject},
                         {"text", text},
+                        {"in_reply_to", in_reply_to},
                         {"content_type", content_type}
                     };
                 }
@@ -483,8 +503,12 @@ namespace s90 {
                         mail->from.authenticated = true;
                         mail->from.direction = (int)mail_direction::outbound;
                         mail->from.user = *user;
-                        mail_envelope += "From: =?UTF-8?Q?" + q_encoder(user->email, true) + "?=\r\n";
-                        mail_envelope += "Subject: =?UTF-8?Q?" + q_encoder(*params.subject) + "?=\r\n";
+                        mail_envelope += "From: =?UTF-8?Q?" + q_encoder(user->email, true, -1, true) + "?=\r\n";
+                        mail_envelope += "Subject: =?UTF-8?Q?" + q_encoder(*params.subject, false, -1, true) + "?=\r\n";
+
+                        if(params.in_reply_to && params.in_reply_to->find_first_of("\r\n<>") == std::string::npos) {
+                            mail_envelope += "In-Reply-To: <" + *params.in_reply_to + ">\r\n";
+                        }
 
                         auto to_parsed = parse_smtp_address(*params.to, ctx->get_smtp()->get_config());
                         if(to_parsed) {
@@ -494,7 +518,7 @@ namespace s90 {
                                 err.error = to_parsed.original_email + " not found";
                                 env.output()->write_json(err);
                             } else {
-                                mail_envelope += "To: =?UTF-8?Q?" + q_encoder(to_parsed.original_email) + "?=\r\n";
+                                mail_envelope += "To: =?UTF-8?Q?" + q_encoder(to_parsed.original_email, false, -1, true) + "?=\r\n";
 
                                 auto content_type(std::move(params.content_type));
                                 auto pivot = content_type.find_first_of("\r\n");
@@ -511,7 +535,8 @@ namespace s90 {
                                 
                                 auto boundary = util::to_hex(util::sha256(*params.text));
                                 mail_envelope += "\r\n\r\n";
-                                mail_envelope += *params.text;
+                                mail_envelope += mail::enforce_crlf(util::trim(*params.text));
+                                mail_envelope += "\r\n";
 
                                 mail->data = mail_envelope;
 
@@ -563,13 +588,49 @@ namespace s90 {
             }
         };
 
+        class csrf_page : public authenticated_page {
+            struct response : public orm::with_orm {
+                WITH_ID;
+
+                std::string post_new;
+                std::string post_alter;
+
+                orm::mapper get_orm() {
+                    return {
+                        {"/api/mail/new", post_new},
+                        {"/api/mail/alter", post_alter}
+                    };
+                }
+            };
+        public:
+            const char *name() const { return "GET /api/mail/tokens"; }
+
+            aiopromise<std::expected<nil, httpd::status>> render(httpd::ienvironment& env) const {
+                auto user = co_await verify_login(env);
+                env.content_type("application/json; charset=\"utf-8\"");
+                if(!user) {
+                    env.status("400 Bad request");
+                    error_response err;
+                    err.error = "not logged in";
+                    env.output()->write_json(err);
+                } else {
+                    response resp;
+                    resp.post_new = env.url("/api/mail/new", {{"u", std::to_string(user->user_id)}}, httpd::encryption::full);
+                    resp.post_alter = env.url("/api/mail/alter", {{"u", std::to_string(user->user_id)}}, httpd::encryption::full);
+                    env.output()->write_json(resp);
+                }
+                co_return nil {};
+            }
+        };
+
         mail_http_api::mail_http_api(smtp_server *parent) : parent(parent) {
             httpd::httpd_config cfg = httpd::httpd_config::env();
             cfg.initializer = [this](icontext *ctx, void*) { return this; };
 
             cfg.pages = {
                 new login_page, new inbox_page, new object_page, new me_page, 
-                new alter_page, new folders_page, new new_mail_page
+                new alter_page, new folders_page, new new_mail_page,
+                new csrf_page
             };
 
             http_base = ptr_new<httpd::httpd_server>(parent->get_context(), cfg);

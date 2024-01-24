@@ -31,7 +31,7 @@ CREATE TABLE `mail_indexed` (
   `rcpt_to` text DEFAULT NULL,
   `folder` varchar(32) DEFAULT NULL,
   `subject` text DEFAULT NULL,
-  `thread_id` varchar(64) DEFAULT NULL,
+  `thread_id` varchar(128) DEFAULT NULL,
   `indexable_text` text DEFAULT NULL,
   `dkim_domain` text DEFAULT NULL,
   `sender_address` text DEFAULT NULL,
@@ -47,10 +47,15 @@ CREATE TABLE `mail_indexed` (
   `formats` int(11) DEFAULT NULL,
   `in_reply_to` varchar(64) DEFAULT NULL,
   `return_path` varchar(64) DEFAULT NULL,
-  `ext_message_id` text DEFAULT NULL,
+  `ext_message_id` varchar(128) DEFAULT NULL,
   `sender_name` text DEFAULT NULL,
   `reply_to` varchar(64) DEFAULT NULL,
   `attachment_ids` text DEFAULT NULL,
+  index (thread_id),
+  index (ext_message_id),
+  index (folder),
+  index (direction), 
+  index (created_at),
   PRIMARY KEY (`user_id`,`message_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
