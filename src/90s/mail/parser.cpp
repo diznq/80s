@@ -203,6 +203,7 @@ namespace s90 {
                                 key += tolower(c);
                         } else if(state == header_value_end) {
                             state = header_value_extend;
+                            value += ' ';
                         }
                         break;
                     case ':':
@@ -242,7 +243,7 @@ namespace s90 {
             std::string content_type;
             dict<std::string, std::string> values;
             size_t i = 0;
-            for(const auto& match : std::views::split(std::string_view{v}, std::string_view{"; "})) {
+            for(const auto& match : std::views::split(std::string_view{v}, std::string_view{";"})) {
                 std::string_view word { match };
                 word = util::trim(word);
                 auto pivot = word.find('=');
@@ -530,7 +531,7 @@ namespace s90 {
             }
             if(ats != 1 || prefix_invalid > 0 || postfix_invalid > 0 || prefix_length == 0 || postfix_length == 0) return mail_parsed_user { true };
             
-            for(auto v : std::ranges::split_view(after_end, std::string_view(";"))) {
+            for(auto v : std::views::split(after_end, std::string_view(";"))) {
                 auto value = std::string_view(v);
                 auto pivot = value.find('=');
                 if(pivot != std::string::npos) {
@@ -654,7 +655,17 @@ int main() {
     std::stringstream ss;
     ss << ifs.rdbuf();
     std::string s = ss.str();
-    auto sign = s90::mail::sign_with_dkim(s, "private/privkey.pem", "skoro.online", "core");
-    printf("%s", sign->c_str());
+    
+    const size_t its = 10000000000ULL / s.length();
+    const size_t parse_size = s.length() * its;
+
+    auto now = std::chrono::high_resolution_clock::now();
+    for(int i = 0; i < its; i++) {
+        auto mail = s90::mail::parse_mail("test", s);
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto dur = std::chrono::duration_cast<std::chrono::nanoseconds>(end - now);
+    double dur_sec = (double)dur.count() / 1000000000.0;
+    printf("speed: %.2f kB / s, it: %zu, size: %zu, size x its: %zu", (parse_size / dur_sec) / 1000.0, its, s.length(), its * s.length());
 }
 #endif
