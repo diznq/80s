@@ -26,7 +26,7 @@ namespace s90 {
         dict<std::string, std::string> parse_query_string(std::string_view query_string);
 
         static bool iswhite(char c) {
-            return (c >= 0 && c < 32);
+            return (c >= 0 && c <= 32);
         }
 
         static std::string_view trim(std::string_view str) {

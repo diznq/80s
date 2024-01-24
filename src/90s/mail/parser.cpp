@@ -245,7 +245,7 @@ namespace s90 {
             size_t i = 0;
             for(const auto& match : std::views::split(std::string_view{v}, std::string_view{";"})) {
                 std::string_view word { match };
-                word = util::trim(word);
+                word = util::trim(word); 
                 auto pivot = word.find('=');
                 if(pivot == std::string::npos) {
                     if(i == 0) {

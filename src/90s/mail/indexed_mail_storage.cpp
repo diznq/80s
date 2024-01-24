@@ -323,18 +323,60 @@ namespace s90 {
 
             bool is_space_avail = true;
 
+            // check for existing e-mails
+            for(auto& user : mail->to) {
+                if(!user.user) continue;
+                // if one sends e-mail to themselves, only keep the SENT version of it
+                if(user.email == mail->from.email && user.direction == (int)mail_direction::inbound) continue;
+                affected_users.insert(user.user->user_id);
+            }
+
+            dict<uint64_t, std::string> thread_ids;
+            dict<uint64_t, std::string> existing;
+
+            // check for existing threads
+            if(affected_users.size() > 0 && parsed.in_reply_to.length() > 0) {
+                auto reply_ref = co_await db->select<mail_record>(
+                    "SELECT user_id, thread_id FROM mail_indexed WHERE user_id IN ({}) AND ext_message_id = '{}'",
+                    affected_users,
+                    parsed.in_reply_to
+                );
+                if(reply_ref) {
+                    for(auto& row : reply_ref) {
+                        thread_ids[row.user_id] = row.thread_id;
+                    }
+                }
+            }
+
+            // check if this e-mail was already stored in past
+            if(affected_users.size() > 0) {
+                auto existing_refs = co_await db->select<mail_record>(
+                    "SELECT user_id, thread_id FROM mail_indexed WHERE user_id IN ({}) AND ext_message_id = '{}'",
+                    affected_users,
+                    parsed.external_message_id
+                );
+                if(existing_refs) {
+                    for(auto& row : existing_refs) {
+                        existing[row.user_id] = row.thread_id;
+                    }
+                }
+            }
+
             // verify if everyone has enough space in their mailbox
             for(auto& user : mail->to) {
                 if(!user.user) continue;
                 // if one sends e-mail to themselves, only keep the SENT version of it
                 if(user.email == mail->from.email && user.direction == (int)mail_direction::inbound) continue;
-
+                if(existing.find(user.user->user_id) != existing.end()) continue;
                 if(user.user->used_space + size_on_disk > user.user->quota) is_space_avail = false;
             }
 
             if(!is_space_avail) {
                 co_return std::unexpected("mailbox of one or more recipients is full");
             }
+
+            // recompute the affected users
+            affected_users.clear();
 
             // save the data to the disk
             for(auto& user : mail->to) {
@@ -349,6 +391,7 @@ namespace s90 {
                         users_outside.push_back(user);
                     continue;
                 }
+                if(existing.find(user.user->user_id) != existing.end()) continue;
 
                 inside.push_back(user.user->user_id);
 
@@ -390,21 +433,6 @@ namespace s90 {
                     }
                 }
                 affected_users.insert(user.user->user_id);
-            }
-
-            dict<uint64_t, std::string> thread_ids;
-
-            if(affected_users.size() > 0 && parsed.in_reply_to.length() > 0) {
-                auto reply_ref = co_await db->select<mail_record>(
-                    "SELECT user_id, thread_id FROM mail_indexed WHERE user_id IN ({}) AND ext_message_id = '{}'",
-                    affected_users,
-                    parsed.in_reply_to
-                );
-                if(reply_ref) {
-                    for(auto& row : reply_ref) {
-                        thread_ids[row.user_id] = row.thread_id;
-                    }
-                }
             }
 
             // save the data to the db!
@@ -474,6 +502,8 @@ namespace s90 {
                     }
                     continue;
                 }
+
+                if(existing.find(found_user->user_id) != existing.end()) continue;
 
                 std::string thread_id;
                 auto thread_it = thread_ids.find(found_user->user_id);
