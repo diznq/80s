@@ -120,16 +120,23 @@ namespace s90 {
                             read_commands.pop();
                             if(auto p = command_promise.lock())
                                 aiopromise(p).resolve({false, std::move(arg)});
-                        } else if(part.offset == delim_state.offset + delim_state.match && part.length > 0) {
+                        } else if(part.offset == delim_state.offset + delim_state.match && part.length > 0) [[unlikely]] {
                             dbg_infof("%s; 2/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", name().c_str(), delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                             delim_state.match += part.length;
                             delim_state.offset = part.offset + part.length;
                             iterate = false;
-                        } else {
+                        } else [[likely]] {
                             dbg_infof("%s; 3/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", name().c_str(), delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
-                        
-                            delim_state.match = 0;
-                            delim_state.offset = part.offset;
+                            //delim_state.match = 0;
+                            //delim_state.offset = part.offset;
+                            size_t to_add = part.offset == window.length() - part.length ? part.length : 0;
+                            if(delim_state.match == 0 || (delim_state.match > 0 && part.offset == delim_state.offset)) {
+                                delim_state.match += to_add;
+                                delim_state.offset = part.offset + to_add;
+                            } else {
+                                delim_state.match = to_add;
+                                delim_state.offset = part.offset + delim_state.match;
+                            }
                             iterate = false;
                         }
                         break;
