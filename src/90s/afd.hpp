@@ -84,6 +84,12 @@ namespace s90 {
         /// @return read result excluding delimiter, next read excludes it as well
         virtual aiopromise<read_arg> read_until(std::string&& delim) = 0;
 
+        /// @brief Read until `delim` occurs with precomputed pattern
+        /// @param delim delimiter
+        /// @param pattern_ref precomputed pattern via build_kmp
+        /// @return read result excluding delimiter, next read excludes it as well
+        virtual aiopromise<read_arg> read_until(std::string&& delim, int64_t *pattern_ref) = 0;
+
         /// @brief Write data to the file descriptor
         /// @param data data to be written
         /// @param layers if true, apply additional layers such as TLS
@@ -182,13 +188,17 @@ namespace s90 {
             read_command_type type;
             size_t n;
             std::string delimiter;
+            std::vector<int64_t> pattern;
+            int64_t *pattern_ref;
 
             read_command(
                 aiopromise<read_arg>::weak_type promise,
                 read_command_type type,
                 size_t n,
-                std::string&& delimiter
-            ) : promise(promise), type(type), n(n), delimiter(std::move(delimiter)) {}
+                std::string&& delimiter,
+                std::vector<int64_t>&& pattern,
+                int64_t *pattern_ref = NULL
+            ) : promise(promise), type(type), n(n), delimiter(std::move(delimiter)), pattern(std::move(pattern)), pattern_ref(pattern_ref) {}
         };
 
         enum class ssl_state {
@@ -239,6 +249,7 @@ namespace s90 {
         aiopromise<read_arg> read_any() override;
         aiopromise<read_arg> read_n(size_t n_bytes) override;
         aiopromise<read_arg> read_until(std::string&& delim) override;
+        aiopromise<read_arg> read_until(std::string&& delim, int64_t *pattern_ref) override;
         aiopromise<bool> write(std::string_view data, bool layers = true) override;
         fd_meminfo usage() const override;
         std::string name() const override;

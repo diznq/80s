@@ -107,7 +107,7 @@ namespace s90 {
                     case read_command_type::until: [[likely]]
                         // until is fulfilled until a delimiter appears, this implemenation makes use of specially optimized partial
                         // search based on Knuth-Morris-Pratt algorithm, so it's O(n)
-                        part = kmp(window.data(), window.length(), it.delimiter.c_str() + delim_state.match, command_delim_length - delim_state.match, delim_state.offset);
+                        part = kmp(window.data(), window.length(), it.delimiter.c_str() + delim_state.match, command_delim_length - delim_state.match, delim_state.offset, it.pattern_ref ? it.pattern_ref : it.pattern.data());
                         if(part.length == command_delim_length || (part.offset == delim_state.offset && part.length + delim_state.match == command_delim_length)) {
                             dbg_infof("%s; 1/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", name().c_str(), delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                             delim_state.match = 0;
@@ -282,7 +282,7 @@ namespace s90 {
         if(is_closed()) [[unlikely]] {
             promise.resolve({true, ""});
         } else {
-            read_commands.emplace(read_command(promise.weak(), read_command_type::any, 0, ""));
+            read_commands.emplace(read_command(promise.weak(), read_command_type::any, 0, "", {}));
             if(read_buffer.size() > 0 && read_commands.size() == 1)
                 on_data("", true); // force the cycle if there is any previous remaining data to be read
         }
@@ -295,7 +295,7 @@ namespace s90 {
             promise.resolve({true, ""});
         } else {
             dbg_infof("%s; Insert READ %zu bytes command (%zu, %zu | %zu)\n", name().c_str(), n_bytes, read_buffer.size(), read_offset, read_commands.size());
-            read_commands.emplace(read_command(promise.weak(), read_command_type::n, n_bytes, ""));
+            read_commands.emplace(read_command(promise.weak(), read_command_type::n, n_bytes, "", {}));
             if(read_buffer.size() > 0 && read_commands.size() == 1)
                 on_data("", true); // force the cycle if there is any previous remaining data to be read
         }
@@ -307,7 +307,25 @@ namespace s90 {
         if(is_closed()) [[unlikely]] {
             promise.resolve({true, ""});
         } else {
-            read_commands.emplace(read_command(promise.weak(), read_command_type::until, 0, std::move(delim)));
+            std::vector<int64_t> pattern(delim.size() + 2, 0);
+            build_kmp(delim.data(), delim.length(), pattern.data());
+            read_commands.emplace(read_command(
+                promise.weak(), read_command_type::until, 0, std::move(delim), std::move(pattern)
+            ));
+            if(read_buffer.size() > 0 && read_commands.size() == 1)
+                on_data("", true); // force the cycle if there is any previous remaining data to be read
+        }
+        return promise;
+    }
+
+    aiopromise<read_arg> afd::read_until(std::string&& delim, int64_t *pattern_ref) {
+        auto promise = aiopromise<read_arg>();
+        if(is_closed()) [[unlikely]] {
+            promise.resolve({true, ""});
+        } else {
+            read_commands.emplace(read_command(
+                promise.weak(), read_command_type::until, 0, std::move(delim), {}, pattern_ref
+            ));
             if(read_buffer.size() > 0 && read_commands.size() == 1)
                 on_data("", true); // force the cycle if there is any previous remaining data to be read
         }

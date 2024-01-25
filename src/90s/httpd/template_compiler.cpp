@@ -180,7 +180,7 @@ namespace s90 {
                 // printf("begin replace between %s - %s (%zu)\n", start.c_str(), end.c_str(), data.length());
                 while(true) {
                     // printf("| replace between %s - %s\n", start.c_str(), end.c_str());
-                    auto match = kmp(data.c_str(), data.length(), start.data(), start.length(), offset);
+                    auto match = kmp(data.c_str(), data.length(), start.data(), start.length(), offset, NULL);
                     if(match.length != start.length()) {
                         auto new_outside_content =  outside(data.substr(offset, data.length() - offset));
                         // printf("> outside (%zu -> %zu)\n", data.length() - offset, new_outside_content.length());
@@ -190,7 +190,7 @@ namespace s90 {
                     auto new_outside_content = outside(data.substr(offset, match.offset - offset));
                     // printf("> outside/2 (%zu -> %zu)\n", match.offset - offset, new_outside_content.length());
                     out += new_outside_content;
-                    auto end_match = kmp(data.c_str(), data.length(), end.data(), end.length(), match.offset + start.length());
+                    auto end_match = kmp(data.c_str(), data.length(), end.data(), end.length(), match.offset + start.length(), NULL);
 
                     match.offset += start.length();
                     auto content = data.substr(match.offset, end_match.length != end.length() ? data.length() - match.offset : end_match.offset - match.offset);
