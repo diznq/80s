@@ -11,6 +11,10 @@ namespace s90 {
 
         typedef void*(*pfnloadpage)();
         typedef void(*pfnunloadwebpage)(void*);
+
+        typedef void**(*pfnloadpages)(size_t*);
+        typedef void(*pfnunloadwebpages)(void**,size_t);
+
         typedef void*(*pfninitialize)(icontext*,void*);
         typedef void*(*pfnrelease)(icontext*,void*);
 
@@ -56,6 +60,11 @@ namespace s90 {
                 pfnunloadwebpage unload = nullptr;
                 pfninitialize initialize = nullptr;
                 pfnrelease release = nullptr;
+                pfnloadpages load_pages = nullptr;
+                pfnunloadwebpages unload_pages = nullptr;
+
+                page** loaded_pages = nullptr;
+                size_t n_loaded_pages = 0;
             };
 
             struct loaded_page {

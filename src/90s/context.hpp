@@ -5,6 +5,8 @@
 #include "aiopromise.hpp"
 #include "sql/sql.hpp"
 #include "dns/dns.hpp"
+#include "mail/client.hpp"
+#include "mail/mail_storage.hpp"
 #include <memory>
 #include <expected>
 
@@ -118,7 +120,17 @@ namespace s90 {
         /// @return node info
         virtual node_id get_node_id() const = 0;
 
+        /// @brief Get DNS instance
+        /// @return DNS instance
         virtual ptr<dns::idns> get_dns() = 0;
+
+        /// @brief Get a new mail storage instance
+        /// @return instance
+        virtual ptr<mail::mail_storage> get_mail_storage() = 0;
+
+        /// @brief Get a new mail client
+        /// @return client
+        virtual ptr<mail::ismtp_client> get_smtp_client() = 0;
     };
 
     class context : public icontext {
@@ -174,5 +186,8 @@ namespace s90 {
         node_id get_node_id() const override;
 
         ptr<dns::idns> get_dns() override;
+
+        ptr<mail::mail_storage> get_mail_storage() override;
+        ptr<mail::ismtp_client> get_smtp_client() override;
     };
 }

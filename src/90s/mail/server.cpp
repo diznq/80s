@@ -31,7 +31,7 @@ namespace s90 {
             client = ptr_new<smtp_client>(ctx);
 
             if(config.sv_http_api) {
-                http_api = ptr_new<mail_http_api>(this);
+                http_api = ptr_new<mail_http_api>(ctx, get_config(), get_storage(), get_client());
             }
         }
 

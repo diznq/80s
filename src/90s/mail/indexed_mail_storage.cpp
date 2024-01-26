@@ -4,6 +4,7 @@
 #include "../util/util.hpp"
 #include "../util/regex.hpp"
 #include "../orm/json.hpp"
+#include "../context.hpp"
 #include "parser.hpp"
 #include <regex>
 #include <filesystem>
