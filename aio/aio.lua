@@ -1518,15 +1518,15 @@ function aio:cor2(target, event_handler, close_handler, callback)
     -- coroutine data iterator
     local provider = function()
         if data == nil then return end
-        return unpack(data)
+        return data
     end
 
     local running, ended, dead = false, false, false
 
     -- main event handler that resumes coroutine as events arrive and provides data for iterator
-    target[event_handler] = function(self, epfd, chdfd, ...)
+    target[event_handler] = function(self, epfd, chdfd, data_)
         if dead then return end
-        data = {...}
+        data = data_
 
         -- if coroutine finished it's job, unsubscribe the event handler
         local status = coroutine.status(cor)
