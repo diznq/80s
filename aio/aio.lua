@@ -27,6 +27,7 @@
 --- @field info fun(): string return build info and capabilities
 --- @field mkdir fun(dir_name: string): boolean create a directory, returns true if exists or on success
 --- @field mail fun(c_reload: lightuserdata, sender_worker_id: integer, sender_elfd: lightuserdata, sender_fd: lightuserdata, target_worker_id: integer, target_fd: lightuserdata, type: integer, message: string): boolean send mail to a different worker
+--- @field parse_http_headers fun(header: string): {[string]: string} parse HTTP headers
 net = net or {}
 
 --- @class crypto

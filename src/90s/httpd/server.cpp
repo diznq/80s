@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <80s/algo.h>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -27,6 +28,14 @@
 
 namespace s90 {
     namespace httpd {
+
+        std::vector<int64_t> init_rnrn() {
+            std::vector<int64_t> rnrn_b(8, 0);
+            build_kmp("\r\n\r\n", 4, rnrn_b.data());
+            return rnrn_b;
+        }
+
+        auto rnrn = init_rnrn();
 
         dict<std::string, httpd_server::loaded_lib> httpd_server::loaded_libs;
         std::mutex httpd_server::loaded_libs_lock;
@@ -249,6 +258,7 @@ namespace s90 {
         }
 
         aiopromise<nil> httpd_server::on_accept(ptr<iafd> fd) {
+            int64_t *rnrn_ref = rnrn.data();
             std::string peer_name;
             dict<std::string, page*>::iterator it;
             page *current_page = default_page;
@@ -280,7 +290,7 @@ namespace s90 {
             while(true) {
                 // implement basic HTTP loop by waiting until \r\n\r\n, parsing header and then
                 // optinally waiting for `n` bytes of the body
-                arg = co_await fd->read_until("\r\n\r\n");
+                arg = co_await fd->read_until("\r\n\r\n", rnrn_ref);
                 if(arg.error) co_return {};
 
                 pivot = arg.data.find("\r\n");

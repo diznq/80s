@@ -2,8 +2,28 @@
 #include <string.h>
 #include <stdint.h>
 
-kmp_result kmp(const char* haystack, size_t len, const char* pattern, size_t pattern_len, size_t offset) {
-    int64_t i, j, k, KMP_T[256];
+void build_kmp(const char *pattern, size_t pattern_len, int64_t *KMP_T) {
+    int64_t i, j;
+    // use Knuth-Morris-Pratt algorithm to find a partial substring in haystack with O(m+n) complexity
+    KMP_T[0] = -1;
+    j = 0;
+    i = 1;
+    while (i < (int64_t)pattern_len) {
+        if (pattern[i] == pattern[j]) {
+            KMP_T[i] = KMP_T[j];
+        } else {
+            KMP_T[i] = j;
+            while (j >= 0 && pattern[i] != pattern[j]) {
+                j = KMP_T[j];
+            }
+        }
+        i++, j++;
+    }
+    KMP_T[i] = j;
+}
+
+kmp_result kmp(const char* haystack, size_t len, const char* pattern, size_t pattern_len, size_t offset, int64_t *KMP_T) {
+    int64_t i, j, k, local_kmp_t[pattern_len + 2];
     kmp_result result;
     int match = 0;
     result.offset = len;
@@ -23,23 +43,11 @@ kmp_result kmp(const char* haystack, size_t len, const char* pattern, size_t pat
         return result;
     }
 
-    // use Knuth-Morris-Pratt algorithm to find a partial substring in haystack with O(m+n) complexity
-    KMP_T[0] = -1;
-    j = 0;
-    i = 1;
-    while (i < (int64_t)pattern_len) {
-        if (pattern[i] == pattern[j]) {
-            KMP_T[i] = KMP_T[j];
-        } else {
-            KMP_T[i] = j;
-            while (j >= 0 && pattern[i] != pattern[j]) {
-                j = KMP_T[j];
-            }
-        }
-        i++, j++;
+    if(KMP_T == NULL) {
+        KMP_T = local_kmp_t;
+        build_kmp(pattern, pattern_len, KMP_T);
     }
-    KMP_T[i] = j;
-
+    
     j = (int64_t)offset;
     k = 0;
     while (j < (int64_t)len) {
