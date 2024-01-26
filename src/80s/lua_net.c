@@ -520,6 +520,139 @@ static int l_net_popen(lua_State *L) {
     return 2;
 }
 
+static int l_net_parse_http_headers(lua_State *L) {
+    if(lua_gettop(L) < 1 || lua_type(L, 1) != LUA_TSTRING) {
+        return luaL_error(L, "expecting 1 argument: header (string)");
+    }
+    int64_t pattern[6];
+    kmp_result match;
+    size_t i = 0, len;
+    size_t offset = 0;
+    const char *header_key_begin, *header_key_end, *header_value_begin, *header_value_end,
+               *status_code_begin, *status_code_end, *status_message_begin, *status_message_end,
+               *status_http_begin, *status_http_end,
+               **current_ptr, *now;
+    char c;
+    int flushed = 0;
+    enum parse_state {
+        read_status_code, read_status_code_spaces_after,
+        read_status_message, read_status_message_spaces_after,
+        read_status_http_version,
+        read_header_end,
+        read_header_key, read_header_mid, read_header_value,
+    } current_state = read_status_code;
+    const char *text = lua_tolstring(L, 1, &len);
+
+    header_key_begin = header_key_end = header_value_begin = header_value_end
+                     = status_code_begin = status_code_end = status_message_begin = status_message_end
+                     = status_http_begin = status_http_end = now = text;
+
+    current_ptr = &status_code_end;
+
+    lua_createtable(L, 0, 0);
+    for(i=0; i < len; i++) {
+        now = text + i;
+        flushed = 0;
+        switch(*now) {
+            case '\r':
+            case '\n':
+                if(current_state == read_status_http_version) {
+                    lua_pushstring(L, ":method");
+                    lua_pushlstring(L, status_code_begin, status_code_end - status_code_begin + 1);
+                    lua_settable(L, -3);
+
+                    lua_pushstring(L, ":script");
+                    lua_pushlstring(L, status_message_begin, status_message_end - status_message_begin + 1);
+                    lua_settable(L, -3);
+
+                    lua_pushstring(L, ":http");
+                    lua_pushlstring(L, status_http_begin, status_http_end - status_http_begin + 1);
+                    lua_settable(L, -3);
+                    current_state = read_header_end;
+                }
+                break;
+            case ' ':
+                if(current_state == read_header_key) {
+                    header_key_end = now;
+                } else if(current_state == read_header_value) {
+                    header_value_end = now;
+                } else if(current_state == read_status_code) {
+                    current_state = read_status_code_spaces_after;
+                } else if(current_state == read_status_message) {
+                    current_state = read_status_message_spaces_after;
+                } else if(current_state == read_status_http_version) {
+                    status_http_end = now;
+                }
+                break;
+            case ':':
+                if(current_state == read_header_key) {
+                    current_state = read_header_mid;
+                } else if(current_state == read_header_value) {
+                    header_value_end = now;
+                } else if(current_state == read_status_code) {
+                    status_code_end = now;
+                } else if(current_state == read_status_message) {
+                    status_message_end = now;
+                } else if(current_state == read_status_http_version) {
+                    status_http_end = now;
+                } else if(current_state == read_status_code_spaces_after) {
+                    status_message_begin = status_message_end = now;
+                    current_state = read_status_message;
+                } else if(current_state == read_status_message_spaces_after) {
+                    status_http_begin = status_http_end = now;
+                    current_state = read_status_http_version;
+                }
+                break;
+            default:
+                if(current_state == read_header_end) {
+                    if(header_key_end - header_key_begin > 0 && header_value_end - header_value_begin > 0) {
+                        lua_pushlstring(L, header_key_begin, header_key_end - header_key_begin + 1);
+                        lua_pushlstring(L, header_value_begin, header_value_end - header_value_begin + 1);
+                        lua_settable(L, -3);
+                    }
+                    if(*now >= 'A' && *now <= 'Z') {
+                        *(char*)now = *now + 32;
+                    }
+                    header_key_begin = header_key_end = now;
+                    header_value_begin = header_value_end = header_key_begin;
+                    current_ptr = &header_key_end;
+                    current_state = read_header_key;
+                } else if(current_state == read_header_mid) {
+                    header_value_begin = header_value_end = now;
+                    current_ptr = &header_value_end;
+                    current_state = read_header_value;
+                } else if(current_state == read_header_value) {
+                    header_value_end = now;
+                } else if(current_state == read_header_key) {
+                    if(*now >= 'A' && *now <= 'Z') {
+                        *(char*)now = *now + 32;
+                    }
+                    header_key_end = now;
+                } else if(current_state == read_status_code) {
+                    status_code_end = now;
+                } else if(current_state == read_status_message) {
+                    status_message_end = now;
+                } else if(current_state == read_status_http_version) {
+                    status_http_end = now;
+                } else if(current_state == read_status_code_spaces_after) {
+                    status_message_begin = status_message_end = now;
+                    current_state = read_status_message;
+                } else if(current_state == read_status_message_spaces_after) {
+                    status_http_begin = status_http_end = now;
+                    current_state = read_status_http_version;
+                }
+                break;
+        }
+    }
+    if(header_key_end - header_key_begin > 0 && header_value_end - header_value_begin > 0) {
+        lua_pushlstring(L, header_key_begin, header_key_end - header_key_begin + 1);
+        lua_pushlstring(L, header_value_begin, header_value_end - header_value_begin + 1);
+        lua_settable(L, -3);
+    }
+
+    return 1;
+}
+
 static int l_net_info(lua_State *L) {
     char buf[500];
     dynstr str;
@@ -585,6 +718,7 @@ int luaopen_net(lua_State *L) {
         {"mkdir", l_net_mkdir},
         {"info", l_net_info},
         {"mail", l_net_mail},
+        {"parse_http_headers", l_net_parse_http_headers},
         {NULL, NULL}};
 #if LUA_VERSION_NUM > 501
     luaL_newlib(L, netlib);
