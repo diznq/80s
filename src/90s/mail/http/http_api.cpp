@@ -3,6 +3,8 @@
 #include "../../util/util.hpp"
 #include <ranges>
 
+extern "C" void** load_pages(size_t *no);
+
 namespace s90 {
     namespace mail {
 
