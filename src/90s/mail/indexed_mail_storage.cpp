@@ -463,7 +463,7 @@ namespace s90 {
                                     "dkim_domain, sender_address, sender_name, "
                                     "created_at, sent_at, delivered_at, seen_at, "
                                     "size, direction, status, security, "
-                                    "attachments, attachment_ids, formats) VALUES";
+                                    "attachments, attachment_ids, formats, flags) VALUES";
 
             std::string outbounding_query = 
                                 "INSERT INTO mail_outgoing_queue("
@@ -574,7 +574,8 @@ namespace s90 {
                     .security = (int)(mail->tls ? mail_security::tls : mail_security::none),
                     .attachments = (int)parsed.attachments.size(),
                     .attachment_ids = encoder.encode(parsed.attachments),
-                    .formats = parsed.formats
+                    .formats = parsed.formats,
+                    .flags = (int)parsed.flags
                 };
 
                 // determine the correct status for outbound mail
@@ -591,14 +592,14 @@ namespace s90 {
                                         "'{}', '{}', '{}', "
                                         "'{}', '{}', '{}', '{}',"
                                         "'{}', '{}', '{}', '{}',"
-                                        "'{}', '{}', '{}'"
+                                        "'{}', '{}', '{}', '{}"
                                     ")",
                                     db->escape(record.user_id), db->escape(record.message_id), db->escape(record.external_message_id), db->escape(record.thread_id), db->escape(record.in_reply_to), db->escape(record.return_path), db->escape(record.reply_to), db->escape(record.disk_path),
                                     db->escape(record.mail_from), db->escape(record.rcpt_to), db->escape(record.parsed_from), db->escape(record.folder), db->escape(record.subject), db->escape(record.indexable_text),
                                     db->escape(record.dkim_domain), db->escape(record.sender_address), db->escape(record.sender_name),
                                     db->escape(record.created_at), db->escape(record.sent_at), db->escape(record.delivered_at), db->escape(record.seen_at),
                                     db->escape(record.size), db->escape(record.direction), db->escape(record.status), db->escape(record.security),
-                                    db->escape(record.attachments), db->escape(record.attachment_ids), db->escape(record.formats)
+                                    db->escape(record.attachments), db->escape(record.attachment_ids), db->escape(record.formats), db->escape(record.flags)
                                     );
                 
                 stored_to_db++;

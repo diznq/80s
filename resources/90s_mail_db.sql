@@ -51,6 +51,7 @@ CREATE TABLE `mail_indexed` (
   `sender_name` text DEFAULT NULL,
   `reply_to` varchar(64) DEFAULT NULL,
   `attachment_ids` text DEFAULT NULL,
+  `flags` int DEFAULT 0,
   index (thread_id),
   index (ext_message_id),
   index (folder),
@@ -69,6 +70,7 @@ DROP TABLE IF EXISTS `mail_outgoing_queue`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `mail_outgoing_queue` (
   `user_id` bigint(20) NOT NULL,
+  `recipient_id` bigint(20) NOT NULL,
   `message_id` varchar(64) NOT NULL,
   `target_email` varchar(64) NOT NULL,
   `target_server` varchar(48) DEFAULT NULL,

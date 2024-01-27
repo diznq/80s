@@ -34,6 +34,11 @@ namespace s90 {
             html_text
         };
 
+        enum class mail_flags {
+            none,
+            internal
+        };
+
         struct mail_server_config : public orm::with_orm {
             std::string smtp_host = "localhost";
             std::string smtp_hosts = "localhost";
@@ -187,6 +192,7 @@ namespace s90 {
             size_t html_start = 0, html_end = 0;
             size_t text_start = 0, text_end = 0;
             std::vector<mail_attachment> attachments;
+            mail_flags flags;
         };
 
         struct mail_record : public orm::with_orm {
@@ -220,6 +226,7 @@ namespace s90 {
             int attachments;
             sql_text attachment_ids;
             int formats;
+            int flags;
             int thread_size = 1;
 
             orm::mapper get_orm() {
@@ -252,6 +259,7 @@ namespace s90 {
                     { "attachments", attachments },
                     { "attachment_ids", attachment_ids },
                     { "formats", formats },
+                    { "flags", flags },
                     { "thread_size", thread_size }
                 };
             }

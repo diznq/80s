@@ -559,7 +559,6 @@ namespace s90 {
                                             for(auto& [k, v] : result->delivery_errors) {
                                                 dbgf("mail delivery failed for %s: %s\n", k.c_str(), v.c_str());
                                             }
-                                            
                                         }
                                         // / detach in future
 
