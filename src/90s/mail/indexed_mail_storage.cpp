@@ -364,16 +364,21 @@ namespace s90 {
             }
 
             // verify if everyone has enough space in their mailbox
+            std::string full_mailboxes;
             for(auto& user : mail->to) {
                 if(!user.user) continue;
                 // if one sends e-mail to themselves, only keep the SENT version of it
                 if(user.email == mail->from.email && user.direction == (int)mail_direction::inbound) continue;
                 if(existing.find(user.user->user_id) != existing.end()) continue;
-                if(user.user->used_space + size_on_disk > user.user->quota) is_space_avail = false;
+                if(user.user->used_space + size_on_disk > user.user->quota) {
+                    if(full_mailboxes.length() != 0) full_mailboxes += ", ";
+                    full_mailboxes += user.email;
+                    is_space_avail = false;
+                }
             }
 
             if(!is_space_avail) {
-                co_return std::unexpected("mailbox of one or more recipients is full");
+                co_return std::unexpected("mailbox of the following users is full: " + full_mailboxes);
             }
 
             // recompute the affected users
@@ -406,7 +411,7 @@ namespace s90 {
                         failure = "storage error";
                     }
                     if(failure.length()) {
-                        co_return std::unexpected(failure);
+                        co_return std::unexpected("failed to create directories for user " + user.email);
                     }
                 }
 
@@ -430,7 +435,7 @@ namespace s90 {
                         fclose(f);
                         stored_to_disk++;
                     } else {
-                        co_return std::unexpected("failed to store e-mail on storage");
+                        co_return std::unexpected("failed to store e-mail on storage for " + user.email);
                     }
                 }
                 affected_users.insert(user.user->user_id);
@@ -589,7 +594,7 @@ namespace s90 {
             if(stored_to_db > 0) {
                 auto write_status = co_await db->exec(query);
                 if(!write_status) {
-                    co_return std::unexpected("failed to index the e-mail: " + write_status.error_message);
+                    co_return std::unexpected("failed to index the e-mail");
                 }
                 if(affected_users.size() > 0) {
                     auto update_status = co_await db->exec("UPDATE mail_users SET used_space=(SELECT SUM(mail_indexed.size) FROM mail_indexed WHERE mail_indexed.user_id = mail_users.user_id) WHERE mail_users.user_id IN ({})", affected_users);
@@ -635,7 +640,7 @@ namespace s90 {
             if(!ifs || !ifs.is_open()) {
                 auto del_result = co_await db->exec("DELETE FROM mail_outgoing_queue WHERE " + where);
                 if(!del_result) co_return std::unexpected("failed to delete deleted e-mail from queue");
-                co_return std::unexpected("mail doesn't exist anymore, dequeueing it");
+                co_return std::unexpected("mail doesn't exist anymore");
             }
 
             std::stringstream ss; ss << ifs.rdbuf(); ifs.close();
