@@ -497,10 +497,12 @@ namespace s90 {
                         if(params.subject->length() == 0) {
                             params.subject = "No subject";
                         }
-                        if(params.folder && params.folder->length() > 32) valid_folder = false;
-                        else if(params.folder) for(char c : *params.folder) {
-                            if(!((c >= 'a' && c <= 'z') || (c >= 'A' || c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' || c == '+' || c == ',' || c == '!')) {
-                                valid_folder = false;
+                        if(params.folder) {
+                            if(params.folder->length() > 32) valid_folder = false;
+                            else for(char c : *params.folder) {
+                                if(!((c >= 'a' && c <= 'z') || (c >= 'A' || c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' || c == '+' || c == ',' || c == '!')) {
+                                    valid_folder = false;
+                                }
                             }
                         }
                         if(!valid_folder) {
