@@ -457,13 +457,15 @@ namespace s90 {
                 orm::optional<std::string> text;
                 orm::optional<std::string> in_reply_to;
                 std::string content_type = "text/plain; charset=\"UTF-8\"";
+                std::string folder = "";
                 orm::mapper get_orm() {
                     return {
                         {"to", to},
                         {"subject", subject},
                         {"text", text},
                         {"in_reply_to", in_reply_to},
-                        {"content_type", content_type}
+                        {"content_type", content_type},
+                        {"folder", folder}
                     };
                 }
             };
@@ -492,15 +494,39 @@ namespace s90 {
                     error_response err;
                     auto params = env.form<input>();
                     if(params.to && params.subject && params.text) {
+                        bool valid_folder = true;
                         if(params.subject->length() == 0) {
                             params.subject = "No subject";
+                        }
+                        if(params.folder.length() > 32) valid_folder = false;
+                        else for(char c : params.folder) {
+                            if(!((c >= 'a' && c <= 'z') || (c >= 'A' || c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' || c == '+' || c == ',' || c == '!')) {
+                                valid_folder = false;
+                            }
+                        }
+                        if(!valid_folder) {
+                            env.status("400 Bad request");
+                            err.error = "invalid folder, folder can be max 32 characters long and consist of a - z, A- Z, 0 - 9, ., _, -, +, ! and ,";
+                            env.output()->write_json(err);
+                            co_return nil {};
                         }
                         std::string mail_envelope;
                         auto ctx = env.local_context<mail_http_api>();
                         auto storage = ctx->get_storage();
                         ptr<mail_knowledge> mail = ptr_new<mail_knowledge>();
                         
-                        mail->from = storage->parse_smtp_address("<" + user->email + ">");
+                        std::string_view from_mail = user->email;
+                        std::string_view user_name = from_mail.substr(0, from_mail.find('@'));
+                        std::string_view user_host = from_mail.substr(from_mail.find('@') + 1);
+                        if(params.folder.length() > 0) {
+                            params.folder += '@';
+                            params.folder += user_name;
+                            params.folder += '.';
+                            params.folder += user_host;
+                            mail->from = storage->parse_smtp_address("<" + params.folder + ">");
+                        } else {
+                            mail->from = storage->parse_smtp_address("<" + user->email + ">");
+                        }
                         mail->from.authenticated = true;
                         mail->from.direction = (int)mail_direction::outbound;
                         mail->from.user = *user;
