@@ -269,7 +269,11 @@ namespace s90 {
             auto folder = mail->created_at.ymd('/');
             uint64_t owner_id = 0;
             bool is_retry = outbounding && !mail->from.user;
-            auto msg_id = std::format("{}/{}-{}-{}", folder, mail->created_at.his('_'), id.id, counter++);
+            char rnd[10];
+            crypto_random(rnd, sizeof(rnd));
+            auto msg_id = mail->forced_message_id.empty()
+                            ? std::format("{}/{}-{}-{}", folder, mail->created_at.his('_'), id.id, util::to_hex(std::string_view(rnd, 10)))
+                            : mail->forced_message_id;
             
             if(outbounding) {
                 mail->data = "Message-ID: <" + msg_id + "@" + mail->from.original_email_server + ">\r\n" + mail->data;
@@ -672,6 +676,7 @@ namespace s90 {
             auto mail = ptr_new<mail_knowledge>();
             std::vector<std::string> recipients, local_recipients;
             size_t local_users = 0, local_users_found = 0;
+            mail->forced_message_id = rec->message_id;
             mail->from = parse_smtp_address("<" + rec->source_email + ">");
             
             for(auto& to : rec) {

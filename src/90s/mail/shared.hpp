@@ -341,6 +341,7 @@ namespace s90 {
             mail_parsed_user from;
             std::set<mail_parsed_user> to = {};
             std::string data = "";
+            std::string forced_message_id = "";
         };
     }
 }
