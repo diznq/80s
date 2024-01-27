@@ -334,18 +334,20 @@ namespace s90 {
             }
 
             dict<uint64_t, std::string> thread_ids;
+            dict<uint64_t, std::string> thread_folders;
             dict<uint64_t, std::string> existing;
 
             // check for existing threads
             if(affected_users.size() > 0 && parsed.in_reply_to.length() > 0) {
                 auto reply_ref = co_await db->select<mail_record>(
-                    "SELECT user_id, thread_id FROM mail_indexed WHERE user_id IN ({}) AND ext_message_id = '{}'",
+                    "SELECT user_id, thread_id, folder FROM mail_indexed WHERE user_id IN ({}) AND ext_message_id = '{}'",
                     affected_users,
                     parsed.in_reply_to
                 );
                 if(reply_ref) {
                     for(auto& row : reply_ref) {
                         thread_ids[row.user_id] = row.thread_id;
+                        thread_folders[row.user_id] = row.folder;
                     }
                 }
             }
@@ -527,9 +529,11 @@ namespace s90 {
                 if(existing.find(found_user->user_id) != existing.end()) continue;
 
                 std::string thread_id;
+                std::string folder = user.folder;
                 auto thread_it = thread_ids.find(found_user->user_id);
                 if(thread_it != thread_ids.end()) {
                     thread_id = thread_it->second;
+                    folder = thread_folders[found_user->user_id];
                 } else {
                     thread_id = parsed.external_message_id;
                 }
@@ -558,7 +562,7 @@ namespace s90 {
                     .mail_from = mail->from.original_email,
                     .rcpt_to = rcpt_to,
                     .parsed_from = parsed.from,
-                    .folder = user.folder,
+                    .folder = folder,
                     .subject = parsed.subject,
                     .indexable_text = parsed.indexable_text,
                     .dkim_domain = parsed.dkim_domain,
