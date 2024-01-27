@@ -592,7 +592,7 @@ namespace s90 {
                                         "'{}', '{}', '{}', "
                                         "'{}', '{}', '{}', '{}',"
                                         "'{}', '{}', '{}', '{}',"
-                                        "'{}', '{}', '{}', '{}"
+                                        "'{}', '{}', '{}', '{}'"
                                     ")",
                                     db->escape(record.user_id), db->escape(record.message_id), db->escape(record.external_message_id), db->escape(record.thread_id), db->escape(record.in_reply_to), db->escape(record.return_path), db->escape(record.reply_to), db->escape(record.disk_path),
                                     db->escape(record.mail_from), db->escape(record.rcpt_to), db->escape(record.parsed_from), db->escape(record.folder), db->escape(record.subject), db->escape(record.indexable_text),
