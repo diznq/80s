@@ -1,8 +1,9 @@
-#include "../shared.hpp"
 #include "http_api.hpp"
 #include "../parser.hpp"
 #include "../../util/util.hpp"
 #include <ranges>
+
+extern "C" void** load_pages(size_t *no);
 
 namespace s90 {
     namespace mail {
@@ -55,7 +56,7 @@ namespace s90 {
                 if(req.name && req.password) {
                     mail_session sess;
                     sess.client_info = env.peer();
-                    auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
+                    auto ctx = env.local_context<mail_http_api>()->get_storage();
                     auto user = co_await ctx->login(*req.name, *req.password, sess);
                     error_response err; 
                     if(user) {
@@ -120,7 +121,7 @@ namespace s90 {
                                 uint64_t user_id = 0;
                                 auto conv_result = std::from_chars(user_id_str.c_str(), user_id_str.c_str() + user_id_str.length(), user_id, 10);
                                 if(conv_result.ec == std::errc() && conv_result.ptr == user_id_str.c_str() + user_id_str.length()) {
-                                    auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
+                                    auto ctx = env.local_context<mail_http_api>()->get_storage();
                                     if(env.method() != "POST" || std::to_string(user_id) == *user_id_csrf) {
                                         auto db_user = co_await ctx->get_user(session_id, user_id);
                                         if(db_user) {
@@ -202,7 +203,7 @@ namespace s90 {
                 auto user = co_await verify_login(env);
                 if(user) {
                     response resp;
-                    auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
+                    auto ctx = env.local_context<mail_http_api>()->get_storage();
                     auto query = env.query<input>();
                     auto db_response = co_await ctx->get_inbox(
                         user->user_id, query.folder, query.message_id, query.thread_id, query.direction, query.compact, query.page.or_else(1), query.per_page.or_else(25)
@@ -256,7 +257,7 @@ namespace s90 {
                 auto user = co_await verify_login(env);
                 if(user) {
                     response resp;
-                    auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
+                    auto ctx = env.local_context<mail_http_api>()->get_storage();
                     auto query = env.query<input>();
                     auto db_response = co_await ctx->get_folder_info(
                         user->user_id, query.folder, query.direction
@@ -305,7 +306,7 @@ namespace s90 {
                 auto user = co_await verify_login(env);
                 if(user) {
                     error_response err;
-                    auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
+                    auto ctx = env.local_context<mail_http_api>()->get_storage();
                     auto query = env.query<input>();
                     if(!query.message_id) {
                         env.content_type("application/json; charset=\"utf-8\"");
@@ -380,7 +381,7 @@ namespace s90 {
                 if(user) {
                     mail_action action = mail_action::set_seen;
                     error_response err;
-                    auto ctx = env.local_context<mail_http_api>()->get_smtp()->get_storage();
+                    auto ctx = env.local_context<mail_http_api>()->get_storage();
                     auto query = env.form<input>();
                     std::vector<std::string> message_ids;
                     if(query.action == "seen") {
@@ -496,10 +497,10 @@ namespace s90 {
                         }
                         std::string mail_envelope;
                         auto ctx = env.local_context<mail_http_api>();
-                        auto storage = ctx->get_smtp()->get_storage();
+                        auto storage = ctx->get_storage();
                         ptr<mail_knowledge> mail = ptr_new<mail_knowledge>();
                         
-                        mail->from = parse_smtp_address("<" + user->email + ">", ctx->get_smtp()->get_config());
+                        mail->from = parse_smtp_address("<" + user->email + ">", ctx->get_config());
                         mail->from.authenticated = true;
                         mail->from.direction = (int)mail_direction::outbound;
                         mail->from.user = *user;
@@ -510,7 +511,7 @@ namespace s90 {
                             mail_envelope += "In-Reply-To: <" + *params.in_reply_to + ">\r\n";
                         }
 
-                        auto to_parsed = parse_smtp_address(*params.to, ctx->get_smtp()->get_config());
+                        auto to_parsed = parse_smtp_address(*params.to, ctx->get_config());
                         if(to_parsed) {
                             auto to_user = co_await storage->get_user_by_email(to_parsed.email);
                             if(!to_user && to_parsed.local) {
@@ -549,7 +550,7 @@ namespace s90 {
                                         auto result = co_await storage->deliver_message(
                                             store_result->owner_id,
                                             store_result->message_id,
-                                            ctx->get_smtp()->get_client()
+                                            ctx->get_smtp_client()
                                         );
                                         if(!result) {
                                             dbgf("mail delivery failure: %s\n", result.error().c_str()); 
@@ -623,34 +624,66 @@ namespace s90 {
             }
         };
 
-        mail_http_api::mail_http_api(smtp_server *parent) : parent(parent) {
-            httpd::httpd_config cfg = httpd::httpd_config::env();
-            cfg.initializer = [this](icontext *ctx, void*) { return this; };
+        mail_http_api::mail_http_api(icontext *ctx) : ctx(ctx) {
+            cfg = mail_server_config::env();
+            storage = ctx->get_mail_storage();
+            client = ctx->get_smtp_client();
+        }
 
-            cfg.pages = {
+        mail_http_api::mail_http_api(icontext *ctx, mail_server_config cfg, ptr<mail::mail_storage> storage, ptr<mail::ismtp_client> client) : ctx(ctx), cfg(cfg), storage(storage), client(client) {
+            httpd::httpd_config httpd_cfg = httpd::httpd_config::env();
+            httpd_cfg.initializer = [this](icontext *ctx, void*) { return this; };
+
+            httpd_cfg.pages = {
                 new login_page, new inbox_page, new object_page, new me_page, 
                 new alter_page, new folders_page, new new_mail_page,
                 new csrf_page
             };
 
-            http_base = ptr_new<httpd::httpd_server>(parent->get_context(), cfg);
+            http_base = ptr_new<httpd::httpd_server>(ctx, httpd_cfg);
         }
 
         aiopromise<nil> mail_http_api::on_accept(ptr<iafd> fd) {
-            co_return co_await http_base->on_accept(fd);
+            if(http_base)
+                co_return co_await http_base->on_accept(fd);
         }
         
         void mail_http_api::on_load() {
-            http_base->on_load();
+            if(http_base)
+                http_base->on_load();
         }
         
         void mail_http_api::on_pre_refresh() {
-            http_base->on_pre_refresh();
-
+            if(http_base)
+                http_base->on_pre_refresh();
         }
         
         void mail_http_api::on_refresh() {
-            http_base->on_refresh();
+            if(http_base)
+                http_base->on_refresh();
         }
+    }
+}
+
+extern "C" {
+    void* initialize(s90::icontext *ctx, void *previous) {
+        if(previous) return previous;
+        return new s90::mail::mail_http_api(ctx);
+    }
+
+    void* release(s90::icontext *ctx, void *current) {
+        return current;
+    }
+
+    using namespace s90::mail;
+    void** load_pages(size_t *no) {
+        typedef s90::httpd::page* ppage;
+        s90::httpd::page **pages = new ppage[] {
+            new login_page, new inbox_page, new object_page, new me_page, 
+            new alter_page, new folders_page, new new_mail_page,
+            new csrf_page
+        };
+        *no = 8;
+        return (void**)pages;
     }
 }

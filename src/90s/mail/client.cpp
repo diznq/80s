@@ -1,5 +1,6 @@
 #include "client.hpp"
 #include "../util/util.hpp"
+#include "../context.hpp"
 #include <string>
 #include <vector>
 

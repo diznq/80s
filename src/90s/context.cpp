@@ -1,6 +1,8 @@
 #include <80s/crypto.h>
 #include "context.hpp"
 #include "sql/mysql.hpp"
+#include "mail/indexed_mail_storage.hpp"
+#include "mail/client.hpp"
 
 #include "dns/doh.hpp"
 
@@ -294,5 +296,12 @@ namespace s90 {
         if(DNS_PROVIDER == NULL) DNS_PROVIDER = "dns.google";
         dns_provider = ptr_new<dns::doh>(this, DNS_PROVIDER);
         return dns_provider;
+    }
+
+    ptr<mail::mail_storage> context::get_mail_storage() {
+        return ptr_new<mail::indexed_mail_storage>(this, mail::mail_server_config::env());
+    }
+    ptr<mail::ismtp_client> context::get_smtp_client() {
+        return ptr_new<mail::smtp_client>(this);
     }
 }

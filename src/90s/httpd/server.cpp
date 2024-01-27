@@ -194,6 +194,11 @@ namespace s90 {
                 if(it->second.webpage) {
                     pages[it->second.webpage->name()] = {it->second.webpage, true};
                 }
+                if(it->second.load_pages) {
+                    for(size_t i=0; i<it->second.n_loaded_pages; i++) {
+                        pages[it->second.loaded_pages[i]->name()] = {it->second.loaded_pages[i], true};
+                    }
+                }
                 if(it->second.initialize) {
                     local_context = it->second.initialize(global_context, local_context);
                 }
@@ -203,12 +208,15 @@ namespace s90 {
                 if(hLib != DL_INVALID){
                     pfnloadpage loader = (pfnloadpage)DL_FIND(hLib, "load_page");
                     pfnunloadwebpage unloader = (pfnunloadwebpage)DL_FIND(hLib, "unload_page");
+                    pfnloadpages loader_n = (pfnloadpages)DL_FIND(hLib, "load_pages");
+                    pfnunloadwebpages unloader_n = (pfnunloadwebpages)DL_FIND(hLib, "unload_pages");
                     pfninitialize initializer = (pfninitialize)DL_FIND(hLib, "initialize");
                     pfnrelease releaser = (pfnrelease)DL_FIND(hLib, "release");
-                    page* webpage = nullptr;
+                    page* webpage = nullptr, **webpages;
+                    size_t no_web_pages;
 
                     // if there is no procedures, don't load it
-                    if(loader == NULL && unloader == NULL && initializer == NULL && releaser == NULL) {
+                    if(loader == NULL && unloader == NULL && initializer == NULL && releaser == NULL && loader_n == NULL && unloader_n == NULL) {
                         DL_CLOSE(hLib);
                         return;
                     }
@@ -217,13 +225,24 @@ namespace s90 {
                         webpage = (page*)loader();
                         pages[webpage->name()] = {webpage, true};
                     }
+
+                    if(loader_n) {
+                        webpages = (page**)loader_n(&no_web_pages);
+                        for(size_t i=0; i<no_web_pages; i++) {
+                            pages[webpages[i]->name()] = {webpages[i], true};
+                        }
+                    }
+
                     if(initializer) {
                         local_context = initializer(global_context, local_context);
                     }
+                    
                     loaded_libs[name] = {
                         hLib, webpage, 1,
                         loader, unloader,
-                        initializer, releaser
+                        initializer, releaser,
+                        loader_n, unloader_n,
+                        webpages, no_web_pages
                     };
                 }
             }
@@ -243,6 +262,7 @@ namespace s90 {
                 if(it->second.references == 0) {
                     std::cout << "unloading library " << it->first << std::endl;
                     if(it->second.unload) it->second.unload((void*)page_it->second.webpage);
+                    if(it->second.unload_pages) it->second.unload_pages((void**)it->second.loaded_pages, it->second.n_loaded_pages);
                     DL_CLOSE(it->second.lib);
                     it = loaded_libs.erase(it);
                 } else {

@@ -11,6 +11,8 @@ private/
 /mail
 *.env.sh
 *.local.*
+*.so
+*.dll
 
 src/90s/httpd/pages/*.html.hpp
 src/90s/httpd/pages/*.html.cpp

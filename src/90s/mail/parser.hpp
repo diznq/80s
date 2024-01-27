@@ -1,6 +1,6 @@
 #pragma once
 #include "shared.hpp"
-
+#include <expected>
 
 namespace s90 {
     namespace mail {
