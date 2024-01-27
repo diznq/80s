@@ -451,13 +451,12 @@ namespace s90 {
         class new_mail_page : public authenticated_page {
             struct input : public orm::with_orm {
                 WITH_ID;
-
+                orm::optional<std::string> folder;
                 orm::optional<std::string> to;
                 orm::optional<std::string> subject;
                 orm::optional<std::string> text;
                 orm::optional<std::string> in_reply_to;
                 std::string content_type = "text/plain; charset=\"UTF-8\"";
-                std::string folder = "";
                 orm::mapper get_orm() {
                     return {
                         {"to", to},
@@ -498,8 +497,8 @@ namespace s90 {
                         if(params.subject->length() == 0) {
                             params.subject = "No subject";
                         }
-                        if(params.folder.length() > 32) valid_folder = false;
-                        else for(char c : params.folder) {
+                        if(params.folder && params.folder->length() > 32) valid_folder = false;
+                        else if(params.folder) for(char c : *params.folder) {
                             if(!((c >= 'a' && c <= 'z') || (c >= 'A' || c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' || c == '+' || c == ',' || c == '!')) {
                                 valid_folder = false;
                             }
@@ -516,21 +515,23 @@ namespace s90 {
                         ptr<mail_knowledge> mail = ptr_new<mail_knowledge>();
                         
                         std::string_view from_mail = user->email;
-                        std::string_view user_name = from_mail.substr(0, from_mail.find('@'));
-                        std::string_view user_host = from_mail.substr(from_mail.find('@') + 1);
-                        if(params.folder.length() > 0) {
-                            params.folder += '@';
-                            params.folder += user_name;
-                            params.folder += '.';
-                            params.folder += user_host;
-                            mail->from = storage->parse_smtp_address("<" + params.folder + ">");
+                        auto at_split = from_mail.find('@');
+                        if(params.folder && params.folder->length() > 0 && at_split != std::string::npos) {
+                            std::string_view user_name = from_mail.substr(0, at_split);
+                            std::string_view user_host = from_mail.substr(at_split + 1);
+                            std::string new_mail = *params.folder;
+                            new_mail += '@';
+                            new_mail += user_name;
+                            new_mail += '.';
+                            new_mail += user_host;
+                            mail->from = storage->parse_smtp_address("<" + new_mail + ">");
                         } else {
                             mail->from = storage->parse_smtp_address("<" + user->email + ">");
                         }
                         mail->from.authenticated = true;
                         mail->from.direction = (int)mail_direction::outbound;
                         mail->from.user = *user;
-                        mail_envelope += "From: =?UTF-8?Q?" + storage->quoted_printable(user->email, true, -1, true) + "?=\r\n";
+                        mail_envelope += "From: =?UTF-8?Q?" + storage->quoted_printable(mail->from.original_email, true, -1, true) + "?=\r\n";
                         mail_envelope += "Subject: =?UTF-8?Q?" + storage->quoted_printable(*params.subject, false, -1, true) + "?=\r\n";
 
                         if(params.in_reply_to && params.in_reply_to->find_first_of("\r\n<>") == std::string::npos) {
