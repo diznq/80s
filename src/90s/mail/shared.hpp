@@ -273,7 +273,8 @@ namespace s90 {
         };
 
         struct mail_outgoing_record : public orm::with_orm {
-            size_t user_id;
+            uint64_t user_id;
+            uint64_t recipient_id;
             varstr<64> message_id;
             varstr<64> target_email;
             varstr<48> target_server;
@@ -282,13 +283,14 @@ namespace s90 {
             int status;
             orm::datetime last_retried_at;
             int retries;
-            size_t session_id;
+            uint64_t session_id;
             int locked;
             sql_text reason;
 
             orm::mapper get_orm() {
                 return {
                     { "user_id", user_id },
+                    { "recipient_id", recipient_id },
                     { "message_id", message_id },
                     { "target_email", target_email },
                     { "source_email", source_email },
@@ -308,6 +310,7 @@ namespace s90 {
             std::string message_id;
             std::vector<mail_parsed_user> outside;
             std::vector<uint64_t> inside;
+            std::set<uint64_t> inside_failed;
         };
 
         struct mail_delivery_result {

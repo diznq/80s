@@ -580,25 +580,6 @@ namespace s90 {
             };
         }
 
-        std::string enforce_crlf(std::string_view eml) {
-            std::stringstream ss;
-            bool r_before = false;
-            for(char c : eml) {
-                if(c == '\n') {
-                    if(!r_before) ss.put('\r');
-                    r_before = false;
-                    ss.put('\n');
-                } else if(c == '\r') {
-                    r_before = true;
-                    ss.put(c);
-                } else {
-                    r_before = false;
-                    ss.put(c);
-                }
-            }
-            return ss.str();
-        }
-
         std::expected<std::string, std::string> sign_with_dkim(std::string_view eml, const char *privkey, std::string_view dkim_domain, std::string_view dkim_selector) {
             auto pivot = eml.find("\r\n\r\n");
             std::string_view header = eml, body;
