@@ -667,10 +667,10 @@ namespace s90 {
             auto mail = ptr_new<mail_knowledge>();
             std::vector<std::string> recipients, local_recipients;
             size_t local_users = 0, local_users_found = 0;
-            mail->from = parse_smtp_address("<" + rec->source_email + ">", config);
+            mail->from = parse_smtp_address("<" + rec->source_email + ">");
             
             for(auto& to : rec) {
-                auto recip = parse_smtp_address("<" + rec->target_email + ">", config);
+                auto recip = parse_smtp_address("<" + rec->target_email + ">");
                 if(rec->recipient_id != 0) {
                     local_users++;
                     id_to_mail[rec->recipient_id] = rec->target_email;
@@ -787,6 +787,14 @@ namespace s90 {
             co_return mail_delivery_result {
                 .delivery_errors = std::move(result)
             };
+        }
+
+        mail_parsed_user indexed_mail_storage::parse_smtp_address(std::string_view addr) {
+            return mail::parse_smtp_address(addr, config);
+        }
+
+        std::string indexed_mail_storage::quoted_printable(std::string_view text, bool replace_underscores, unsigned max_line, bool header) {
+            return q_encoder(text, replace_underscores, max_line, header);
         }
     }
 }

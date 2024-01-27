@@ -28,7 +28,7 @@ namespace s90 {
         /// @param max_line max line length
         /// @param header true if header value
         /// @return encoded string
-        std::string q_encoder(const std::string text, bool replace_underscores = false, unsigned max_line = -1, bool header = false);
+        std::string q_encoder(std::string_view text, bool replace_underscores = false, unsigned max_line = -1, bool header = false);
 
         /// @brief Parse message ID from header value
         /// @param id header value

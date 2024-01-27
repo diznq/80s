@@ -31,6 +31,9 @@ namespace s90 {
             aiopromise<std::expected<sql::sql_result<mail_folder_info>, std::string>> get_folder_info(uint64_t user_id, orm::optional<std::string> folder, orm::optional<int> direction) override;
 
             aiopromise<std::expected<uint64_t, std::string>> alter(uint64_t user_id, std::string email, std::vector<std::string> message_ids, mail_action action) override;
+
+            mail_parsed_user parse_smtp_address(std::string_view addr) override;
+            std::string quoted_printable(std::string_view text, bool replace_underscores = false, unsigned max_line = -1, bool header = false) override;
         };
 
         mail_parsed parse_mail(std::string_view message_id, std::string_view data);

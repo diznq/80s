@@ -105,7 +105,7 @@ namespace s90 {
             }
         }
 
-        std::string q_encoder(const std::string text, bool replace_underscores, unsigned max_line, bool header) {
+        std::string q_encoder(std::string_view text, bool replace_underscores, unsigned max_line, bool header) {
             std::string output;
             unsigned line_length = 0;
             for(char c : text) {
