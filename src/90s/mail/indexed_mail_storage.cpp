@@ -268,7 +268,12 @@ namespace s90 {
             node_id id = global_context->get_node_id();
             auto folder = mail->created_at.ymd('/');
             uint64_t owner_id = 0;
-            auto msg_id = std::format("{}/{}-{}-{}", folder, mail->created_at.his('_'), id.id, counter++);
+            bool is_retry = outbounding && !mail->from.user;
+            char rnd[10];
+            crypto_random(rnd, sizeof(rnd));
+            auto msg_id = mail->forced_message_id.empty()
+                            ? std::format("{}/{}-{}-{}", folder, mail->created_at.his('_'), id.id, util::to_hex(std::string_view(rnd, 10)))
+                            : mail->forced_message_id;
             
             if(outbounding) {
                 mail->data = "Message-ID: <" + msg_id + "@" + mail->from.original_email_server + ">\r\n" + mail->data;
@@ -333,18 +338,20 @@ namespace s90 {
             }
 
             dict<uint64_t, std::string> thread_ids;
+            dict<uint64_t, std::string> thread_folders;
             dict<uint64_t, std::string> existing;
 
             // check for existing threads
             if(affected_users.size() > 0 && parsed.in_reply_to.length() > 0) {
                 auto reply_ref = co_await db->select<mail_record>(
-                    "SELECT user_id, thread_id FROM mail_indexed WHERE user_id IN ({}) AND ext_message_id = '{}'",
+                    "SELECT user_id, thread_id, folder FROM mail_indexed WHERE user_id IN ({}) AND ext_message_id = '{}'",
                     affected_users,
                     parsed.in_reply_to
                 );
                 if(reply_ref) {
                     for(auto& row : reply_ref) {
                         thread_ids[row.user_id] = row.thread_id;
+                        thread_folders[row.user_id] = row.folder;
                     }
                 }
             }
@@ -364,7 +371,10 @@ namespace s90 {
             }
 
             // verify if everyone has enough space in their mailbox
+            bool me_enough_space = true;
             std::string full_mailboxes;
+            std::set<uint64_t> not_enough_space;
+            std::vector<std::pair<uint64_t, std::string>> full_internals;
             for(auto& user : mail->to) {
                 if(!user.user) continue;
                 // if one sends e-mail to themselves, only keep the SENT version of it
@@ -372,13 +382,22 @@ namespace s90 {
                 if(existing.find(user.user->user_id) != existing.end()) continue;
                 if(user.user->used_space + size_on_disk > user.user->quota) {
                     if(full_mailboxes.length() != 0) full_mailboxes += ", ";
-                    full_mailboxes += user.email;
+                    if(outbounding && user.email == mail->from.email && user.direction == (int)mail_direction::outbound) {
+                        me_enough_space = false;
+                    }
+                    full_internals.push_back(std::make_pair(user.user->user_id, user.original_email));
+                    full_mailboxes += user.original_email;
+                    not_enough_space.insert(user.user->user_id);
                     is_space_avail = false;
                 }
             }
 
             if(!is_space_avail) {
-                co_return std::unexpected("mailbox of the following users is full: " + full_mailboxes);
+                if(outbounding && !me_enough_space) {
+                    co_return std::unexpected("your mailbox is full");
+                } else if(!outbounding) {
+                    co_return std::unexpected("mailbox of the following users is full: " + full_mailboxes);
+                }
             }
 
             // recompute the affected users
@@ -398,6 +417,7 @@ namespace s90 {
                     continue;
                 }
                 if(existing.find(user.user->user_id) != existing.end()) continue;
+                if(outbounding && not_enough_space.contains(user.user->user_id)) continue;
 
                 inside.push_back(user.user->user_id);
 
@@ -449,11 +469,11 @@ namespace s90 {
                                     "dkim_domain, sender_address, sender_name, "
                                     "created_at, sent_at, delivered_at, seen_at, "
                                     "size, direction, status, security, "
-                                    "attachments, attachment_ids, formats) VALUES";
+                                    "attachments, attachment_ids, formats, flags) VALUES";
 
             std::string outbounding_query = 
                                 "INSERT INTO mail_outgoing_queue("
-                                    "user_id, message_id, target_email, target_server, "
+                                    "user_id, recipient_id, message_id, target_email, target_server, "
                                     "disk_path, status, last_retried_at, retries, "
                                     "source_email, "
                                     "session_id, locked, reason) VALUES";
@@ -471,12 +491,13 @@ namespace s90 {
                 const auto& found_user = user.user;
                 // if one sends e-mail to themselves, only keep the SENT version of it
                 if(user.email == mail->from.email && user.direction == (int)mail_direction::inbound) continue;
-                if(!found_user) {
+                if(!found_user || (outbounding && not_enough_space.contains(user.user->user_id))) {
                     // if recipient is not within this server, but sender is within this server, it means
                     // that this e-mail is outbound to somewhere else
-                    if(outbounding && user.direction == (int)mail_direction::inbound && mail->from.user && !user.local) {
+                    if(outbounding && user.direction == (int)mail_direction::inbound && mail->from.user && (!user.local || (found_user && not_enough_space.contains(user.user->user_id)))) {
                         mail_outgoing_record outgoing_record = {
                             .user_id = mail->from.user->user_id,
+                            .recipient_id = found_user ? user.user->user_id : 0,
                             .message_id = msg_id,
                             .target_email= user.original_email,
                             .target_server = user.original_email_server,
@@ -487,18 +508,18 @@ namespace s90 {
                             .retries = 0,
                             .session_id = 0,
                             .locked = 0,
-                            .reason = ""
+                            .reason = user.local ? "not enough space" : ""
                         };
 
                         if(outgoing_count > 0) outbounding_query += ',';
                         outbounding_query += std::format(
                             "("
-                            "'{}', '{}', '{}', '{}', "
+                            "'{}', '{}', '{}', '{}', '{}', "
                             "'{}', '{}', '{}', '{}', "
                             "'{}', "
                             "'{}', '{}', '{}'"
                             ")",
-                            db->escape(outgoing_record.user_id), db->escape(outgoing_record.message_id), db->escape(outgoing_record.target_email), db->escape(outgoing_record.target_server),
+                            db->escape(outgoing_record.user_id), db->escape(outgoing_record.recipient_id), db->escape(outgoing_record.message_id), db->escape(outgoing_record.target_email), db->escape(outgoing_record.target_server),
                             db->escape(outgoing_record.disk_path), db->escape(outgoing_record.status), db->escape(outgoing_record.last_retried_at), db->escape(outgoing_record.retries),
                             db->escape(outgoing_record.source_email),
                             db->escape(outgoing_record.session_id), db->escape(outgoing_record.locked), db->escape(outgoing_record.reason)
@@ -512,9 +533,11 @@ namespace s90 {
                 if(existing.find(found_user->user_id) != existing.end()) continue;
 
                 std::string thread_id;
+                std::string folder = user.folder;
                 auto thread_it = thread_ids.find(found_user->user_id);
                 if(thread_it != thread_ids.end()) {
                     thread_id = thread_it->second;
+                    folder = thread_folders[found_user->user_id];
                 } else {
                     thread_id = parsed.external_message_id;
                 }
@@ -543,7 +566,7 @@ namespace s90 {
                     .mail_from = mail->from.original_email,
                     .rcpt_to = rcpt_to,
                     .parsed_from = parsed.from,
-                    .folder = user.folder,
+                    .folder = folder,
                     .subject = parsed.subject,
                     .indexable_text = parsed.indexable_text,
                     .dkim_domain = parsed.dkim_domain,
@@ -559,15 +582,16 @@ namespace s90 {
                     .security = (int)(mail->tls ? mail_security::tls : mail_security::none),
                     .attachments = (int)parsed.attachments.size(),
                     .attachment_ids = encoder.encode(parsed.attachments),
-                    .formats = parsed.formats
+                    .formats = parsed.formats,
+                    .flags = (int)parsed.flags
                 };
 
                 // determine the correct status for outbound mail
-                if(user.direction == (int)mail_direction::outbound && users_outside.size() > 0) {
+                if(user.direction == (int)mail_direction::outbound && (users_outside.size() > 0 || not_enough_space.size() > 0)) {
                     // if at least one of the users is outside of the internal DB
                     // set the status to sent, as it is not yet 100% delivered
                     record.status = (int)mail_status::sent;
-                }
+                } 
 
                 if(stored_to_db > 0) query += ',';
                 query += std::format("("
@@ -576,14 +600,14 @@ namespace s90 {
                                         "'{}', '{}', '{}', "
                                         "'{}', '{}', '{}', '{}',"
                                         "'{}', '{}', '{}', '{}',"
-                                        "'{}', '{}', '{}'"
+                                        "'{}', '{}', '{}', '{}'"
                                     ")",
                                     db->escape(record.user_id), db->escape(record.message_id), db->escape(record.external_message_id), db->escape(record.thread_id), db->escape(record.in_reply_to), db->escape(record.return_path), db->escape(record.reply_to), db->escape(record.disk_path),
                                     db->escape(record.mail_from), db->escape(record.rcpt_to), db->escape(record.parsed_from), db->escape(record.folder), db->escape(record.subject), db->escape(record.indexable_text),
                                     db->escape(record.dkim_domain), db->escape(record.sender_address), db->escape(record.sender_name),
                                     db->escape(record.created_at), db->escape(record.sent_at), db->escape(record.delivered_at), db->escape(record.seen_at),
                                     db->escape(record.size), db->escape(record.direction), db->escape(record.status), db->escape(record.security),
-                                    db->escape(record.attachments), db->escape(record.attachment_ids), db->escape(record.formats)
+                                    db->escape(record.attachments), db->escape(record.attachment_ids), db->escape(record.formats), db->escape(record.flags)
                                     );
                 
                 stored_to_db++;
@@ -616,11 +640,12 @@ namespace s90 {
                 .owner_id = owner_id,
                 .message_id = msg_id,
                 .outside = std::move(users_outside),
-                .inside = std::move(inside)
+                .inside = std::move(inside),
+                .inside_failed = std::move(not_enough_space)
             };
         }
 
-        aiopromise<std::expected<mail_delivery_result, std::string>> indexed_mail_storage::deliver_message(uint64_t user_id, std::string message_id, ptr<ismtp_client> client) {
+        aiopromise<std::expected<mail_delivery_result, std::string>> indexed_mail_storage::deliver_message(uint64_t user_id, std::string message_id, ptr<ismtp_client> client, bool try_local) {
             auto db = co_await get_db();
             dbgf("[deliver %zu/%s] began\n", user_id, message_id.c_str()); 
 
@@ -645,14 +670,53 @@ namespace s90 {
 
             std::stringstream ss; ss << ifs.rdbuf(); ifs.close();
 
+            dict<std::string, std::string> local_result;
+            dict<uint64_t, std::string> id_to_mail;
+            std::set<mail_parsed_user> out_users, in_users;
             auto mail = ptr_new<mail_knowledge>();
-            std::vector<std::string> recipients;
-            mail->from = parse_smtp_address("<" + rec->source_email + ">", config);
+            std::vector<std::string> recipients, local_recipients;
+            size_t local_users = 0, local_users_found = 0;
+            mail->forced_message_id = rec->message_id;
+            mail->from = parse_smtp_address("<" + rec->source_email + ">");
             
             for(auto& to : rec) {
-                auto recip = parse_smtp_address(rec->target_email, config);
-                recipients.push_back(rec->target_email);
-                mail->to.insert(std::move(recip));
+                auto recip = parse_smtp_address("<" + rec->target_email + ">");
+                if(rec->recipient_id != 0) {
+                    local_users++;
+                    id_to_mail[rec->recipient_id] = rec->target_email;
+                    auto local_user = co_await get_user_by_email(recip.email);
+                    if(!local_user) {
+                        dbgf("local user %s not found: %s\n", rec->target_email.c_str(), local_user.error().c_str());
+                        local_result[rec->target_email] = "user not found";
+                    } else {
+                        dbgf("local user %s found\n", rec->target_email.c_str());
+                        local_users_found++;
+                        recip.user = *local_user;
+                        in_users.insert(std::move(recip));
+                        local_recipients.push_back(rec->target_email);
+                    }
+                } else {
+                    recipients.push_back(rec->target_email);
+                    out_users.insert(std::move(recip));
+                }
+            }
+
+            if(local_users_found > 0 && try_local) {
+                dbgf("there are total %zu local users\n", local_users_found);
+                mail->data = ss.str();
+                mail->to = std::move(in_users);
+                auto store_result = co_await store_mail(mail, true);
+                if(!store_result) {
+                    for(auto& [k, v] : id_to_mail) {
+                        dbgf("mail delivery failed globally for %s: %s\n", v.c_str(), store_result.error().c_str());
+                        local_result[v] = store_result.error();
+                    }
+                } else {
+                    for(auto fail : store_result->inside_failed) {
+                        dbgf("mail delivery failed for local user %s\n", id_to_mail[fail].c_str());
+                        local_result[id_to_mail[fail]] = "storage is full";
+                    }
+                }
             }
 
             if(config.dkim_domain.length() > 0 && config.dkim_selector.length() > 0 && config.dkim_privkey.length() > 0) {
@@ -669,7 +733,16 @@ namespace s90 {
             }
 
             dbgf("[deliver %zu/%s] disk, from, to ok\n", user_id, message_id.c_str()); 
-            auto result = co_await client->deliver_mail(mail, recipients, tls_mode::best_effort);
+            dict<std::string, std::string> result;
+            
+            if(out_users.size() > 0) {
+                mail->to = std::move(out_users);
+                result = co_await client->deliver_mail(mail, recipients, tls_mode::best_effort);
+            }
+
+            for(auto& [k, v] : local_result) {
+                result[k] = v;
+            }
 
             if(result.size() > 0) {
                 dbgf("[deliver %zu/%s] there were %zu failures\n", user_id, message_id.c_str(), result.size()); 
@@ -700,6 +773,7 @@ namespace s90 {
             
             size_t successes = 0;
             auto del_query = "DELETE FROM mail_outgoing_queue WHERE " + where + " AND target_email IN(";
+            recipients.insert(recipients.end(), local_recipients.begin(), local_recipients.end());
             for(auto& recip : recipients) {
                 auto found = result.find(recip);
                 if(found == result.end()) {
@@ -723,6 +797,14 @@ namespace s90 {
             co_return mail_delivery_result {
                 .delivery_errors = std::move(result)
             };
+        }
+
+        mail_parsed_user indexed_mail_storage::parse_smtp_address(std::string_view addr) {
+            return mail::parse_smtp_address(addr, config);
+        }
+
+        std::string indexed_mail_storage::quoted_printable(std::string_view text, bool replace_underscores, unsigned max_line, bool header) {
+            return q_encoder(text, replace_underscores, max_line, header);
         }
     }
 }

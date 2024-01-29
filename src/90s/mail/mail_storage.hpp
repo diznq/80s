@@ -98,7 +98,20 @@ namespace s90 {
             /// @param user_id owner ID
             /// @param message_id message ID
             /// @return delivery status
-            virtual aiopromise<std::expected<mail_delivery_result, std::string>> deliver_message(uint64_t user_id, std::string message_id, ptr<ismtp_client> client) = 0;
+            virtual aiopromise<std::expected<mail_delivery_result, std::string>> deliver_message(uint64_t user_id, std::string message_id, ptr<ismtp_client> client, bool try_local = false) = 0;
+
+            /// @brief Parse SMTP address
+            /// @param addr address
+            /// @return parsed user
+            virtual mail_parsed_user parse_smtp_address(std::string_view addr) = 0;
+
+            /// @brief Encode the string into quoted encoded string
+            /// @param text string to be encoded
+            /// @param replace_underscores if true, spaces are replaced with underscore
+            /// @param max_line max line length
+            /// @param header true if header value
+            /// @return encoded string
+            virtual std::string quoted_printable(std::string_view text, bool replace_underscores = false, unsigned max_line = -1, bool header = false) = 0;
         };
     }
 }

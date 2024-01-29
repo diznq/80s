@@ -451,7 +451,7 @@ namespace s90 {
         class new_mail_page : public authenticated_page {
             struct input : public orm::with_orm {
                 WITH_ID;
-
+                orm::optional<std::string> folder;
                 orm::optional<std::string> to;
                 orm::optional<std::string> subject;
                 orm::optional<std::string> text;
@@ -463,7 +463,8 @@ namespace s90 {
                         {"subject", subject},
                         {"text", text},
                         {"in_reply_to", in_reply_to},
-                        {"content_type", content_type}
+                        {"content_type", content_type},
+                        {"folder", folder}
                     };
                 }
             };
@@ -492,26 +493,54 @@ namespace s90 {
                     error_response err;
                     auto params = env.form<input>();
                     if(params.to && params.subject && params.text) {
+                        bool valid_folder = true;
                         if(params.subject->length() == 0) {
                             params.subject = "No subject";
+                        }
+                        if(params.folder) {
+                            if(params.folder->length() > 32) valid_folder = false;
+                            else for(char c : *params.folder) {
+                                if(!((c >= 'a' && c <= 'z') || (c >= 'A' || c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' || c == '+' || c == ',' || c == '!')) {
+                                    valid_folder = false;
+                                }
+                            }
+                        }
+                        if(!valid_folder) {
+                            env.status("400 Bad request");
+                            err.error = "invalid folder, folder can be max 32 characters long and consist of a - z, A- Z, 0 - 9, ., _, -, +, ! and ,";
+                            env.output()->write_json(err);
+                            co_return nil {};
                         }
                         std::string mail_envelope;
                         auto ctx = env.local_context<mail_http_api>();
                         auto storage = ctx->get_storage();
                         ptr<mail_knowledge> mail = ptr_new<mail_knowledge>();
                         
-                        mail->from = parse_smtp_address("<" + user->email + ">", ctx->get_config());
+                        std::string_view from_mail = user->email;
+                        auto at_split = from_mail.find('@');
+                        if(params.folder && params.folder->length() > 0 && at_split != std::string::npos) {
+                            std::string_view user_name = from_mail.substr(0, at_split);
+                            std::string_view user_host = from_mail.substr(at_split + 1);
+                            std::string new_mail = *params.folder;
+                            new_mail += '@';
+                            new_mail += user_name;
+                            new_mail += '.';
+                            new_mail += user_host;
+                            mail->from = storage->parse_smtp_address("<" + new_mail + ">");
+                        } else {
+                            mail->from = storage->parse_smtp_address("<" + user->email + ">");
+                        }
                         mail->from.authenticated = true;
                         mail->from.direction = (int)mail_direction::outbound;
                         mail->from.user = *user;
-                        mail_envelope += "From: =?UTF-8?Q?" + q_encoder(user->email, true, -1, true) + "?=\r\n";
-                        mail_envelope += "Subject: =?UTF-8?Q?" + q_encoder(*params.subject, false, -1, true) + "?=\r\n";
+                        mail_envelope += "From: =?UTF-8?Q?" + storage->quoted_printable(mail->from.original_email, true, -1, true) + "?=\r\n";
+                        mail_envelope += "Subject: =?UTF-8?Q?" + storage->quoted_printable(*params.subject, false, -1, true) + "?=\r\n";
 
                         if(params.in_reply_to && params.in_reply_to->find_first_of("\r\n<>") == std::string::npos) {
                             mail_envelope += "In-Reply-To: <" + *params.in_reply_to + ">\r\n";
                         }
 
-                        auto to_parsed = parse_smtp_address(*params.to, ctx->get_config());
+                        auto to_parsed = storage->parse_smtp_address(*params.to);
                         if(to_parsed) {
                             auto to_user = co_await storage->get_user_by_email(to_parsed.email);
                             if(!to_user && to_parsed.local) {
@@ -519,7 +548,7 @@ namespace s90 {
                                 err.error = to_parsed.original_email + " not found";
                                 env.output()->write_json(err);
                             } else {
-                                mail_envelope += "To: =?UTF-8?Q?" + q_encoder(to_parsed.original_email, false, -1, true) + "?=\r\n";
+                                mail_envelope += "To: =?UTF-8?Q?" + storage->quoted_printable(to_parsed.original_email, false, -1, true) + "?=\r\n";
 
                                 auto content_type(std::move(params.content_type));
                                 auto pivot = content_type.find_first_of("\r\n");
@@ -534,9 +563,9 @@ namespace s90 {
                                 }
                                 mail->to.insert(to_parsed);
                                 
-                                auto boundary = util::to_hex(util::sha256(*params.text));
+                                auto boundary = env.to_hex(env.sha256(*params.text));
                                 mail_envelope += "\r\n\r\n";
-                                mail_envelope += mail::enforce_crlf(util::trim(*params.text));
+                                mail_envelope += util::enforce_crlf(util::trim(*params.text));
                                 mail_envelope += "\r\n";
 
                                 mail->data = mail_envelope;
@@ -559,7 +588,6 @@ namespace s90 {
                                             for(auto& [k, v] : result->delivery_errors) {
                                                 dbgf("mail delivery failed for %s: %s\n", k.c_str(), v.c_str());
                                             }
-                                            
                                         }
                                         // / detach in future
 

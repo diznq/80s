@@ -34,6 +34,11 @@ namespace s90 {
             html_text
         };
 
+        enum class mail_flags {
+            none,
+            internal
+        };
+
         struct mail_server_config : public orm::with_orm {
             std::string smtp_host = "localhost";
             std::string smtp_hosts = "localhost";
@@ -187,6 +192,7 @@ namespace s90 {
             size_t html_start = 0, html_end = 0;
             size_t text_start = 0, text_end = 0;
             std::vector<mail_attachment> attachments;
+            mail_flags flags;
         };
 
         struct mail_record : public orm::with_orm {
@@ -220,6 +226,7 @@ namespace s90 {
             int attachments;
             sql_text attachment_ids;
             int formats;
+            int flags;
             int thread_size = 1;
 
             orm::mapper get_orm() {
@@ -252,6 +259,7 @@ namespace s90 {
                     { "attachments", attachments },
                     { "attachment_ids", attachment_ids },
                     { "formats", formats },
+                    { "flags", flags },
                     { "thread_size", thread_size }
                 };
             }
@@ -273,7 +281,8 @@ namespace s90 {
         };
 
         struct mail_outgoing_record : public orm::with_orm {
-            size_t user_id;
+            uint64_t user_id;
+            uint64_t recipient_id;
             varstr<64> message_id;
             varstr<64> target_email;
             varstr<48> target_server;
@@ -282,13 +291,14 @@ namespace s90 {
             int status;
             orm::datetime last_retried_at;
             int retries;
-            size_t session_id;
+            uint64_t session_id;
             int locked;
             sql_text reason;
 
             orm::mapper get_orm() {
                 return {
                     { "user_id", user_id },
+                    { "recipient_id", recipient_id },
                     { "message_id", message_id },
                     { "target_email", target_email },
                     { "source_email", source_email },
@@ -308,6 +318,7 @@ namespace s90 {
             std::string message_id;
             std::vector<mail_parsed_user> outside;
             std::vector<uint64_t> inside;
+            std::set<uint64_t> inside_failed;
         };
 
         struct mail_delivery_result {
@@ -330,6 +341,7 @@ namespace s90 {
             mail_parsed_user from;
             std::set<mail_parsed_user> to = {};
             std::string data = "";
+            std::string forced_message_id = "";
         };
     }
 }

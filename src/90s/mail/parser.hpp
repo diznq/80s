@@ -28,7 +28,7 @@ namespace s90 {
         /// @param max_line max line length
         /// @param header true if header value
         /// @return encoded string
-        std::string q_encoder(const std::string text, bool replace_underscores = false, unsigned max_line = -1, bool header = false);
+        std::string q_encoder(std::string_view text, bool replace_underscores = false, unsigned max_line = -1, bool header = false);
 
         /// @brief Parse message ID from header value
         /// @param id header value
@@ -94,10 +94,5 @@ namespace s90 {
         /// @param dkim_selectro DKIM selector
         /// @return DKIm signature
         std::expected<std::string, std::string> sign_with_dkim(std::string_view eml, const char *privkey, std::string_view dkim_domain, std::string_view dkim_selector);
-
-        /// @brief Enforce CRLF encoded text
-        /// @param eml text to be encoded
-        /// @return CRLF enforced text
-        std::string enforce_crlf(std::string_view eml);
     }
 }

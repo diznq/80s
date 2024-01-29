@@ -105,7 +105,7 @@ namespace s90 {
             }
         }
 
-        std::string q_encoder(const std::string text, bool replace_underscores, unsigned max_line, bool header) {
+        std::string q_encoder(std::string_view text, bool replace_underscores, unsigned max_line, bool header) {
             std::string output;
             unsigned line_length = 0;
             for(char c : text) {
@@ -578,25 +578,6 @@ namespace s90 {
                 .authenticated = false,
                 .direction = (int)mail_direction::inbound
             };
-        }
-
-        std::string enforce_crlf(std::string_view eml) {
-            std::stringstream ss;
-            bool r_before = false;
-            for(char c : eml) {
-                if(c == '\n') {
-                    if(!r_before) ss.put('\r');
-                    r_before = false;
-                    ss.put('\n');
-                } else if(c == '\r') {
-                    r_before = true;
-                    ss.put(c);
-                } else {
-                    r_before = false;
-                    ss.put(c);
-                }
-            }
-            return ss.str();
         }
 
         std::expected<std::string, std::string> sign_with_dkim(std::string_view eml, const char *privkey, std::string_view dkim_domain, std::string_view dkim_selector) {

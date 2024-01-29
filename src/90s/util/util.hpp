@@ -45,6 +45,25 @@ namespace s90 {
             return str;
         }
 
+        static std::string enforce_crlf(std::string_view eml) {
+            std::stringstream ss;
+            bool r_before = false;
+            for(char c : eml) {
+                if(c == '\n') {
+                    if(!r_before) ss.put('\r');
+                    r_before = false;
+                    ss.put('\n');
+                } else if(c == '\r') {
+                    r_before = true;
+                    ss.put(c);
+                } else {
+                    r_before = false;
+                    ss.put(c);
+                }
+            }
+            return ss.str();
+        }
+
         template<class T>
         bool str_to_n(const std::string& str, T& ref, int base = 10) {
             std::string_view view(str);
