@@ -4,7 +4,6 @@
 #include "mail_storage.hpp"
 #include "indexed_mail_storage.hpp"
 #include "parser.hpp"
-#include "http/http_api.hpp"
 #include "../util/util.hpp"
 #include <ranges>
 
@@ -29,10 +28,6 @@ namespace s90 {
 
             storage = ptr_new<indexed_mail_storage>(ctx, config);
             client = ptr_new<smtp_client>(ctx);
-
-            if(config.sv_http_api) {
-                http_api = ptr_new<mail_http_api>(ctx, get_config(), get_storage(), get_client());
-            }
         }
 
         smtp_server::~smtp_server() {
@@ -40,9 +35,6 @@ namespace s90 {
         }
 
         aiopromise<nil> smtp_server::on_accept(ptr<iafd> fd) {
-            if(config.sv_http_api) {
-                co_return co_await http_api->on_accept(fd);
-            }
             if(!co_await write(fd, std::format("220 {} ESMTP 90s\r\n", config.smtp_host))) co_return nil {};
             ptr<mail_knowledge> knowledge = ptr_new<mail_knowledge>();
             std::string peer_name = "failed to resolve";
@@ -222,15 +214,15 @@ namespace s90 {
         }
 
         void smtp_server::on_load() {
-            if(http_api) http_api->on_load();
+
         }
 
         void smtp_server::on_pre_refresh() {
-            if(http_api) http_api->on_pre_refresh();
+
         }
 
         void smtp_server::on_refresh() {
-            if(http_api) http_api->on_refresh();
+
         }
 
 

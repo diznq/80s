@@ -1,15 +1,11 @@
 #pragma once
 #include "shared.hpp"
 #include "../context.hpp"
-#include "../httpd/server.hpp"
 #include "client.hpp"
 #include "mail_storage.hpp"
-#include "http/http_api.hpp"
 
 namespace s90 {
     namespace mail {
-
-        class mail_http_api;
 
         class smtp_server : public connection_handler {
             mail_server_config config;
@@ -17,7 +13,6 @@ namespace s90 {
             icontext *global_context = NULL;
             ptr<mail_storage> storage;
             ptr<smtp_client> client;
-            ptr<mail_http_api> http_api;
         public:
             smtp_server(icontext *ctx, mail_server_config config = {});
             ~smtp_server();
