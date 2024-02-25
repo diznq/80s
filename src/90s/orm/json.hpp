@@ -479,10 +479,7 @@ namespace s90 {
                         break;
                     default:
                         helper = "";
-                        if(carried) {
-                            helper += *carried;
-                            carried.reset();
-                        }
+                        
                         // read rest of the types - numeric + booleans
                         if(!read_next_token(in, helper, carried)) {
                             return "unexpected EOF when parsing numeric or boolean value";

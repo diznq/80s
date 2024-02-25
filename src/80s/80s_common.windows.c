@@ -457,10 +457,19 @@ void resolve_mail(serve_params *params, int id) {
     message_params mail;
     mail.ctx = params->ctx;
     mail.elfd = params->els[id];
+    size_t size;
+    mailbox_message *messages = NULL;
     
     s80_acquire_mailbox(params->reload->mailboxes + id);
-    for(i = 0; i < params->reload->mailboxes[id].size; i++) {
-        message = &params->reload->mailboxes[id].messages[i];
+    size = params->reload->mailboxes[id].size;
+    if(size > 0) {
+        messages = calloc(size, sizeof(mailbox_message));
+        memcpy(messages, params->reload->mailboxes[id].messages, size * sizeof(mailbox_message));
+    }
+    params->reload->mailboxes[id].size = 0;
+    s80_release_mailbox(params->reload->mailboxes + id);
+    for(i = 0; i < size; i++) {
+        message = &messages[i];
         switch(message->type) {
             case S80_MB_READ:
                 on_receive(*(read_params*)message->message);
@@ -484,8 +493,10 @@ void resolve_mail(serve_params *params, int id) {
             message->message = NULL;
         }
     }
-    params->reload->mailboxes[id].size = 0;
-    s80_release_mailbox(params->reload->mailboxes + id);
+    if(messages) {
+        free(messages);
+        messages = NULL;
+    }
 }
 
 static int cleanup_pipes(fd_t elfd, fd_t *pipes, int allocated) {

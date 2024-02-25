@@ -5,7 +5,7 @@
 namespace s90 {
     namespace mail {
 
-        using orm::varstr;
+        using orm::varchar;
         using orm::sql_text;
 
         enum class mail_direction {
@@ -199,17 +199,17 @@ namespace s90 {
             WITH_ID;
 
             uint64_t user_id;
-            varstr<64> message_id;
-            varstr<128> external_message_id;
-            varstr<128> thread_id;
-            varstr<64> in_reply_to;
-            varstr<64> return_path;
-            varstr<64> reply_to;
+            varchar<64> message_id;
+            varchar<128> external_message_id;
+            varchar<128> thread_id;
+            varchar<64> in_reply_to;
+            varchar<64> return_path;
+            varchar<64> reply_to;
             sql_text disk_path;
             sql_text mail_from;
             sql_text rcpt_to;
             sql_text parsed_from;
-            varstr<32> folder;
+            varchar<32> folder;
             sql_text subject;
             sql_text indexable_text;
             sql_text dkim_domain;
@@ -283,10 +283,10 @@ namespace s90 {
         struct mail_outgoing_record : public orm::with_orm {
             uint64_t user_id;
             uint64_t recipient_id;
-            varstr<64> message_id;
-            varstr<64> target_email;
-            varstr<48> target_server;
-            varstr<64> source_email;
+            varchar<64> message_id;
+            varchar<64> target_email;
+            varchar<48> target_server;
+            varchar<64> source_email;
             sql_text disk_path;
             int status;
             orm::datetime last_retried_at;
