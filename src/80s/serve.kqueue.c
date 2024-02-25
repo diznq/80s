@@ -132,12 +132,6 @@ void *serve(void *vparams) {
                 }
                 // set non blocking flag to the newly created child socket
                 s80_enable_async(childfd);
-                EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(S80_FD_SOCKET));
-                // add the child socket to the event loop it belongs to based on modulo
-                // with number of workers, to balance the load to other threads
-                if (kevent(els[accepts], &ev, 1, NULL, 0, NULL) < 0) {
-                    dbg("serve: on add child socket to kqueue");
-                }
                 // call on_accept, in case it is supposed to run in another worker
                 // send it to it's mailbox
                 params_accept.ctx = ctxes[accepts]; // different worker has different context!
@@ -146,6 +140,12 @@ void *serve(void *vparams) {
                 params_accept.childfd = childfd;
                 params_accept.fdtype = S80_FD_SOCKET;
                 if(accepts == id) {
+                    EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(S80_FD_SOCKET));
+                    // add the child socket to the event loop it belongs to based on modulo
+                    // with number of workers, to balance the load to other threads
+                    if (kevent(els[accepts], &ev, 1, NULL, 0, NULL) < 0) {
+                        dbg("serve: on add child socket to kqueue");
+                    }
                     on_accept(params_accept);
                 } else {
                     message = &outbound_message;
@@ -181,6 +181,11 @@ void *serve(void *vparams) {
                             case S80_SIGNAL_QUIT:
                                 params->quit = 1;
                                 running = 0;
+                                break;
+                            case S80_SIGNAL_MAIL:
+                                s80_acquire_mailbox(params->reload->mailboxes + id);
+                                params->reload->mailboxes[id].signaled = 0;
+                                s80_release_mailbox(params->reload->mailboxes + id);
                                 break;
                             default: break;
                         }

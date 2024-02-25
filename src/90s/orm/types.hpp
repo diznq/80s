@@ -45,6 +45,10 @@ namespace s90 {
                 return timestamp { time(NULL) };
             }
 
+            static timestamp never() {
+                return timestamp { 0 };
+            }
+
             timestamp operator-(time_t t) {
                 return timestamp{ point - t };
             }
@@ -154,6 +158,10 @@ namespace s90 {
                 return datetime { time(NULL) };
             }
 
+            static datetime never() {
+                return datetime { 0 };
+            }
+
             datetime operator-(time_t t) {
                 return datetime{ point - t };
             }
@@ -172,27 +180,113 @@ namespace s90 {
         };
 
         template<size_t N>
-        class varstr : public std::string {
+        class varchar : public std::string {
         public:
             using std::string::string;
             constexpr size_t get_max_size() { return N; }
 
-            varstr(const std::string& s) : std::string(s.length() > N ? s.substr(0, N) : s) {}
-            varstr(std::string&& s) : std::string(s.length() > N ? std::move(s.substr(0, N)) : std::move(s)) {}
+            std::string u8_substr(const std::string& s, size_t sz) const {
+                size_t i = 0, j = 0, k = s.length();
+                for(i = 0; i < k && j < sz; j++) {
+                    int n;
+                    unsigned char c = ((unsigned char)(s.at(i)))&255;
+                    if      ((c & 0x80) == 0)    n = 1;
+                    else if ((c & 0xE0) == 0xC0) n = 2;
+                    else if ((c & 0xF0) == 0xE0) n = 3;
+                    else if ((c & 0xF8) == 0xF0) n = 4;
+                    else break;
+                    if(i + n > k) break;
+                    i += n;
+                }
+                if(i > k) i = k;
+                //printf("1 (%zu > %zu) -> %zu | %zu\n", s.length(), sz, i, j);
+                return s.substr(0, i);
+            }
 
-            varstr& operator=(const std::string& str) {
-                assign(str.length() > N ? str.substr(0, N) : str);
+            std::string u8_substr(std::string&& s, size_t sz) const {
+                size_t i = 0, j = 0, k = s.length();
+                for(i = 0; i < k && j < sz; j++) {
+                    int n;
+                    unsigned char c = ((unsigned char)(s.at(i)))&255;
+                    if      ((c & 0x80) == 0)    n = 1;
+                    else if ((c & 0xE0) == 0xC0) n = 2;
+                    else if ((c & 0xF0) == 0xE0) n = 3;
+                    else if ((c & 0xF8) == 0xF0) n = 4;
+                    else break;
+                    if(i + n > k) break;
+                    i += n;
+                }
+                if(i > k) i = k;
+                //printf("2 (%zu > %zu) -> %zu | %zu\n", s.length(), sz, i, j);
+                return s.substr(0, i);
+            }
+
+            std::string_view u8_sv_substr(size_t sz) const {
+                size_t i = 0, j = 0;
+                const size_t k = std::string::length();
+                for(i = 0; i < k && j < sz; j++) {
+                    int n;
+                    unsigned char c = ((unsigned char)(at(i)))&255;
+                    if      ((c & 0x80) == 0)    n = 1;
+                    else if ((c & 0xE0) == 0xC0) n = 2;
+                    else if ((c & 0xF0) == 0xE0) n = 3;
+                    else if ((c & 0xF8) == 0xF0) n = 4;
+                    else break;
+                    if(i + n > k) break;
+                    i += n;
+                }
+                if(i > k) i = k;
+                //dbgf("(%zu > %zu): %s\n", length(), sz, c_str());
+                return std::string_view { begin(), begin() + i };
+            }
+
+            varchar(const std::string& s) : std::string(s.length() > N ? u8_substr(s, N) : s) {}
+            varchar(std::string&& s) : std::string(s.length() > N ? std::move(u8_substr(std::move(s), N)) : std::move(s)) {}
+
+            varchar& operator=(const std::string& str) {
+                assign(str.length() > N ? u8_substr(str, N) : str);
                 return *this;
             }
 
-            varstr& operator=(std::string&& str) {
-                assign(str.length() > N ? std::move(str.substr(0, N)) : std::move(str));
+            varchar& operator=(std::string&& str) {
+                assign(str.length() > N ? u8_substr(std::move(str), N) : std::move(str));
                 return *this;
+            }
+
+            auto u8_length() const {
+                size_t i = 0, j = 0;
+                const size_t k = std::string::length();
+                for(i = 0; i < k && j < N; j++) {
+                    int n;
+                    unsigned char c = ((unsigned char)(at(i)))&255;
+                    if      ((c & 0x80) == 0)    n = 1;
+                    else if ((c & 0xE0) == 0xC0) n = 2;
+                    else if ((c & 0xF0) == 0xE0) n = 3;
+                    else if ((c & 0xF8) == 0xF0) n = 4;
+                    else break;
+                    if(i + n > k) break;
+                    i += n;
+                }
+                if(i > k) i = k;
+                return j > N ? N : j;
             }
 
             auto length() const {
-                auto parent_length = std::string::length();
-                return parent_length > N ? N : parent_length;
+                size_t i = 0, j = 0;
+                const size_t k = std::string::length();
+                for(i = 0; i < k && j < N; j++) {
+                    if(j == N) return i;
+                    int n;
+                    unsigned char c = ((unsigned char)(at(i)))&255;
+                    if      ((c & 0x80) == 0)    n = 1;
+                    else if ((c & 0xE0) == 0xC0) n = 2;
+                    else if ((c & 0xF0) == 0xE0) n = 3;
+                    else if ((c & 0xF8) == 0xF0) n = 4;
+                    else break;
+                    if(i + n > k) break;
+                    i += n;
+                }
+                return i;
             }
 
             auto end() const {
@@ -200,21 +294,21 @@ namespace s90 {
             }
 
             operator std::string_view() const {
-                return length() > N ? std::string_view(begin(), begin() + N) : std::string_view(begin(), end());
+                return std::string::length() > N ? u8_sv_substr(N) : std::string_view(begin(), end());
             }
         };
 
-        using sql_text = varstr<32000>;
+        using sql_text = varchar<32000>;
     }
 }
 
 template <size_t N>
-struct std::formatter<s90::orm::varstr<N>> {
+struct std::formatter<s90::orm::varchar<N>> {
     constexpr auto parse(std::format_parse_context& ctx) {
         return ctx.begin();
     }
 
-    auto format(const s90::orm::varstr<N>& obj, std::format_context& ctx) const {
+    auto format(const s90::orm::varchar<N>& obj, std::format_context& ctx) const {
         return std::format_to(ctx.out(), "{}", (std::string_view)obj);
     }
 };

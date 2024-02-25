@@ -95,6 +95,9 @@ namespace s90 {
 
         };
 
+        template<class T>
+        using required = optional<T>;
+
         /// @brief Type of the object held by `any`
         enum class reftype {
             empty, 
@@ -181,7 +184,7 @@ namespace s90 {
             any(std::vector<T>& vec);
 
             template<size_t N>
-            any(orm::varstr<N>& value) : ref((uintptr_t)&value), type(reftype::vstr), template_arg(value.get_max_size()) {}
+            any(orm::varchar<N>& value) : ref((uintptr_t)&value), type(reftype::vstr), template_arg(value.get_max_size()) {}
             any(std::string& value) : ref((uintptr_t)&value), type(reftype::str) {}
             any(const char*& value) : ref((uintptr_t)&value), type(reftype::cstr) {}
             any(orm::datetime& value) : ref((uintptr_t)&value), type(reftype::dt) {}
@@ -377,7 +380,7 @@ namespace s90 {
                         break;
                     case reftype::vstr:
                         if(((std::string*)addr)->length() > template_arg) {
-                            return ((std::string*)addr)->substr(0, template_arg);
+                            return ((orm::varchar<0>*)addr)->u8_substr(*(std::string*)addr, template_arg);
                         } else {
                             return *(std::string*)addr;
                         }
