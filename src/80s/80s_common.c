@@ -113,7 +113,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
     #endif
 
         if (status < 0) {
-            dbg("l_net_connect: failed to add child to epoll");
+            dbgf(ERROR, "l_net_connect: failed to add child to epoll");
             return (fd_t)-1;
         }
         return childfd;
@@ -127,7 +127,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
     int status;
     size_t writelen = write(childfd, data + offset, len - offset);
     if (writelen < 0 && errno != EWOULDBLOCK) {
-        dbg("l_net_write: write failed");
+        dbgf(ERROR, "l_net_write: write failed");
         return -1;
     } else {
         // it can happen that we tried to write more than the OS send buffer size is,
@@ -142,7 +142,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
             status = kevent(elfd, &ev, 1, NULL, 0, NULL);
     #endif
             if (status < 0) {
-                dbg("l_net_write: failed to add socket to out poll");
+                dbgf(ERROR, "l_net_write: failed to add socket to out poll");
                 return -1;
             }
         }
@@ -161,13 +161,13 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback) {
 #endif
 
     if (status < 0) {
-        dbg("l_net_close: failed to remove child from epoll");
+        dbgf(ERROR, "l_net_close: failed to remove child from epoll");
         return status;
     }
     
     status = close(childfd);
     if (status < 0) {
-        dbg("l_net_close: failed to close childfd");
+        dbgf(ERROR, "l_net_close: failed to close childfd");
     }
 
     params.ctx = ctx;
@@ -263,7 +263,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
 #ifdef USE_KQUEUE
         EV_SET(ev, pid, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, int_to_void(S80_FD_OTHER));
         if(kevent(elfd, ev, 1, NULL, 0, NULL) < 0) {
-            dbg("s80_popen: failed to monitor pid");
+            dbgf(ERROR, "s80_popen: failed to monitor pid");
         }
 #endif
         close(pipewr[0]);
@@ -357,6 +357,7 @@ void resolve_mail(serve_params *params, int id) {
         memcpy(messages, params->reload->mailboxes[id].messages, size * sizeof(mailbox_message));
     }
     params->reload->mailboxes[id].size = 0;
+    params->reload->mailboxes[id].signaled = 0;
     s80_release_mailbox(params->reload->mailboxes + id);
     for(i = 0; i < size; i++) {
         message = &messages[i];
@@ -380,14 +381,14 @@ void resolve_mail(serve_params *params, int id) {
                     // add the child socket to the event loop it belongs to based on modulo
                     // with number of workers, to balance the load to other threads
                     if (epoll_ctl(params->els[id], EPOLL_CTL_ADD, childfd, &ev) < 0) {
-                        dbg("serve: on add child socket to epoll");
+                        dbgf(ERROR, "serve: on add child socket to epoll");
                     }
                     #elif defined(USE_KQUEUE)
                     EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(fdtype));
                     // add the child socket to the event loop it belongs to based on modulo
                     // with number of workers, to balance the load to other threads
                     if (kevent(params->els[id], &ev, 1, NULL, 0, NULL) < 0) {
-                        dbg("serve: on add child socket to kqueue");
+                        dbgf(ERROR, "serve: on add child socket to kqueue");
                     }
                     #endif
                     on_accept(*(accept_params*)message->message);

@@ -100,7 +100,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
     WSAIoctl((sock_t)childfd, SIO_GET_EXTENSION_FUNCTION_POINTER, &guid, sizeof(guid), &lpConnectEx, sizeof(lpConnectEx), &dwNumBytes, NULL, NULL);
     
     if(lpConnectEx == NULL) {
-        dbg("l_net_connect: couldn't retrieve ConnectEx");
+        dbgf(ERROR, "l_net_connect: couldn't retrieve ConnectEx");
         return (fd_t)-1;
     }
 
@@ -118,13 +118,13 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
 
     // connectex requires the socket to be bound before it's being used
     if(bind((sock_t)childfd, sa, usev6 ? sizeof(binding.v6) : sizeof(binding.v4)) < 0) {
-        dbg("l_net_connect: bind failed");
+        dbgf(ERROR, "l_net_connect: bind failed");
         return (fd_t)-1;
     }
     
     // assign to the very same event loop as of caller
     if(CreateIoCompletionPort(childfd, elfd, (ULONG_PTR)S80_FD_SOCKET, 0) == NULL) {
-        dbg("l_net_connect: couldn't associate with iocp");
+        dbgf(ERROR, "l_net_connect: couldn't associate with iocp");
         return (fd_t)-1;
     }
 
@@ -153,7 +153,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
         return (fd_t)cx->recv;
     } else {
         // if things fail, cleanup
-        dbg("l_net_connect: connectex failed");
+        dbgf(ERROR, "l_net_connect: connectex failed");
         closesocket((sock_t)childfd);
         free(cx->send->recv);
         free(cx->send);
@@ -188,7 +188,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
     if(status == FALSE && GetLastError() == ERROR_IO_PENDING) {
         return 0;
     } else if(status == FALSE) {
-        dbg("l_net_write: write failed");
+        dbgf(ERROR, "l_net_write: write failed");
         return -1;
     } else {
         // in this case payload was small enough and got sent immediately, so clean-up
@@ -205,7 +205,7 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback) {
     close_params params;
 
     if (status < 0) {
-        dbg("l_net_close: failed to remove child from epoll");
+        dbgf(ERROR, "l_net_close: failed to remove child from epoll");
         return status;
     }
     
@@ -224,7 +224,7 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback) {
     }
 
     if (status < 0) {
-        dbg("l_net_close: failed to close childfd");
+        dbgf(ERROR, "l_net_close: failed to close childfd");
     }
 
     if(callback) {
@@ -324,7 +324,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
         childfd = pipes[i];
         
         if(CreateIoCompletionPort(childfd, elfd, (ULONG_PTR)S80_FD_PIPE, 0) == NULL) {
-            dbgf("s80_popen: associate with iocp failed with %d\n", GetLastError());
+            dbgf(INFO, "s80_popen: associate with iocp failed with %d\n", GetLastError());
             cleanup_pipes(elfd, pipes_out, i - 1);
             for(j=0; j < 4; j++) {
                 CloseHandle(pipes[j]);
@@ -467,6 +467,7 @@ void resolve_mail(serve_params *params, int id) {
         memcpy(messages, params->reload->mailboxes[id].messages, size * sizeof(mailbox_message));
     }
     params->reload->mailboxes[id].size = 0;
+    params->reload->mailboxes[id].signaled = 0;
     s80_release_mailbox(params->reload->mailboxes + id);
     for(i = 0; i < size; i++) {
         message = &messages[i];

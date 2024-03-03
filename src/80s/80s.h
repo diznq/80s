@@ -285,22 +285,16 @@ void s80_enable_async(fd_t fd);
 
 void resolve_mail(serve_params *params, int id);
 
-#ifdef S80_DEBUG_INFO
-#define dbg_infof(...) printf(__VA_ARGS__)
-#else
-#define dbg_infof(...)
-#endif
+#define ALWAYS 0
+#define ERROR 1
+#define WARN 2
+#define INFO 3
+#define DEBUG 4
 
-#ifdef S80_DEBUG
-    #ifdef USE_IOCP
-        #define dbg(message) printf("%s, wsa: %d, last error: %d\n", message, WSAGetLastError(), GetLastError())
-    #else
-        #define dbg(message) printf("%s: %s\n", message, strerror(errno))
-    #endif
-    #define dbgf(...) printf(__VA_ARGS__)
+#ifdef S80_DEBUG_LEVEL
+#define dbgf(LEVEL, ...) do {if(LEVEL <= S80_DEBUG_LEVEL) printf(__VA_ARGS__); fflush(stdout);} while(false)
 #else
-    #define dbg(message)
-    #define dbgf(...)
+#define dbgf(...)
 #endif
 
 #ifdef __cplusplus

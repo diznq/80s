@@ -147,8 +147,6 @@ void *serve(void *vparams) {
             error("serve: error on epoll_wait");
         }
 
-        resolve_mail(params, id);
-
         for (n = 0; n < nfds; ++n) {
             childfd = FD_HOLDER_FD(events[n]);
             fdtype = FD_HOLDER_TYPE(events[n]);
@@ -163,7 +161,7 @@ void *serve(void *vparams) {
                 parentfd = childfd;
                 childfd = accept(parentfd, (struct sockaddr *)&clientaddr, &clientlen);
                 if (childfd < 0) {
-                    dbg("serve: error on server accept");
+                    dbgf(ERROR, "serve: error on server accept");
                     continue;
                 }
                 // set non blocking flag to the newly created child socket
@@ -181,7 +179,7 @@ void *serve(void *vparams) {
                     // add the child socket to the event loop it belongs to based on modulo
                     // with number of workers, to balance the load to other threads
                     if (epoll_ctl(els[accepts], EPOLL_CTL_ADD, childfd, &ev) < 0) {
-                        dbg("serve: on add child socket to epoll");
+                        dbgf(ERROR, "serve: on add child socket to epoll");
                     }
                     on_accept(params_accept);
                 } else {
@@ -196,10 +194,10 @@ void *serve(void *vparams) {
                     if(message->message) {
                         memcpy(message->message, &params_accept, sizeof(accept_params));
                         if(s80_mail(params->reload->mailboxes + accepts, message) < 0) {
-                            dbg("serve: failed to send mailbox message");
+                            dbgf(ERROR, "serve: failed to send mailbox message");
                         }
                     } else {
-                        dbg("serve: failed to allocate message");
+                        dbgf(ERROR, "serve: failed to allocate message");
                     }
                 }
                 accepts++;
@@ -219,9 +217,7 @@ void *serve(void *vparams) {
                             running = 0;
                             break;
                         case S80_SIGNAL_MAIL:
-                            s80_acquire_mailbox(params->reload->mailboxes + id);
-                            params->reload->mailboxes[id].signaled = 0;
-                            s80_release_mailbox(params->reload->mailboxes + id);
+                            resolve_mail(params, id);
                             break;
                         default:
                             break;
@@ -236,7 +232,7 @@ void *serve(void *vparams) {
                         ev.events = EPOLLIN;
                         SET_FD_HOLDER(ev, fdtype, childfd);
                         if (epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev) < 0) {
-                            dbg("serve: failed to move child socket from out to in");
+                            dbgf(ERROR, "serve: failed to move child socket from out to in");
                         }
                     }
                     params_write.childfd = childfd;
@@ -250,10 +246,10 @@ void *serve(void *vparams) {
                         ev.events = EPOLLIN | EPOLLOUT;
                         SET_FD_HOLDER(ev, fdtype, childfd);
                         if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
-                            dbg("serve: failed to remove child socket on readlen < 0");
+                            dbgf(ERROR, "serve: failed to remove child socket on readlen < 0");
                         }
                         if (close(childfd) < 0) {
-                            dbg("serve: failed to close child socket");
+                            dbgf(ERROR, "serve: failed to close child socket");
                         }
                         params_close.childfd = childfd;
                         on_close(params_close);
@@ -280,10 +276,10 @@ void *serve(void *vparams) {
                     ev.events = EPOLLIN | EPOLLOUT;
                     SET_FD_HOLDER(ev, fdtype, childfd);
                     if (epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev) < 0) {
-                        dbg("serve: failed to remove hungup child");
+                        dbgf(ERROR, "serve: failed to remove hungup child");
                     }
                     if (close(childfd) < 0) {
-                        dbg("serve: failed to close hungup child");
+                        dbgf(ERROR, "serve: failed to close hungup child");
                     }
                     params_close.childfd = childfd;
                     on_close(params_close);

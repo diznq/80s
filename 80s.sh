@@ -71,8 +71,8 @@ if [ "$(uname -o)" = "Msys" ]; then
   LIBS="$LIBS -lws2_32 -lmswsock -lcrypt32"
 fi
 
-if [ "$DEBUG" = "true" ]; then
-    DEFINES="$DEFINES -DS80_DEBUG=1"
+if [ ! -z "$DEBUG_LEVEL" ]; then
+    DEFINES="$DEFINES -S80_DEBUG_LEVEL=$DEBUG_LEVEL"
     FLAGS="-O2 -ggdb"
 fi
 
