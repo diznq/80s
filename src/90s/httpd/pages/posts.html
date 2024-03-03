@@ -10,8 +10,8 @@
 </head>
 <body>
     <?cpp
-        auto ctx = env.local_context<default_context>();
-        auto name = env.query("name");
+        auto ctx = env->local_context<default_context>();
+        auto name = env->query("name");
         if(name) {
             | <h1>Hi, #[[name.value()]]</h1>
         } else {

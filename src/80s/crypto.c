@@ -676,19 +676,19 @@ static void ssl_secret_callback(const SSL* ssl, const char* line) {
 	ctx->ktls_state = KTLS_DONE;
         status = setsockopt(childfd, IPPROTO_TCP, TCP_TXTLS_ENABLE, wren, sizeof(struct tls_enable));
         if(status < 0) {
-            dbg("ssl_callback: failed to set txtls");
+            dbgf(ERROR, "ssl_callback: failed to set txtls");
             return;
         }
 
         status = setsockopt(childfd, IPPROTO_TCP, TCP_RXTLS_ENABLE, rden, sizeof(struct tls_enable));
         if(status < 0) {
-            dbg("ssl_callback: failed to set rxtls");
+            dbgf(ERROR, "ssl_callback: failed to set rxtls");
             return;
         }
 
         EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(S80_FD_KTLS_SOCKET));
         if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
-            dbg("ssl_callback: upgrade to ktls failed");
+            dbgf(ERROR, "ssl_callback: upgrade to ktls failed");
         }
     }
 }

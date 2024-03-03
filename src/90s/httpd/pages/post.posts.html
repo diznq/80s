@@ -10,11 +10,11 @@
     };
 ?>
 <?cpp
-    auto body = env.form<request_body>();
-    auto ctx = env.local_context<default_context>();
+    auto body = env->form<request_body>();
+    auto ctx = env->local_context<default_context>();
     int post_id = -3;
     if(body.author && body.text) {
         post_id = co_await ctx->add_post(*(body.author), *(body.text));
     }
-    env.redirect("/posts?last_id=" + std::to_string(post_id));
+    env->redirect("/posts?last_id=" + std::to_string(post_id));
 ?>

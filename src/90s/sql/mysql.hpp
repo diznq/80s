@@ -33,6 +33,7 @@ namespace s90 {
             bool authenticated = false;
             bool is_connecting = false;
             bool login_provided = false;
+            std::string enqueued_sql = "";
             util::aiolock command_lock;
             ptr<iafd> connection_ref;
             std::queue<aiopromise<std::tuple<sql_connect, ptr<iafd>>>::weak_type> connecting;
@@ -54,6 +55,7 @@ namespace s90 {
 
             aiopromise<sql_result<sql_row>> exec(present<std::string> query) override;
             aiopromise<sql_result<sql_row>> select(present<std::string> query) override;
+            void exec_on_first_connect(std::string_view str) override;
         };
     }
 }

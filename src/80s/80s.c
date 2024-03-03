@@ -128,25 +128,25 @@ static void* run(void *params_) {
     void *result = NULL;
     dynserve_t fn_serve;
     for(;;) {
-        dbgf("run: worker %d acquiring lock\n", params->workerid);
+        dbgf(INFO, "run: worker %d acquiring lock\n", params->workerid);
         sem_wait(&reload->serve_lock);
         reload->ready++;
         module = reload->modules;
         if(reload->ready == reload->workers) {
-            dbgf("run: all workers ready, reloading dynamic library\n");
+            dbgf(INFO, "run: all workers ready, reloading dynamic library\n");
             if(reload->dlcurrent != NULL && dlclose(reload->dlcurrent) < 0) {
                 error("run: failed to close previous dynamic library");
             }
             // only reload if not quitting, otherwise it's handled in main
             while(params->quit == 0 && module) {
                 if(module->dlcurrent && dlclose(module->dlcurrent) < 0) {
-                    dbgf("run: failed to unload module %s\n", module->path);
+                    dbgf(INFO, "run: failed to unload module %s\n", module->path);
                 }
                 module->dlcurrent = dlopen(module->path, RTLD_LAZY);
                 if(module->dlcurrent) {
                     module->load = (load_module_t)dlsym(module->dlcurrent, "on_load");
                     module->unload = (unload_module_t)dlsym(module->dlcurrent, "on_unload");
-                    dbgf("reloaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
+                    dbgf(INFO, "reloaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
                 }
                 module = module->next;
             }
@@ -163,7 +163,7 @@ static void* run(void *params_) {
                 error("run: failed to locate serve procedure");
             }
         } else {
-            dbgf("run: worker %d is pending readiness\n", params->workerid);
+            dbgf(INFO, "run: worker %d is pending readiness\n", params->workerid);
             reload->serve = NULL;
         }
         sem_post(&reload->serve_lock);
@@ -171,7 +171,7 @@ static void* run(void *params_) {
         for(;;) {
             sem_wait(&reload->serve_lock);
             if(reload->serve != NULL) {
-                dbgf("run: worker %d restoring serve\n", params->workerid);
+                dbgf(INFO, "run: worker %d restoring serve\n", params->workerid);
                 sem_post(&reload->serve_lock);
                 break;
             } else {
@@ -182,7 +182,7 @@ static void* run(void *params_) {
 
         fn_serve = reload->serve;
         result = fn_serve(params_);
-        dbgf("run: worker %d stopped, quit: %d\n", params->workerid, params->quit);
+        dbgf(INFO, "run: worker %d stopped, quit: %d\n", params->workerid, params->quit);
         if(params->quit) return result;
     }
 #endif
@@ -271,14 +271,14 @@ int main(int argc, const char **argv) {
                 if(module->dlcurrent) {
                     module->load = (load_module_t)dlsym(module->dlcurrent, "on_load");
                     module->unload = (unload_module_t)dlsym(module->dlcurrent, "on_unload");
-                    dbgf("loaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
+                    dbgf(INFO, "loaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
                 }
             #elif defined(_WIN32)
                 module->dlcurrent = (void*)LoadLibraryA(module->path);
                 if(module->dlcurrent) {
                     module->load = (load_module_t)GetProcAddress((HMODULE)module->dlcurrent, "on_load");
                     module->unload = (unload_module_t)GetProcAddress((HMODULE)module->dlcurrent, "on_unload");
-                    dbgf("loaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
+                    dbgf(INFO, "loaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
                 }
             #endif
                 q = p + 1;

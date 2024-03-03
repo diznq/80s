@@ -117,6 +117,24 @@ namespace s90 {
             /// @return global context
             virtual icontext *const global_context() const = 0;
 
+            /// @brief Get the underlying stream
+            /// @return fd
+            virtual std::shared_ptr<iafd> stream() const = 0;
+
+            /// @brief Upgrade the connection to WebSocket
+            /// @return true if ok
+            virtual aiopromise<std::expected<bool, std::string>> websocket_upgrade() = 0;
+
+            /// @brief Read a frame from websocket
+            /// @return frame or error
+            virtual aiopromise<std::expected<std::tuple<uint8_t, std::string>, std::string>> websocket_read() const = 0;
+
+            /// @brief Write a frame to websocket
+            /// @param opcode opcode
+            /// @param message message
+            /// @return true if ok
+            virtual aiopromise<bool> websocket_write(uint8_t opcode, std::string message) const = 0;
+
             // cryptography
 
             /// @brief Encrypt a text
@@ -145,6 +163,10 @@ namespace s90 {
             /// @brief Get peer name
             /// @return peer name
             virtual const std::string& peer() const = 0;
+
+            /// @brief Generate HTTP response
+            /// @return http response
+            virtual aiopromise<std::string> http_response(bool with_content_length = true) = 0;
 
             // template helpers
             template<class T>
@@ -183,6 +205,19 @@ namespace s90 {
                     return val;
                 }
             }
+
+            template<class T>
+            std::expected<T, std::string> json() const {
+                auto it = header("content-type");
+                if(it && *it == "application/json") {
+                    orm::json_decoder dec;
+                    auto res = dec.decode<T>(body());
+                    if(res) return *res;
+                    else return std::unexpected(res.error());
+                } else {
+                    return std::unexpected("invalid body content type");
+                }
+            }
         };
 
         class environment : public ienvironment {
@@ -198,6 +233,7 @@ namespace s90 {
             std::string endpoint_path = "/";
             std::string enc_base = "";
             std::string peer_name = "";
+            std::shared_ptr<iafd> fd;
             dict<std::string, std::string> signed_params;
             dict<std::string, std::string> query_params;
             dict<std::string, std::string> headers;
@@ -251,6 +287,14 @@ namespace s90 {
 
             const std::string& peer() const override;
 
+            std::shared_ptr<iafd> stream() const override;
+
+            aiopromise<std::expected<bool, std::string>> websocket_upgrade() override;
+            aiopromise<std::expected<std::tuple<uint8_t, std::string>, std::string>> websocket_read() const override;
+            aiopromise<bool> websocket_write(uint8_t opcode, std::string message) const override;
+
+            aiopromise<std::string> http_response(bool with_content_length = true) override;
+
         private:
             friend class s90::httpd::httpd_server;
             void write_method(std::string&& method);
@@ -263,7 +307,7 @@ namespace s90 {
             void write_endpoint(std::string_view endpoint);
             void write_enc_base(std::string_view enc_base);
             void write_peer(const std::string& peer_name);
-            aiopromise<std::string> http_response();
+            void write_fd(std::shared_ptr<iafd> fd);
         };
     }
 }

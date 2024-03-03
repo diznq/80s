@@ -1,6 +1,8 @@
 #include "mysql.hpp"
 #include "mysql_util.hpp"
 
+#define EXPERIMENTAL_QUERIES 1
+
 namespace s90 {
     namespace sql {
         mysql::mysql(context* ctx) : ctx(ctx) {
@@ -24,18 +26,18 @@ namespace s90 {
         }
 
         aiopromise<mysql_packet> mysql::read_packet(ptr<iafd> connection) {
-            dbg_infof("Read packet header\n");
+            dbgf(DEBUG, "Read packet header\n");
             auto data = co_await connection->read_n(4);
             if(data.error) {
-                dbg_infof("Read packet header - fail\n");
+                dbgf(DEBUG, "Read packet header - fail\n");
                 co_return {-1, ""};
             }
             unsigned char *bytes = (unsigned char*)data.data.data();
             unsigned length = (bytes[0]) | (bytes[1] << 8) | (bytes[2] << 16);
             int seq = (bytes[3] & 0xFF);
-            dbg_infof("Read packet body - %d\n", length);
+            dbgf(DEBUG, "Read packet body - %d\n", length);
             data = co_await connection->read_n(length);
-            dbg_infof("Packet body - %s\n", data.error ? "fail" : "ok");
+            dbgf(DEBUG, "Packet body - %s\n", data.error ? "fail" : "ok");
             if(data.error) {
                 co_return {-1, ""};
             }
@@ -90,38 +92,38 @@ namespace s90 {
         }
 
         aiopromise<std::tuple<sql_connect, ptr<iafd>>> mysql::obtain_connection() {
-            dbg_infof("Reconnect\n");
             auto& connection = connection_ref;
             if(connection && !connection->is_closed() && !connection->is_error() && authenticated) {
+                dbgf(DEBUG, "SQL connection obtained\n");
                 co_return std::make_tuple(sql_connect {false, ""}, connection);
             }
-            dbg_infof("Reconnect - do connect\n");
+            dbgf(DEBUG, "Obtaining SQL connection\n");
             if(is_connecting) {
-                dbg_infof("Reconnect - already connecting\n");
+                dbgf(DEBUG, "Reconnect - already connecting\n");
                 aiopromise<std::tuple<sql_connect, ptr<iafd>>> promise;
                 connecting.emplace(promise.weak());
                 co_return std::move(co_await promise);
             } else {
-                dbg_infof("Reconnect - first connect\n");
+                dbgf(DEBUG, "Reconnect - first connect\n");
                 // connect if not connected
                 is_connecting = true;
                 authenticated = false;
                 bool conn_ok = true;
                 std::string conn_error = "unknown error";
                 if(!connection || connection->is_closed() || connection->is_error()) {
-                    dbg_infof("Reconnect - get connection\n");
+                    dbgf(DEBUG, "Reconnect - get connection\n");
                     auto conn_result = co_await ctx->connect(host, dns_type::A, sql_port, proto::tcp);
                     conn_ok = !conn_result.error;
                     connection_ref = conn_result.fd;
                     conn_error = conn_result.error_message;
                 }
-                dbg_infof("Reconnect - connection obtained\n");
+                dbgf(DEBUG, "Reconnect - connection obtained\n");
                 if(!conn_ok || !connection || connection->is_error() || connection->is_closed()) {
-                    dbg_infof("Reconnect - obtained connection failure\n");
+                    dbgf(DEBUG, "Reconnect - obtained connection failure\n");
                     connection = nullptr;
                     is_connecting = false;
                     while(!connecting.empty()) {
-                        dbg_infof("Reconnect - resolve waiting (failure)\n");
+                        dbgf(DEBUG, "Reconnect - resolve waiting (failure)\n");
                         auto c = connecting.front();
                         connecting.pop();
                         if(auto p = c.lock())
@@ -129,14 +131,34 @@ namespace s90 {
                     }
                     co_return std::make_tuple<sql_connect, ptr<iafd>>({true, "failed to establish connection: " + conn_error}, nullptr);
                 }
-                dbg_infof("Reconnect - obtained connection ok\n");
+                dbgf(DEBUG, "Reconnect - obtained connection ok\n");
                 connection->set_name("mysql");
                 auto result = co_await handshake(connection);
-                dbg_infof("Reconnect - handshake %s\n", result.error ? "fail" : "ok");
+                dbgf(DEBUG, "Reconnect - handshake %s\n", result.error ? "fail" : "ok");
+                if(!result.error && enqueued_sql.length() > 0) {
+                    dbgf(DEBUG, "Executing initial SQL\n");
+                    auto command = encode_le24(enqueued_sql.length() + 1) + '\0' + '\3' + enqueued_sql;
+                    enqueued_sql.clear();
+                    auto write_ok = co_await connection->write(command);
+                    if(write_ok) {
+                        auto response = co_await read_packet(connection);
+                        if(!(response.seq < 0 || response.data.length() < 1)) {
+                            mysql_decoder decoder(response.data);
+                            auto status = decoder.decode_status();
+                            if(status.error) {
+                                dbgf(ERROR, "SQL On Connect: %s\n", status.error_message.c_str());
+                            }
+                        } else {
+                            dbgf(ERROR, "Failed to lock the initial SQL command\n");
+                        }
+                    }
+                    dbgf(DEBUG, "Initial SQL executed\n");
+                }
                 is_connecting = false;
                 authenticated = !result.error;
+
+                dbgf(DEBUG, "Reconnect - resolve %zu waiters\n", connecting.size());
                 while(!connecting.empty()) {
-                    dbg_infof("Reconnect - resolve waiters\n");
                     auto c = connecting.front();
                     connecting.pop();
                     if(auto p = c.lock())
@@ -153,17 +175,17 @@ namespace s90 {
 
         aiopromise<sql_connect> mysql::handshake(ptr<iafd> connection) {
             // read handshake packet with method & scramble
-            dbg_infof("Handshake - read first packet\n");
+            dbgf(DEBUG, "Handshake - read first packet\n");
             auto result = co_await read_packet(connection);
             if(result.seq < 0) {
-                dbg_infof("First packet - err\n");
+                dbgf(DEBUG, "First packet - err\n");
                 co_return {true, "failed to read scramble packet"};
             }
-            dbg_infof("First packet - ok\n");
+            dbgf(DEBUG, "First packet - ok\n");
             // decode the method & scrabmle
             auto [method, scramble] = decode_handshake_packet(result.data);
             if(method != "mysql_native_password") {
-                dbg_infof("First packet - unsupported method\n");
+                dbgf(DEBUG, "First packet - unsupported method\n");
                 co_return {true, "unsupported auth method: \"" + method + "\""};
             }
             // perform login
@@ -177,19 +199,19 @@ namespace s90 {
                 db_name + '\0' +
                 std::string(method) + '\0';
             login = encode_le24(login.length()) + '\1' + login;
-            dbg_infof("Handshake - write login\n");
+            dbgf(DEBUG, "Handshake - write login\n");
             auto write_ok = co_await connection->write(login);
             if(!write_ok) {
-                dbg_infof("Handshake - login failed\n");
+                dbgf(DEBUG, "Handshake - login failed\n");
                 co_return {true, "sending login failed"};
             }
-            dbg_infof("Handshake - read second packet\n");
+            dbgf(DEBUG, "Handshake - read second packet\n");
             auto response = co_await read_packet(connection);
             if(response.seq < 0) {
-                dbg_infof("Second packet - fail\n");
+                dbgf(DEBUG, "Second packet - fail\n");
                 co_return {true, "failed to read login response"};
             }
-            dbg_infof("Handshake - ok\n");
+            dbgf(DEBUG, "Handshake - ok\n");
             unsigned response_type = ((unsigned)response.data[0]) & 255;
             if(response_type == 0) {
                 co_return {false, ""};
@@ -201,10 +223,12 @@ namespace s90 {
         }
 
         aiopromise<std::tuple<sql_result<sql_row>, ptr<iafd>>> mysql::raw_exec(const std::string&& query) {
+            dbgf(DEBUG, "> Request Execute SQL %s", query.c_str());
             auto [connected, connection] = co_await obtain_connection();
             if(connected.error) {
                 co_return std::make_tuple(sql_result<sql_row>::with_error(connected.error_message), connection);
             }
+            dbgf(DEBUG, "Execute SQL %s", query.c_str());
             auto command = encode_le24(query.length() + 1) + '\0' + '\3' + std::string(query);
             auto write_ok = co_await connection->write(command);
             if(!write_ok) {
@@ -214,16 +238,35 @@ namespace s90 {
         }
 
         aiopromise<sql_result<sql_row>> mysql::exec(present<std::string> query) {
-            auto subproc = [this](const std::string&& query) -> aiopromise<sql_result<sql_row>> {
+            auto lock_prom = command_lock.lock();
+        #ifdef EXPERIMENTAL_QUERIES
+            auto [command_sent, connection] = co_await raw_exec(std::move(query));
+            if(command_sent.error) {
+                co_await lock_prom;
+                command_lock.unlock();
+                co_return std::move(command_sent);
+            }
+            auto subproc = [this] (ptr<iafd> connection) -> aiopromise<sql_result<sql_row>>
+        #else
+            auto subproc = [this](const std::string&& query) -> aiopromise<sql_result<sql_row>>
+        #endif
+            { 
+                #ifndef EXPERIMENTAL_QUERIES
                 auto [command_sent, connection] = co_await raw_exec(std::move(query));
                 if(command_sent.error) co_return std::move(command_sent);
+                #endif 
                 auto response = co_await read_packet(connection);
                 if(response.seq < 0 || response.data.length() < 1) co_return sql_result<sql_row>::with_error("failed to read response");
                 mysql_decoder decoder(response.data);
                 co_return decoder.decode_status();
             };
-            if(co_await command_lock.lock()){
+            if(co_await lock_prom) {
+                dbgf(DEBUG, "Reading SQL result of %s", query.c_str());
+                #ifdef EXPERIMENTAL_QUERIES
+                auto result {co_await subproc(connection)};
+                #else
                 auto result {co_await subproc(std::move(query))};
+                #endif
                 command_lock.unlock();
                 co_return std::move(result);
             } else {
@@ -232,9 +275,23 @@ namespace s90 {
         }
 
         aiopromise<sql_result<sql_row>> mysql::select(present<std::string> query) {
-            auto subproc = [this](const std::string&& query) -> aiopromise<sql_result<sql_row>> {
+            auto lock_prom = command_lock.lock();
+        #ifdef EXPERIMENTAL_QUERIES
+            auto [command_sent, connection] = co_await raw_exec(std::move(query));
+            if(command_sent.error) {
+                co_await lock_prom;
+                command_lock.unlock();
+                co_return std::move(command_sent);
+            }
+            auto subproc = [this] (ptr<iafd> connection) -> aiopromise<sql_result<sql_row>>
+        #else
+            auto subproc = [this](const std::string&& query) -> aiopromise<sql_result<sql_row>>
+        #endif
+            {
+                #ifndef EXPERIMENTAL_QUERIES
                 auto [command_sent, connection] = co_await raw_exec(std::move(query));
                 if(command_sent.error) co_return std::move(command_sent);
+                #endif
                 auto n_fields_desc = co_await read_packet(connection);
 
                 if(n_fields_desc.seq < 0 || n_fields_desc.data.length() < 1) {
@@ -292,13 +349,22 @@ namespace s90 {
                 final_result.error = false;
                 co_return std::move(final_result);
             };
-            if(co_await command_lock.lock()) {
+            if(co_await lock_prom) {
+                dbgf(DEBUG, "Reading SQL result of %s", query.c_str());
+                #ifdef EXPERIMENTAL_QUERIES
+                auto result {co_await subproc(connection)};
+                #else
                 auto result {co_await subproc(std::move(query))};
+                #endif
                 command_lock.unlock();
                 co_return std::move(result);
             } else {
                 co_return sql_result<sql_row>::with_error("lock failed");
             }
+        }
+
+        void mysql::exec_on_first_connect(std::string_view str) {
+            enqueued_sql = str;
         }
     }
 }

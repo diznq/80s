@@ -142,6 +142,10 @@ namespace s90 {
             /// @return true if login credentials were provided
             virtual bool is_connected() const = 0;
 
+            /// @brief Execute SQL on first successful connection
+            /// @param str execute on first connect
+            virtual void exec_on_first_connect(std::string_view str) = 0;
+
             /// @brief Escape a string
             /// @param view string to be escaped
             /// @return escaped string

@@ -239,7 +239,7 @@ static int l_net_inotify_init(lua_State *L) {
     status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, &ev);
 #endif
     if (status < 0) {
-        dbg("l_net_write: failed to add socket to out poll");
+        dbgf(ERROR, "l_net_write: failed to add socket to out poll");
         lua_pushnil(L);
         lua_pushstring(L, strerror(errno));
         return 2;

@@ -339,8 +339,8 @@ namespace s90 {
                     "    const char *name() const override {\n"
                     "        return \"" + script_name + "\";\n"
                     "    }\n\n"
-                    "    aiopromise<std::expected<nil, status>> render(ienvironment& env) const override {\n"
-                    "        env.content_type(\"" + mime_type + "\");\n"
+                    "    aiopromise<std::expected<nil, status>> render(std::shared_ptr<ienvironment> env) const override {\n"
+                    "        env->content_type(\"" + mime_type + "\");\n"
                     + out + "\n"
                     "        co_return nil {};\n"
                     "    }\n"
@@ -370,7 +370,7 @@ int main(int argc, const char **argv) {
     std::stringstream ss;
     ss << is.rdbuf();
 
-    auto out = compiler.compile(argv[1], std::filesystem::path(argv[2]), "env.output()", ss.str());
+    auto out = compiler.compile(argv[1], std::filesystem::path(argv[2]), "env->output()", ss.str());
 
     if(!std::strcmp(argv[3], "stdout")) {
         std::cout << out;
