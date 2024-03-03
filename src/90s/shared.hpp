@@ -17,4 +17,9 @@ namespace s90 {
 
     template<typename A>
     using rptr = A*;
+
+    namespace errors {
+        constexpr auto PROTOCOL_ERROR = "protocol_error";
+        constexpr auto STREAM_CLOSED = "stream_closed";
+    }
 }

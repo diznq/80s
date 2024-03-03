@@ -28,7 +28,7 @@ namespace s90 {
             /// @brief Render the page
             /// @param env environment
             /// @return nil
-            virtual aiopromise<std::expected<nil, status>> render(ienvironment& env) const = 0;
+            virtual aiopromise<std::expected<nil, status>> render(std::shared_ptr<ienvironment> env) const = 0;
         };
     }
 }

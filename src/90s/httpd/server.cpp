@@ -51,8 +51,8 @@ namespace s90 {
                 static_path = path;
             }
             
-            aiopromise<std::expected<nil, status>> render(ienvironment& env) const {
-                auto& ep = env.endpoint();
+            aiopromise<std::expected<nil, status>> render(std::shared_ptr<ienvironment> env) const {
+                auto& ep = env->endpoint();
                 if(static_path.length() > 0 && ep.find("/static/") == 0) {
                     std::filesystem::path root(static_path);
                     root = root.lexically_normal();
@@ -69,13 +69,13 @@ namespace s90 {
                     else if(ep.ends_with(".jpg")) mime = "image/jpeg";
                     else if(ep.ends_with(".png")) mime = "image/png";
                     if(std::filesystem::exists(dest)) {
-                        env.status("200 OK");
-                        env.header("content-type", mime);
-                        env.header("cache-control", "public, immutable, max-age=86400");
+                        env->status("200 OK");
+                        env->header("content-type", mime);
+                        env->header("cache-control", "public, immutable, max-age=86400");
                         std::ifstream is(dest, std::ios_base::binary);
                         if(!is.is_open()) return render_error(env, status::internal_server_error);
                         std::stringstream contents; contents << is.rdbuf();
-                        env.output()->write(contents.str());
+                        env->output()->write(contents.str());
                         aiopromise<std::expected<nil, status>> prom;
                         prom.resolve({});
                         return prom;
@@ -87,37 +87,37 @@ namespace s90 {
                 }
             }
 
-            aiopromise<std::expected<nil, status>> render_exception(ienvironment& env, std::exception_ptr ptr) const {
+            aiopromise<std::expected<nil, status>> render_exception(std::shared_ptr<ienvironment> env, std::exception_ptr ptr) const {
                 try {
                     std::rethrow_exception(ptr);
                 } catch(std::exception& ex) {
-                    fprintf(stderr, "[%s] Exception: %s\n", env.endpoint().c_str(), ex.what());
+                    fprintf(stderr, "[%s] Exception: %s\n", env->endpoint().c_str(), ex.what());
                 }
                 return render_error(env, status::internal_server_error);
             }
 
-            aiopromise<std::expected<nil, status>> render_error(ienvironment& env, status error) const {
-                env.header("Content-type", "text/plain");
+            aiopromise<std::expected<nil, status>> render_error(std::shared_ptr<ienvironment> env, status error) const {
+                env->header("Content-type", "text/plain");
                 switch(error) {
                     case status::not_found:
-                        env.status("404 Not found");
-                        env.output()->write("Not found");
+                        env->status("404 Not found");
+                        env->output()->write("Not found");
                         break;
                     case status::bad_request:
-                        env.status("400 Bad request");
-                        env.output()->write("Bad request");
+                        env->status("400 Bad request");
+                        env->output()->write("Bad request");
                         break;
                     case status::unauthorized:
-                        env.status("401 Unauthorized");
-                        env.output()->write("Unauthorized");
+                        env->status("401 Unauthorized");
+                        env->output()->write("Unauthorized");
                         break;
                     case status::forbidden:
-                        env.status("403 Forbidden");
-                        env.output()->write("Forbidden");
+                        env->status("403 Forbidden");
+                        env->output()->write("Forbidden");
                         break;
                     case status::internal_server_error:
-                        env.status("500 Internal server error");
-                        env.output()->write("Internal server error");
+                        env->status("500 Internal server error");
+                        env->output()->write("Internal server error");
                         break;
                 }
                 co_return {};
@@ -285,7 +285,7 @@ namespace s90 {
             std::string_view script;
             std::string endpoint;
             read_arg arg;
-            environment env;
+            std::shared_ptr<environment> env = std::make_shared<environment>();
             size_t pivot = 0, body_length = 0, prev_pivot = 0;
             bool write_status = true;
 
@@ -322,7 +322,7 @@ namespace s90 {
                 
                 // parse the status line
                 if(pivot != std::string::npos) {
-                    env.write_method(std::string(status.substr(0, pivot)));
+                    env->write_method(std::string(status.substr(0, pivot)));
                     status = status.substr(pivot + 1);
                     pivot = status.find(' ');
                     if(pivot != std::string::npos) {
@@ -341,7 +341,7 @@ namespace s90 {
                     std::string_view header_line = remaining.substr(0, pivot);
                     auto mid_key = header_line.find(": ");
                     if(mid_key != std::string::npos) {
-                        env.write_header(
+                        env->write_header(
                             std::string(header_line.substr(0, mid_key)),
                             std::string(header_line.substr(mid_key + 2))
                         );
@@ -366,18 +366,18 @@ namespace s90 {
                             if(decoded.has_value()) {
                                 auto decrypted = util::cipher(*decoded, enc_base + endpoint, false, false);
                                 if(decrypted.has_value()) {
-                                    env.write_signed_query(std::move(util::parse_query_string(*decrypted)));
+                                    env->write_signed_query(std::move(util::parse_query_string(*decrypted)));
                                 }
                             }
                         }
                     }
-                    env.write_query(std::move(query));
+                    env->write_query(std::move(query));
                 } else {
                     endpoint = s90::util::url_decode(script);
                 }
                 auto page_it = pages.find(endpoint);
                 if(page_it == pages.end()) {
-                    page_it = pages.find(env.method() + " " + endpoint);
+                    page_it = pages.find(env->method() + " " + endpoint);
                     if(page_it == pages.end()) {
                         current_page = default_page;
                     } else {
@@ -388,38 +388,39 @@ namespace s90 {
                 }
 
                 // read body if applicable
-                auto content_length = env.header("content-length");
+                auto content_length = env->header("content-length");
                 if(content_length) {
                     auto len = atoll(content_length->c_str());
                     if(len > 0) {
                         auto body = co_await fd->read_n(len);
                         if(body.error) co_return {};
-                        env.write_body(std::string(body.data));
+                        env->write_body(std::string(body.data));
                     }
                 }
 
                 // generate the response
-                env.header("connection", "keep-alive");
-                env.write_global_context(global_context);
-                env.write_local_context(local_context);
-                env.write_endpoint(endpoint);
-                env.write_enc_base(enc_base);
-                env.write_peer(peer_name);
+                env->header("connection", "keep-alive");
+                env->write_global_context(global_context);
+                env->write_local_context(local_context);
+                env->write_endpoint(endpoint);
+                env->write_enc_base(enc_base);
+                env->write_peer(peer_name);
+                env->write_fd(fd);
 
                 auto page_coro = current_page->render(env);
                 auto page_result = co_await page_coro;
                 if(page_coro.has_exception()) {
-                    env.clear();
+                    env->clear();
                     static_cast<generic_error_page*>(default_page)->render_exception(env, page_coro.exception());
                 } else if(!page_result.has_value()) {
-                    env.clear();
+                    env->clear();
                     static_cast<generic_error_page*>(default_page)->render_error(env, page_result.error());
                 }
-                write_status = co_await fd->write(co_await env.http_response());
+                write_status = co_await fd->write(co_await env->http_response());
                 if(!write_status) {
                     co_return {};
                 } else {
-                    env = environment {};
+                    env = std::make_shared<environment>();
                 }
             }
             co_return {};

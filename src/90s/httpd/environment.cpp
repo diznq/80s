@@ -2,19 +2,23 @@
 #include "page.hpp"
 #include "../util/util.hpp"
 #include "../cache/cache.hpp"
-#include <algorithm>
 #include <cctype>
+#include <cstring>
+#include <algorithm>
 #include <ranges>
+#include <80s/crypto.h>
 
 namespace s90 {
     namespace httpd {
-        aiopromise<std::string> environment::http_response() {
+        aiopromise<std::string> environment::http_response(bool with_content_length) {
             std::string rendered;
             if(!redirects)
                 rendered = std::move(co_await output_context->finalize());
 
             std::string response;
-            output_headers["content-length"] = std::to_string(rendered.length());
+            if(with_content_length) {
+                output_headers["content-length"] = std::to_string(rendered.length());
+            }
             length_estimate = length_estimate + 9 + status_line.length() + 4 + rendered.length();
             response.reserve(length_estimate);
 
@@ -30,7 +34,8 @@ namespace s90 {
             }
             
             response += "\r\n";
-            response += rendered;
+            if(rendered.length() > 0)
+                response += rendered;
             co_return std::move(response);
         }
 
@@ -243,6 +248,128 @@ namespace s90 {
             return peer_name;
         }
 
+        std::shared_ptr<iafd> environment::stream() const {
+            return fd;
+        }
+    
+        aiopromise<std::expected<bool, std::string>> environment::websocket_upgrade() {
+            auto secKey = header("sec-websocket-key");
+            if(!secKey) {
+                co_return std::unexpected(errors::PROTOCOL_ERROR);
+            }
+            
+            auto sign = util::to_b64(util::sha1((*secKey) + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"));
+
+            status("101 Switching protocols");
+            header("Upgrade", "websocket");
+            header("Connection", "upgrade");
+            header("Sec-WebSocket-Accept", sign);
+
+            if(co_await fd->write(co_await http_response(false))) {
+                co_return true;
+            } else {
+                co_return std::unexpected(errors::STREAM_CLOSED);
+            }
+        }
+        
+        aiopromise<std::expected<std::tuple<uint8_t, std::string>, std::string>> environment::websocket_read() const {
+            for(;;) {
+                auto data = co_await fd->read_n(2);
+                if(!data) co_return std::unexpected(errors::PROTOCOL_ERROR);
+                unsigned char opcode = ((unsigned char)data.data[0]) & 15;
+                auto payloadLength = ((uint64_t)data.data[1])&127;
+                bool requires_mask = (((uint8_t)data.data[1]) & 128) == 128;
+                unsigned char mask[4];
+                unsigned char *p = NULL;
+                std::memset(mask, 0, sizeof(mask));
+                if(payloadLength == 126) {
+                    data = co_await fd->read_n(2);
+                    if(!data) co_return std::unexpected(errors::PROTOCOL_ERROR);
+                    p = (unsigned char*)data.data.data();
+                    payloadLength = (((uint64_t)p[0]) << 8) | p[1];
+                } else if(payloadLength == 127) {
+                    data = co_await fd->read_n(8);
+                    if(!data) co_return std::unexpected(errors::PROTOCOL_ERROR);
+                    p = (unsigned char*)data.data.data();
+                    payloadLength = 0;
+                    for(int i = 0; i < 8; i++) {
+                        payloadLength <<= 8;
+                        payloadLength |= p[i];
+                    }
+                }
+
+                if(requires_mask) {
+                    data = co_await fd->read_n(4);
+                    if(!data) co_return std::unexpected(errors::PROTOCOL_ERROR);
+                    std::memcpy(mask, data.data.data(), 4);
+                }
+                
+                std::string message;
+                if(payloadLength > 0) {
+                    auto payload = co_await fd->read_n(payloadLength);
+                    if(!payload) co_return std::unexpected(errors::PROTOCOL_ERROR);
+                    message = payload.data;
+                    for(size_t i = 0; i < message.length(); i++) {
+                        message[i] = (char)((((unsigned char)message[i])& 255) ^ mask[i & 3]);
+                    }
+                }
+
+                if(opcode == 9) {
+                    std::string response;
+                    response += (char)10;
+                    response += (char)(requires_mask ? 2 : (128 | 2));
+                    if(requires_mask) {
+                        crypto_random((char*)mask, 4);
+                        response += std::string_view { (char*)mask, (char*)mask + 4 };
+                        for(size_t i = 0; i < message.length(); i++)
+                            message[i] = (char)((((unsigned char)message[i])& 255) ^ mask[i & 3]);
+                    }
+                    response += message;
+                    if(!co_await fd->write(response))
+                        co_return std::unexpected(errors::PROTOCOL_ERROR);
+                } else if(opcode == 8) {
+                    fd->close();
+                    co_return std::unexpected(errors::STREAM_CLOSED);
+                } else {
+                    co_return std::make_tuple(opcode, message);
+                }
+            }
+        }
+        
+        aiopromise<bool> environment::websocket_write(uint8_t opcode, std::string data) const {
+            std::string message;
+            message += (char)(128 | opcode);
+
+            unsigned char masked = 0;
+
+            if(data.length() <= 125) {
+                message += (char)(data.length() | masked);
+            } else if(message.length() < 65536) {
+                message += (char)(masked | 126);
+                message += (char)((data.length() >> 8) & 255);
+                message += (char)((data.length()) & 255);
+            } else {
+                message += (char)(masked | 127);
+                for(int i = 56; i >= 0; i -= 8)
+                    message += (char)((data.length() >> i) & 255);
+            }
+            
+            uint8_t mask[4];
+
+            if(masked) {
+                crypto_random((char*)mask, 4);
+                message += std::string_view((char*)mask, (char*)mask + 4);
+            } else {
+                std::memset(mask, 0, 4);
+            }
+
+            for(size_t i = 0; i < data.length(); i++) {
+                message += (((uint8_t)data[i]) & 255) ^ mask[i & 3];
+            }
+
+            return fd->write(message);
+        }
+
         void environment::write_body(std::string&& data) {
             http_body = std::move(data);
         }
@@ -282,6 +409,10 @@ namespace s90 {
 
         void environment::write_peer(const std::string& name) {
             peer_name = std::move(name);
+        }
+
+        void environment::write_fd(std::shared_ptr<iafd> fdesc) {
+            fd = fdesc;
         }
 
     }
