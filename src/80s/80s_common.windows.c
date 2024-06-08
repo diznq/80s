@@ -100,7 +100,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
     WSAIoctl((sock_t)childfd, SIO_GET_EXTENSION_FUNCTION_POINTER, &guid, sizeof(guid), &lpConnectEx, sizeof(lpConnectEx), &dwNumBytes, NULL, NULL);
     
     if(lpConnectEx == NULL) {
-        dbgf(ERROR, "l_net_connect: couldn't retrieve ConnectEx");
+        dbgf(LOG_ERROR, "l_net_connect: couldn't retrieve ConnectEx");
         return (fd_t)-1;
     }
 
@@ -118,13 +118,13 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
 
     // connectex requires the socket to be bound before it's being used
     if(bind((sock_t)childfd, sa, usev6 ? sizeof(binding.v6) : sizeof(binding.v4)) < 0) {
-        dbgf(ERROR, "l_net_connect: bind failed");
+        dbgf(LOG_ERROR, "l_net_connect: bind failed");
         return (fd_t)-1;
     }
     
     // assign to the very same event loop as of caller
     if(CreateIoCompletionPort(childfd, elfd, (ULONG_PTR)S80_FD_SOCKET, 0) == NULL) {
-        dbgf(ERROR, "l_net_connect: couldn't associate with iocp");
+        dbgf(LOG_ERROR, "l_net_connect: couldn't associate with iocp");
         return (fd_t)-1;
     }
 
@@ -153,7 +153,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
         return (fd_t)cx->recv;
     } else {
         // if things fail, cleanup
-        dbgf(ERROR, "l_net_connect: connectex failed");
+        dbgf(LOG_ERROR, "l_net_connect: connectex failed");
         closesocket((sock_t)childfd);
         free(cx->send->recv);
         free(cx->send);
@@ -188,7 +188,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
     if(status == FALSE && GetLastError() == ERROR_IO_PENDING) {
         return 0;
     } else if(status == FALSE) {
-        dbgf(ERROR, "l_net_write: write failed");
+        dbgf(LOG_ERROR, "l_net_write: write failed");
         return -1;
     } else {
         // in this case payload was small enough and got sent immediately, so clean-up
@@ -205,7 +205,7 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback) {
     close_params params;
 
     if (status < 0) {
-        dbgf(ERROR, "l_net_close: failed to remove child from epoll");
+        dbgf(LOG_ERROR, "l_net_close: failed to remove child from epoll");
         return status;
     }
     
@@ -224,7 +224,7 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback) {
     }
 
     if (status < 0) {
-        dbgf(ERROR, "l_net_close: failed to close childfd");
+        dbgf(LOG_ERROR, "l_net_close: failed to close childfd");
     }
 
     if(callback) {
@@ -250,11 +250,11 @@ int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port) {
     }
 
     if (clientlen == sizeof(struct sockaddr_in)) {
-        inet_ntop(AF_INET, &addr.v4.sin_addr, buf, clientlen);
+        inet_ntop(AF_INET, &addr.v4.sin_addr, buf, bufsize);
         *port = ntohs(addr.v4.sin_port);
         return 1;
     } else if (clientlen == sizeof(struct sockaddr_in6)) {
-        inet_ntop(AF_INET6, &addr.v6.sin6_addr, buf, clientlen);
+        inet_ntop(AF_INET6, &addr.v6.sin6_addr, buf, bufsize);
         *port = ntohs(addr.v6.sin6_port);
         return 1;
     } else {
@@ -324,7 +324,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
         childfd = pipes[i];
         
         if(CreateIoCompletionPort(childfd, elfd, (ULONG_PTR)S80_FD_PIPE, 0) == NULL) {
-            dbgf(INFO, "s80_popen: associate with iocp failed with %d\n", GetLastError());
+            dbgf(LOG_INFO, "s80_popen: associate with iocp failed with %d\n", GetLastError());
             cleanup_pipes(elfd, pipes_out, i - 1);
             for(j=0; j < 4; j++) {
                 CloseHandle(pipes[j]);
@@ -441,6 +441,15 @@ int s80_mail(mailbox *mailbox, mailbox_message *message) {
     }
     s80_release_mailbox(mailbox);
     return 0;
+}
+
+int s80_set_recv_timeout(fd_t fd, int timeo) {
+    context_holder *cx = (context_holder*)fd;
+    SOCKET sfd = (SOCKET)cx->fd;
+    struct timeval timeout;      
+    timeout.tv_sec = timeo;
+    timeout.tv_usec = 0;
+    return setsockopt (sfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
 }
 
 void s80_acquire_mailbox(mailbox *mailbox) {

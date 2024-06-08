@@ -49,6 +49,10 @@ namespace s90 {
                 return timestamp { 0 };
             }
 
+            bool is_never() const {
+                return point == 0;
+            }
+
             timestamp operator-(time_t t) {
                 return timestamp{ point - t };
             }
@@ -57,12 +61,28 @@ namespace s90 {
                 return timestamp{ point + t };
             }
 
+            time_t difference(const timestamp& t) {
+                return point - t.point;
+            }
+
             bool operator==(const timestamp& v) const {
                 return point == v.point;
             }
 
             bool operator<(const timestamp& v) const {
                 return point < v.point;
+            }
+
+            bool operator<=(const timestamp& v) const {
+                return point <= v.point;
+            }
+
+            bool operator>=(const timestamp& v) const {
+                return point >= v.point;
+            }
+
+            bool operator>(const timestamp& v) const {
+                return point > v.point;
             }
 
             bool to_native(std::string_view value) {
@@ -180,10 +200,14 @@ namespace s90 {
         };
 
         template<size_t N>
-        class varchar : public std::string {
+        class varchar {
+            std::string _str;
         public:
-            using std::string::string;
             constexpr size_t get_max_size() { return N; }
+
+            char at(size_t c) const {
+                return _str.at(c);
+            }
 
             std::string u8_substr(const std::string& s, size_t sz) const {
                 size_t i = 0, j = 0, k = s.length();
@@ -191,9 +215,9 @@ namespace s90 {
                     int n;
                     unsigned char c = ((unsigned char)(s.at(i)))&255;
                     if      ((c & 0x80) == 0)    n = 1;
-                    else if ((c & 0xE0) == 0xC0) n = 2;
-                    else if ((c & 0xF0) == 0xE0) n = 3;
-                    else if ((c & 0xF8) == 0xF0) n = 4;
+                    else if (i + 1 < k && ((c & 0xE0) == 0xC0) && X(i + 1, s)) n = 2;
+                    else if (i + 2 < k && ((c & 0xF0) == 0xE0) && X(i + 1, s) && X(i + 2, s)) n = 3;
+                    else if (i + 3 < k && ((c & 0xF8) == 0xF0) && X(i + 1, s) && X(i + 2, s) && X(i + 3, s)) n = 4;
                     else break;
                     if(i + n > k) break;
                     i += n;
@@ -209,9 +233,9 @@ namespace s90 {
                     int n;
                     unsigned char c = ((unsigned char)(s.at(i)))&255;
                     if      ((c & 0x80) == 0)    n = 1;
-                    else if ((c & 0xE0) == 0xC0) n = 2;
-                    else if ((c & 0xF0) == 0xE0) n = 3;
-                    else if ((c & 0xF8) == 0xF0) n = 4;
+                    else if (i + 1 < k && ((c & 0xE0) == 0xC0) && X(i + 1, s)) n = 2;
+                    else if (i + 2 < k && ((c & 0xF0) == 0xE0) && X(i + 1, s) && X(i + 2, s)) n = 3;
+                    else if (i + 3 < k && ((c & 0xF8) == 0xF0) && X(i + 1, s) && X(i + 2, s) && X(i + 3, s)) n = 4;
                     else break;
                     if(i + n > k) break;
                     i += n;
@@ -221,16 +245,34 @@ namespace s90 {
                 return s.substr(0, i);
             }
 
-            std::string_view u8_sv_substr(size_t sz) const {
+            std::string_view u8_substr(std::string_view s, size_t sz) const {
+                size_t i = 0, j = 0, k = s.length();
+                for(i = 0; i < k && j < sz; j++) {
+                    int n;
+                    unsigned char c = ((unsigned char)(s.at(i)))&255;
+                    if      ((c & 0x80) == 0)    n = 1;
+                    else if (i + 1 < k && ((c & 0xE0) == 0xC0) && X(i + 1, s)) n = 2;
+                    else if (i + 2 < k && ((c & 0xF0) == 0xE0) && X(i + 1, s) && X(i + 2, s)) n = 3;
+                    else if (i + 3 < k && ((c & 0xF8) == 0xF0) && X(i + 1, s) && X(i + 2, s) && X(i + 3, s)) n = 4;
+                    else break;
+                    if(i + n > k) break;
+                    i += n;
+                }
+                if(i > k) i = k;
+                //printf("2 (%zu > %zu) -> %zu | %zu\n", s.length(), sz, i, j);
+                return s.substr(0, i);
+            }
+
+            std::string_view u8_sv_substr(const std::string& str, size_t sz) const {
                 size_t i = 0, j = 0;
-                const size_t k = std::string::length();
+                const size_t k = str.length();
                 for(i = 0; i < k && j < sz; j++) {
                     int n;
                     unsigned char c = ((unsigned char)(at(i)))&255;
                     if      ((c & 0x80) == 0)    n = 1;
-                    else if ((c & 0xE0) == 0xC0) n = 2;
-                    else if ((c & 0xF0) == 0xE0) n = 3;
-                    else if ((c & 0xF8) == 0xF0) n = 4;
+                    else if (i + 1 < k && ((c & 0xE0) == 0xC0) && X(i + 1, str)) n = 2;
+                    else if (i + 2 < k && ((c & 0xF0) == 0xE0) && X(i + 1, str) && X(i + 2, str)) n = 3;
+                    else if (i + 3 < k && ((c & 0xF8) == 0xF0) && X(i + 1, str) && X(i + 2, str) && X(i + 3, str)) n = 4;
                     else break;
                     if(i + n > k) break;
                     i += n;
@@ -240,29 +282,66 @@ namespace s90 {
                 return std::string_view { begin(), begin() + i };
             }
 
-            varchar(const std::string& s) : std::string(s.length() > N ? u8_substr(s, N) : s) {}
-            varchar(std::string&& s) : std::string(s.length() > N ? std::move(u8_substr(std::move(s), N)) : std::move(s)) {}
+            varchar() : _str() {}
+
+            varchar(const std::string& s) : _str(s.length() > N ? u8_substr(s, N) : s) {
+
+            }
+
+            varchar(std::string&& s) : _str(s.length() > N ? u8_substr(std::move(s), N) : std::move(s)) {
+
+            }
+
+            varchar(std::string_view s) : _str(s.length() > N ? u8_substr(s, N) : s) {
+
+            }
+
+            varchar(const char* s) : varchar(std::string_view(s)) {
+
+            }
 
             varchar& operator=(const std::string& str) {
-                assign(str.length() > N ? u8_substr(str, N) : str);
+                _str.assign(str.length() > N ? u8_substr(str, N) : str);
                 return *this;
             }
 
             varchar& operator=(std::string&& str) {
-                assign(str.length() > N ? u8_substr(std::move(str), N) : std::move(str));
+                _str.assign(str.length() > N ? u8_substr(std::move(str), N) : std::move(str));
                 return *this;
             }
 
+            varchar& operator=(std::string_view str) {
+                _str.assign(str.length() > N ? u8_substr(str, N) : str);
+                return *this;
+            }
+
+            varchar& operator=(const char* cstr) {
+                std::string_view str(cstr);
+                _strassign(str.length() > N ? u8_substr(str, N) : str);
+                return *this;
+            }
+
+            bool X(const size_t i, const std::string& ref) const {
+                if(i >= ref.length()) return false;
+                return ((((unsigned char)(ref.at(i)))&255) & 0xC0) == 0x80;
+            } 
+
+            bool X(const size_t i, std::string_view ref) const {
+                printf("X: %zu, l: %zu\n", i, ref.length());
+                if(i >= ref.length()) return false;
+                return ((((unsigned char)(ref.at(i)))&255) & 0xC0) == 0x80;
+            } 
+
             auto u8_length() const {
                 size_t i = 0, j = 0;
-                const size_t k = std::string::length();
+                const size_t k = _str.length();
                 for(i = 0; i < k && j < N; j++) {
                     int n;
                     unsigned char c = ((unsigned char)(at(i)))&255;
                     if      ((c & 0x80) == 0)    n = 1;
-                    else if ((c & 0xE0) == 0xC0) n = 2;
-                    else if ((c & 0xF0) == 0xE0) n = 3;
-                    else if ((c & 0xF8) == 0xF0) n = 4;
+                    else if (i + 1 < k && ((c & 0xE0) == 0xC0) && X(i + 1, _str)) n = 2;
+                    else if (i + 2 < k && ((c & 0xF0) == 0xE0) && X(i + 1, _str) && X(i + 2, _str)) n = 3;
+                    else if (i + 3 < k && ((c & 0xF8) == 0xF0) && X(i + 1, _str) && X(i + 2, _str) && X(i + 3, _str)) n = 4;
                     else break;
                     if(i + n > k) break;
                     i += n;
@@ -271,17 +350,33 @@ namespace s90 {
                 return j > N ? N : j;
             }
 
-            auto length() const {
+            auto exdeeds_length(std::string_view sv) const {
                 size_t i = 0, j = 0;
-                const size_t k = std::string::length();
+                const size_t k = sv.length();
+                for(i = 0; i < k && j < N; j++) {
+                    int n;
+                    unsigned char c = ((unsigned char)(sv.at(i)))&255;
+                    if      ((c & 0x80) == 0)    n = 1;
+                    else if (i + 1 < k && ((c & 0xE0) == 0xC0) && X(i + 1, sv)) n = 2;
+                    else if (i + 2 < k && ((c & 0xF0) == 0xE0) && X(i + 1, sv) && X(i + 2, sv)) n = 3;
+                    else if (i + 3 < k && ((c & 0xF8) == 0xF0) && X(i + 1, sv) && X(i + 2, sv) && X(i + 3, sv)) n = 4;
+                    else break;
+                    i += n;
+                }
+                return j > N;
+            }
+
+            auto raw_length() const {
+                size_t i = 0, j = 0;
+                const size_t k = _str.length();
                 for(i = 0; i < k && j < N; j++) {
                     if(j == N) return i;
                     int n;
                     unsigned char c = ((unsigned char)(at(i)))&255;
                     if      ((c & 0x80) == 0)    n = 1;
-                    else if ((c & 0xE0) == 0xC0) n = 2;
-                    else if ((c & 0xF0) == 0xE0) n = 3;
-                    else if ((c & 0xF8) == 0xF0) n = 4;
+                    else if (i + 1 < k && ((c & 0xE0) == 0xC0) && X(i + 1, _str)) n = 2;
+                    else if (i + 2 < k && ((c & 0xF0) == 0xE0) && X(i + 1, _str) && X(i + 2, _str)) n = 3;
+                    else if (i + 3 < k && ((c & 0xF8) == 0xF0) && X(i + 1, _str) && X(i + 2, _str) && X(i + 3, _str)) n = 4;
                     else break;
                     if(i + n > k) break;
                     i += n;
@@ -289,12 +384,63 @@ namespace s90 {
                 return i;
             }
 
+            void clear() {
+                _str.clear();
+            }
+
+            auto begin() const {
+                return _str.begin();
+            }
+
             auto end() const {
-                return begin() + length();
+                return _str.begin() + raw_length();
+            }
+
+            auto c_str() const {
+                return _str.c_str();
+            }
+
+            std::string_view as_sv() const {
+                return _str.length() > N ? u8_sv_substr(_str, N) : std::string_view(_str.begin(), _str.end());
+            }
+
+            bool operator==(std::string_view text) {
+                std::string_view as_sv = _str.length() > N ? u8_sv_substr(_str, N) : std::string_view(_str.begin(), _str.end());
+                return as_sv == text;
+            }
+
+            bool operator!=(std::string_view text) {
+                std::string_view as_sv = _str.length() > N ? u8_sv_substr(_str, N) : std::string_view(_str.begin(), _str.end());
+                return as_sv != text;
+            }
+
+            bool operator<(std::string_view text) {
+                std::string_view as_sv = _str.length() > N ? u8_sv_substr(_str, N) : std::string_view(_str.begin(), _str.end());
+                return as_sv < text;
+            }
+
+            bool contains(char c) const {
+                return as_sv().contains(c);
+            }
+
+            bool contains(const std::string& c) const {
+                return as_sv().contains(c);
+            }
+
+            bool contains(std::string_view c) const {
+                return as_sv().contains(c);
+            }
+
+            bool contains(const char* c) const {
+                return as_sv().contains(c);
+            }
+
+            operator std::string() const {
+                return _str.length() > N ? u8_substr(_str, N) : _str;
             }
 
             operator std::string_view() const {
-                return std::string::length() > N ? u8_sv_substr(N) : std::string_view(begin(), end());
+                return _str.length() > N ? u8_sv_substr(_str, N) : std::string_view(_str.begin(), _str.end());
             }
         };
 

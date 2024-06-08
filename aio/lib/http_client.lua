@@ -70,12 +70,22 @@ function http_client:request(params)
                 local response_body = ""
                 if http_protocol and status_line and response_headers then
                     local response_length = tonumber(response_headers["content-length"] or "0")
-                    if response_length > 0 then
+                    local chunked = false;
+                    if response_length == 0 and response_headers["transfer-encoding"] == "chunked" then
+                        response_length = coroutine.yield("\r\n")
+                        if response_length == nil then
+                            resolve(make_error("protocol error on chunked encoding"))
+                            return
+                        end
+                        response_length = tonumber(response_length, 16)
+                    end
+                    if response_length ~= nil and response_length > 0 then
                         if params.response_file then
                             local to_read = response_length
                             local did_read = 0
                             while true do
                                 local chunk_size = math.min(1000000, to_read)
+                                if chunked then chunk_size = response_length end
                                 local chunk = coroutine.yield(chunk_size)
                                 if chunk ~= nil then
                                     local f, err = params.response_file:write(chunk)
@@ -93,6 +103,14 @@ function http_client:request(params)
                                     resolve(make_error("failed to write response stream"))
                                     return
                                 end
+                                if chunked then
+                                    response_length = coroutine.yield("\r\n")
+                                    if response_length == nil then
+                                        resolve(make_error("failed to read next chunk length"))
+                                        return
+                                    end
+                                    response_length = tonumber(response_length, 16)
+                                end
                                 if to_read ~= 0 then
                                     fd:close()
                                     params.response_file:close()
@@ -104,7 +122,27 @@ function http_client:request(params)
                                 end
                             end
                         else
-                            response_body = coroutine.yield(response_length)
+                            if chunked then
+                                local chunks = {}
+                                while response_length > 0 do
+                                    local chunk = coroutine.yield(response_length)
+                                    if chunk == nil then
+                                        resolve(make_error("failed to read response chunk"))
+                                        return
+                                    else
+                                        chunks[#chunks+1] = 0
+                                        response_length = coroutine.yield("\r\n")
+                                        if response_length == nil then
+                                            resolve(make_error("failed to read next chunk length"))
+                                        else
+                                            response_length = tonumber(response_length, 16)
+                                        end
+                                    end
+                                end
+                                response_body = table.concat(chunks, "")
+                            else
+                                response_body = coroutine.yield(response_length)
+                            end
                         end
                         if response_body == nil then
                             fd:close()

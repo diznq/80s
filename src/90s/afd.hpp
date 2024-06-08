@@ -108,6 +108,15 @@ namespace s90 {
         /// @param name new name
         virtual void set_name(std::string_view name) = 0;
 
+        /// @brief Get remote address
+        /// @return IP, port
+        virtual std::tuple<std::string, int> remote_addr() const = 0;
+
+        /// @brief Set remote address
+        /// @param ip IP
+        /// @param port port
+        virtual void set_remote_addr(const std::string& ip, int port) = 0;
+
         /// @brief Close the file descriptor
         /// @param immediate call on_close immediately
         virtual void close(bool immediate = true) = 0;
@@ -160,6 +169,25 @@ namespace s90 {
         /// @brief Determine if the FD is locked
         /// @return true if locked
         virtual bool is_locked() const = 0;
+
+        /// @brief Determine if FD was already accepted
+        /// @return true if yes
+        virtual bool was_accepted() const = 0;
+
+        /// @brief Set user data
+        /// @param key key
+        /// @param value value
+        virtual void set_ud(const std::string& key, const std::string& value) = 0;
+
+        /// @brief Get user data
+        /// @param key key
+        /// @return value
+        virtual std::optional<std::string> get_ud(const std::string& key) const = 0;
+
+        /// @brief Set read timeout
+        /// @param timeout timeout
+        /// @return 0 if success, < 0 if error
+        virtual int set_timeout(int timeout) = 0;
     };
 
     class afd : public iafd {
@@ -227,6 +255,11 @@ namespace s90 {
         std::vector<char> read_buffer;
         std::queue<read_command> read_commands;
         std::function<void()> on_command_queue_empty;
+        dict<std::string, std::string> ud;
+        std::string remote_ip;
+        int remote_port;
+
+        bool was_accepted_ = false;
 
         void handle_failure();
         void ssl_cycle(std::vector<char>& decoded);
@@ -246,6 +279,7 @@ namespace s90 {
 
         bool is_error() const override;
         bool is_closed() const override;
+        bool was_accepted() const override;
         aiopromise<read_arg> read_any() override;
         aiopromise<read_arg> read_n(size_t n_bytes) override;
         aiopromise<read_arg> read_until(std::string&& delim) override;
@@ -265,6 +299,14 @@ namespace s90 {
         aiopromise<bool> lock() override;
         void unlock() override;
         bool is_locked() const override;
+
+        void set_ud(const std::string& key, const std::string& value) override;
+        std::optional<std::string> get_ud(const std::string& key) const override;
+        std::tuple<std::string, int> remote_addr() const override;
+
+        int set_timeout(int timeout) override;
+
+        void set_remote_addr(const std::string& ip, int port) override;
     };
 
 }

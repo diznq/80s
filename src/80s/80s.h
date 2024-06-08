@@ -172,7 +172,16 @@ typedef struct accept_params_ {
     fd_t parentfd;
     fd_t childfd;
     int fdtype;
+    char address[128];
+    int addrlen;
 } accept_params;
+
+typedef struct ready_params_ {
+    void *ctx;
+    fd_t elfd;
+    fd_t childfd;
+    int fdtype;
+} ready_params;
 
 struct mailbox_message_ {
     int sender_id;
@@ -237,6 +246,7 @@ struct serve_params_ {
     reload_context *reload;
 };
 
+
 typedef struct fd_holder_ {
     int type;
     fd_t fd;
@@ -270,6 +280,7 @@ void on_write(struct write_params_ params);
 void on_accept(struct accept_params_ params);
 void on_init(struct init_params_ params);
 void on_message(struct message_params_ params);
+int is_fd_ready(struct ready_params_ params);
 
 fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int port, int is_udp);
 int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, size_t offset, size_t len);
@@ -282,19 +293,20 @@ int s80_mail(mailbox *mailbox, mailbox_message *message);
 void s80_acquire_mailbox(mailbox *mailbox);
 void s80_release_mailbox(mailbox *mailbox);
 void s80_enable_async(fd_t fd);
+int s80_set_recv_timeout(fd_t fd, int timeout);
 
 void resolve_mail(serve_params *params, int id);
 
-#define ALWAYS 0
-#define ERROR 1
-#define WARN 2
-#define INFO 3
-#define DEBUG 4
+#define LOG_ALWAYS 0
+#define LOG_ERROR 1
+#define LOG_WARN 2
+#define LOG_INFO 3
+#define LOG_DEBUG 4
 
 #ifdef S80_DEBUG_LEVEL
-#define dbgf(LEVEL, ...) do {if(LEVEL <= S80_DEBUG_LEVEL) printf(__VA_ARGS__); fflush(stdout);} while(false)
+#define dbgf(LEVEL, ...) do {if(LEVEL <= S80_DEBUG_LEVEL) printf(__VA_ARGS__); fflush(stdout);} while(0)
 #else
-#define dbgf(...)
+#define dbgf(LEVEL, ...) do {if(LEVEL <= 0) printf(__VA_ARGS__); fflush(stdout);} while(0)
 #endif
 
 #ifdef __cplusplus

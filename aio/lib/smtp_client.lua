@@ -83,7 +83,7 @@ function smtp_client:send_mail(params)
                     fd:close()
                     return resolve(make_error("STARTTLS status was " .. status .. " instead of expected 220"))
                 end
-                aio:wrap_tls(fd, self.tls, fd.host)(function (result)
+                aio:wrap_tls(fd, self.tls, fd.host, true)(function (result)
                     if not result then
                         fd:close()
                         resolve(make_error("STARTTLS failed to wrap TLS"))

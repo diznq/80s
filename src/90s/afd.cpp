@@ -22,7 +22,7 @@ namespace s90 {
     }
 
     void afd::on_accept() {
-
+        was_accepted_ = true;
     }
 
     void afd::on_data(std::string_view data, bool cycle) {
@@ -54,7 +54,7 @@ namespace s90 {
                 return;
             }
             
-            //dbgf(DEBUG, "on_data, read_commands: %zu, read_buffer: %zu, read_offset: %zu, data: %zu, cycle: %d\n", read_commands.size(), read_buffer.size(), read_offset, data.size(), cycle);
+            //dbgf(LOG_DEBUG, "on_data, read_commands: %zu, read_buffer: %zu, read_offset: %zu, data: %zu, cycle: %d\n", read_commands.size(), read_buffer.size(), read_offset, data.size(), cycle);
 
             if((!buffering && read_commands.empty()) || (read_buffer.size() + data.size() - read_offset) == 0) [[unlikely]] {
                 // if read buffer + incoming data is empty, no point in resolving the promises
@@ -80,7 +80,7 @@ namespace s90 {
                 // handle different read command types differently
                 switch(it.type) {
                     case read_command_type::any: [[unlikely]]
-                        //dbgf(DEBUG, "READ ANY\n");
+                        //dbgf(LOG_DEBUG, "READ ANY\n");
                         // any is fulfilled whenever any data comes in, no matter the size
                         read_offset += window.size();
                         arg = window;
@@ -91,7 +91,7 @@ namespace s90 {
                         iterate = false;
                         break;
                     case read_command_type::n:
-                        dbgf(DEBUG, "%s; READ %zu bytes (current offset: %zu, wnd: %zu)\n", name().c_str(), command_n, read_offset, window.length());
+                        dbgf(LOG_DEBUG, "%s; READ %zu bytes (current offset: %zu, wnd: %zu)\n", name().c_str(), command_n, read_offset, window.length());
                         // n is fulfilled only when n bytes of data is read and receives only those n bytes
                         if(window.length() < command_n) {
                             iterate = false;
@@ -118,7 +118,7 @@ namespace s90 {
                             part = kmp(window.data(), window.length(), it.delimiter.c_str() + delim_state.match, command_delim_length - delim_state.match, delim_state.offset, it.pattern_ref ? it.pattern_ref : it.pattern.data());
                         }
                         if(part.length == command_delim_length || (part.offset == delim_state.offset && part.length + delim_state.match == command_delim_length)) {
-                            dbgf(DEBUG, "%s; 1/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", name().c_str(), delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
+                            dbgf(LOG_DEBUG, "%s; 1/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", name().c_str(), delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                             delim_state.match = 0;
                             delim_state.offset = part.offset + part.length;
                             read_offset += delim_state.offset;
@@ -130,12 +130,12 @@ namespace s90 {
                             if(auto p = command_promise.lock())
                                 aiopromise(p).resolve({false, std::move(arg)});
                         } else if(part.offset == delim_state.offset + delim_state.match && part.length > 0) [[unlikely]] {
-                            dbgf(DEBUG, "%s; 2/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", name().c_str(), delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
+                            dbgf(LOG_DEBUG, "%s; 2/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", name().c_str(), delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                             delim_state.match += part.length;
                             delim_state.offset = part.offset + part.length;
                             iterate = false;
                         } else [[likely]] {
-                            dbgf(DEBUG, "%s; 3/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", name().c_str(), delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
+                            dbgf(LOG_DEBUG, "%s; 3/Read until, offset: %zu, match: %zu, rem: %zu -> new offset: %zu, found length: %zu\n", name().c_str(), delim_state.offset, delim_state.match, command_delim_length - delim_state.match, part.offset, part.length);
                             //delim_state.match = 0;
                             //delim_state.offset = part.offset;
                             size_t to_add = part.offset == window.length() - part.length ? part.length : 0;
@@ -154,7 +154,7 @@ namespace s90 {
 
             if(read_offset == read_buffer.size() || (!buffering && read_commands.empty())) [[unlikely]] {
                 // if everything was executed, clear the read buffer
-                dbgf(DEBUG, "%s; reset read offset to 0\n", name().c_str());
+                dbgf(LOG_DEBUG, "%s; reset read offset to 0\n", name().c_str());
                 read_offset = 0;
                 read_buffer.clear();
                 break;
@@ -177,7 +177,7 @@ namespace s90 {
             // make sure we iterate over every promise to check the fullfilment
             while(!write_back_buffer_info.empty()) {
                 auto& promise = write_back_buffer_info.front();
-                dbgf(DEBUG, "promise.sent: %d + written: %d (%d) >= promise.length: %d?\n", promise.sent, written_bytes, promise.sent + written_bytes, promise.length);
+                dbgf(LOG_DEBUG, "promise.sent: %d + written: %d (%d) >= promise.length: %d?\n", promise.sent, written_bytes, promise.sent + written_bytes, promise.length);
                 if(promise.sent + written_bytes >= promise.length) [[likely]] {
                     written_bytes -= promise.length - promise.sent;
                     promise.sent = promise.length;
@@ -228,12 +228,12 @@ namespace s90 {
         
         while(true) {
             int ssl_read = crypto_ssl_read(ssl_bio, new_data, sizeof(new_data), &want_io, &err);
-            dbgf(INFO, "SSL decode - read %d, want IO: %d\n", ssl_read, want_io);
+            dbgf(LOG_INFO, "SSL decode - read %d, want IO: %d\n", ssl_read, want_io);
 
             if(want_io) [[likely]] {
                 while(true) {
                     int ssl_write = crypto_ssl_bio_read(ssl_bio, new_data, sizeof(new_data));
-                    dbgf(INFO, "SSL decode - write %d\n", ssl_write);
+                    dbgf(LOG_INFO, "SSL decode - write %d\n", ssl_write);
                     if(ssl_write <= 0) {
                         break;
                     }
@@ -303,7 +303,7 @@ namespace s90 {
         if(is_closed()) [[unlikely]] {
             promise.resolve({true, ""});
         } else {
-            dbgf(DEBUG, "%s; Insert READ %zu bytes command (%zu, %zu | %zu)\n", name().c_str(), n_bytes, read_buffer.size(), read_offset, read_commands.size());
+            dbgf(LOG_DEBUG, "%s; Insert READ %zu bytes command (%zu, %zu | %zu)\n", name().c_str(), n_bytes, read_buffer.size(), read_offset, read_commands.size());
             read_commands.emplace(read_command(promise.weak(), read_command_type::n, n_bytes, "", {}));
             if(read_buffer.size() > 0 && read_commands.size() == 1)
                 on_data("", true); // force the cycle if there is any previous remaining data to be read
@@ -358,13 +358,13 @@ namespace s90 {
         aiopromise<bool> promise = aiopromise<bool>();
 
         if(layers && (ssl_status == ssl_state::client_ready || ssl_status == ssl_state::server_ready)) {
-            dbgf(INFO, "SSL encode\n");
+            dbgf(LOG_INFO, "SSL encode\n");
             char buf[4000];
             int ssl_write = crypto_ssl_write(ssl_bio, data.data(), data.length());
-            dbgf(INFO, "SSL write (%zu -> %d)\n", data.length(), ssl_write);
+            dbgf(LOG_INFO, "SSL write (%zu -> %d)\n", data.length(), ssl_write);
             while(ssl_write >= 0) {
                 int ssl_read = crypto_ssl_bio_read(ssl_bio, buf, sizeof(buf));
-                dbgf(INFO, "SSL write - chunk %d\n", ssl_read);
+                dbgf(LOG_INFO, "SSL write - chunk %d\n", ssl_read);
                 if(ssl_read > 0) {
                     encoded.insert(encoded.end(), buf, buf + ssl_read);
                 } else {
@@ -375,7 +375,7 @@ namespace s90 {
         }
         
         if(is_closed()) [[unlikely]] {
-            dbgf(INFO, "Tried to write to closed FD (%s)!\n", name().c_str());
+            dbgf(LOG_INFO, "Tried to write to closed FD (%s)!\n", name().c_str());
             promise.resolve(false);
             return promise;
         }
@@ -426,23 +426,23 @@ namespace s90 {
             ssl_status = ssl_state::client_initializing;
             want_io = 0;
             status = crypto_ssl_connect(ssl_bio, &want_io, &err);
-            dbgf(INFO, "SSL connect\n");
+            dbgf(LOG_INFO, "SSL connect\n");
 
             if(status < 0) {
-                dbgf(INFO, "SSL connect - fail\n");
+                dbgf(LOG_INFO, "SSL connect - fail\n");
                 crypto_ssl_bio_release(ssl_bio, 3);
                 ssl_bio = nullptr;
                 ssl_status = ssl_state::none;
                 co_return {true, err};
             }
 
-            dbgf(INFO, "!SSL init finished\n");
+            dbgf(LOG_INFO, "!SSL init finished\n");
             while(true) {
                 ssl_read = crypto_ssl_bio_read(ssl_bio, output, sizeof(output));
-                dbgf(INFO, "SSL BIO read - %d\n", ssl_read);
+                dbgf(LOG_INFO, "SSL BIO read - %d\n", ssl_read);
                 if(ssl_read > 0) {
                     if(!co_await write(std::string_view(output, output + ssl_read))) {   
-                        dbgf(INFO, "SSL socket write - fail\n");
+                        dbgf(LOG_INFO, "SSL socket write - fail\n");
                         crypto_ssl_bio_release(ssl_bio, 3);
                         ssl_bio = nullptr;
                         ssl_status = ssl_state::none;
@@ -459,16 +459,16 @@ namespace s90 {
                 co_return {false, ""};
             }
 
-            dbgf(INFO, "SSL read any\n");
+            dbgf(LOG_INFO, "SSL read any\n");
             auto arg = co_await read_any();
             if(arg.error) {
-                dbgf(INFO, "SSL connect - error\n");
+                dbgf(LOG_INFO, "SSL connect - error\n");
                 crypto_ssl_bio_release(ssl_bio, 3);
                 ssl_bio = nullptr;
                 ssl_status = ssl_state::none;
                 co_return {true, "failed to read from fd"};
             } else {
-                dbgf(INFO, "SSL - read any write\n");
+                dbgf(LOG_INFO, "SSL - read any write\n");
                 crypto_ssl_bio_write(ssl_bio, arg.data.data(), arg.data.length());
             }
         }
@@ -488,7 +488,7 @@ namespace s90 {
             ssl_status = ssl_state::server_initializing;
             auto arg = co_await read_any();
             if(arg.error) {
-                dbgf(INFO, "SSL socket read - fail\n");
+                dbgf(LOG_INFO, "SSL socket read - fail\n");
                 crypto_ssl_bio_release(ssl_bio, 3);
                 ssl_bio = nullptr;
                 ssl_status = ssl_state::none;
@@ -499,9 +499,9 @@ namespace s90 {
             crypto_ssl_bio_write(ssl_bio, arg.data.data(), arg.data.length());
             status = crypto_ssl_accept(ssl_bio, &want_io, &err);
 
-            dbgf(INFO, "SSL accept: %d\n", status);
+            dbgf(LOG_INFO, "SSL accept: %d\n", status);
             if(status < 0) {
-                dbgf(INFO, "SSL accept - fail\n");
+                dbgf(LOG_INFO, "SSL accept - fail\n");
                 crypto_ssl_bio_release(ssl_bio, 3);
                 ssl_bio = nullptr;
                 ssl_status = ssl_state::none;
@@ -510,10 +510,10 @@ namespace s90 {
 
             while(true) {
                 ssl_read = crypto_ssl_bio_read(ssl_bio, output, sizeof(output));
-                dbgf(INFO, "SSL BIO read - %d\n", ssl_read);
+                dbgf(LOG_INFO, "SSL BIO read - %d\n", ssl_read);
                 if(ssl_read > 0) {
                     if(!co_await write(std::string_view(output, output + ssl_read))) {
-                        dbgf(INFO, "SSL socket write - fail\n");
+                        dbgf(LOG_INFO, "SSL socket write - fail\n");
                         crypto_ssl_bio_release(ssl_bio, 3);
                         ssl_bio = nullptr;
                         ssl_status = ssl_state::none;
@@ -548,6 +548,45 @@ namespace s90 {
 
     bool afd::is_locked() const {
         return internal_lock.is_locked();
+    }
+
+    bool afd::was_accepted() const {
+        return was_accepted_;
+    }
+
+    void afd::set_ud(const std::string& key, const std::string& value) {
+        ud[key] = value;
+    }
+
+    std::optional<std::string> afd::get_ud(const std::string& key) const {
+        auto f = ud.find(key);
+        if(f != ud.end()) return f->second;
+        return {};
+    }
+
+    std::tuple<std::string, int> afd::remote_addr() const {
+        if(remote_ip.length() > 0) {
+            return std::make_tuple(remote_ip, remote_port);
+        }
+        std::string peer_name = remote_ip.length() > 0 ? remote_ip : name();
+        char peer_name_buff[100];
+        int peer_port = 0;
+
+        if(s80_peername(get_fd(), peer_name_buff, sizeof(peer_name_buff), &peer_port)) {
+            peer_name = peer_name_buff;
+        }
+
+        return std::make_tuple(peer_name, peer_port);
+    }
+
+    int afd::set_timeout(int timeo) {
+        return s80_set_recv_timeout(fd, timeo);
+    }
+
+    
+    void afd::set_remote_addr(const std::string& ip, int port) {
+        remote_ip = ip;
+        remote_port = port;
     }
 
 }

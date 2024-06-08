@@ -75,6 +75,9 @@ namespace s90 {
             }
         }
 
+        int compress(std::string& data);
+        int decompress(std::string& data);
+
         class call_on_destroy {
             std::function<void()> cb;
         public:

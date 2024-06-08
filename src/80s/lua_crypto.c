@@ -197,11 +197,11 @@ static int l_crypto_ssl_bio_new(lua_State *L) {
 }
 
 static int l_crypto_ssl_bio_new_connect(lua_State *L) {
-    if(lua_gettop(L) < 4 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || lua_type(L, 2) != LUA_TSTRING || lua_type(L, 3) != LUA_TLIGHTUSERDATA || lua_type(L, 4) != LUA_TLIGHTUSERDATA) {
-        return luaL_error(L, "expecting 4 arguments: ssl context (lightuserdata), host:port (string), elfd (lightuserdata), childfd (lightuserdata)[, ktls (boolean)]");
+    if(lua_gettop(L) < 4 || lua_type(L, 1) != LUA_TLIGHTUSERDATA || (lua_type(L, 2) != LUA_TSTRING && lua_type(L, 2) != LUA_TNIL) || lua_type(L, 3) != LUA_TLIGHTUSERDATA || lua_type(L, 4) != LUA_TLIGHTUSERDATA) {
+        return luaL_error(L, "expecting 4 arguments: ssl context (lightuserdata), host:port? (string), elfd (lightuserdata), childfd (lightuserdata)[, ktls (boolean)]");
     }
     void *ssl_ctx = lua_touserdata(L, 1);
-    const char *hostport = lua_tostring(L, 2);
+    const char *hostport = lua_type(L, 2) == LUA_TNIL ? NULL : lua_tostring(L, 2);
     fd_t elfd = (fd_t)0, childfd = (fd_t)0;
     int do_ktls = lua_gettop(L) == 5 && lua_type(L, 5) == LUA_TBOOLEAN ? lua_toboolean(L, 5) : 0;
     #ifdef USE_KTLS

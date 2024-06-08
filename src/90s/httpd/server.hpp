@@ -77,7 +77,7 @@ namespace s90 {
             static std::mutex loaded_libs_lock;
             void *local_context = nullptr;
             icontext *global_context = nullptr;
-            page *default_page;
+            page *default_page, *actor_page;
             httpd_config config;
 
             std::string static_path;

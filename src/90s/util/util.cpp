@@ -1,6 +1,7 @@
 #include "util.hpp"
 #include <array>
 #include <80s/crypto.h>
+#include <zlib.h>
 
 namespace s90 {
     namespace util {
@@ -168,6 +169,93 @@ namespace s90 {
                 }
             }
             return qs;
+        }
+
+        // Compress the input data in-memory
+        int compress(std::string& inout) {
+            // Initialize zlib stream
+            z_stream stream;
+            stream.zalloc = Z_NULL;
+            stream.zfree = Z_NULL;
+            stream.opaque = Z_NULL;
+            stream.avail_in = static_cast<uInt>(inout.size());
+            stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(inout.data()));
+
+            // Initialize output buffer
+            std::vector<Bytef> compressedBuffer(inout.size() + 4096); // Adjust buffer size as needed
+
+            stream.avail_out = static_cast<uInt>(compressedBuffer.size());
+            stream.next_out = compressedBuffer.data();
+            
+            // Initialize compression with gzip format
+            int windowBits = 15; // Default windowBits for zlib
+            int GZIP_ENCODING = 16; // Add 16 for gzip format
+            if (deflateInit2(&stream, Z_BEST_COMPRESSION, Z_DEFLATED, windowBits | GZIP_ENCODING, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+                return -1;
+            }
+
+            // Perform compression
+            if (deflate(&stream, Z_FINISH) != Z_STREAM_END) {
+                deflateEnd(&stream);
+                return -1;
+            }
+
+            // Finalize compression
+            deflateEnd(&stream);
+
+            // Update inout with compressed data
+            inout.assign(reinterpret_cast<char*>(compressedBuffer.data()), stream.total_out);
+            return 0;
+        }
+
+        // Decompress the data in-memory
+        int decompress(std::string& inout) {
+            // Initialize zlib stream
+            z_stream stream;
+            stream.zalloc = Z_NULL;
+            stream.zfree = Z_NULL;
+            stream.opaque = Z_NULL;
+            stream.avail_in = static_cast<uInt>(inout.size());
+            stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(inout.data()));
+
+            // Initialize output buffer
+            std::vector<Bytef> decompressedBuffer(inout.size() * 2 + 4096); // Initial size, adjust as needed
+
+            stream.avail_out = static_cast<uInt>(decompressedBuffer.size());
+            stream.next_out = decompressedBuffer.data();
+
+            // Initialize decompression with gzip format
+            int windowBits = 15; // Default windowBits for zlib
+            int GZIP_ENCODING = 16; // Add 16 for gzip format
+            if (inflateInit2(&stream, windowBits | GZIP_ENCODING) != Z_OK) {
+                return -1;
+            }
+
+            // Perform decompression
+            while (true) {
+                int result = inflate(&stream, Z_NO_FLUSH);
+                if (result == Z_STREAM_END) {
+                    break; // Decompression complete
+                } else if (result != Z_OK) {
+                    inflateEnd(&stream);
+                    return -1;
+                }
+
+                // Check if the buffer is full
+                if (stream.avail_out == 0) {
+                    // Resize the buffer
+                    decompressedBuffer.resize(decompressedBuffer.size() + 4096);
+                    stream.avail_out = static_cast<uInt>(decompressedBuffer.size()) - stream.total_out;
+                    stream.next_out = decompressedBuffer.data() + stream.total_out;
+                }
+            }
+
+            // Finalize decompression
+            inflateEnd(&stream);
+
+            // Update inout with decompressed data
+            inout.assign(reinterpret_cast<char*>(decompressedBuffer.data()), stream.total_out);
+            return 0;
         }
     }
 }

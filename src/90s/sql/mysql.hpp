@@ -42,7 +42,7 @@ namespace s90 {
             aiopromise<sql_connect> handshake(ptr<iafd> connection);
 
             aiopromise<std::tuple<sql_connect, ptr<iafd>>> obtain_connection();
-            aiopromise<std::tuple<sql_result<sql_row>, ptr<iafd>>> raw_exec(const std::string&& query);
+            aiopromise<std::tuple<sql_result<sql_row>, ptr<iafd>>> raw_exec(std::string query);
         public:
             using isql::escape;
             mysql(context *ctx);
@@ -53,8 +53,8 @@ namespace s90 {
             
             std::string escape_string(std::string_view view) const override;
 
-            aiopromise<sql_result<sql_row>> exec(present<std::string> query) override;
-            aiopromise<sql_result<sql_row>> select(present<std::string> query) override;
+            aiopromise<sql_result<sql_row>> native_exec(present<std::string> query) override;
+            aiopromise<sql_result<sql_row>> native_select(present<std::string> query) override;
             void exec_on_first_connect(std::string_view str) override;
         };
     }

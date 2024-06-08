@@ -168,6 +168,10 @@ namespace s90 {
             /// @return http response
             virtual aiopromise<std::string> http_response(bool with_content_length = true) = 0;
 
+            /// @brief Get remote IP
+            /// @return remote IP
+            virtual std::string remote_ip() const = 0;
+
             // template helpers
             template<class T>
             T* const local_context() const {
@@ -270,6 +274,8 @@ namespace s90 {
 
             void *const local_context() const override;
             icontext *const global_context() const override;
+
+            std::string remote_ip() const override;
 
             // cryptography
             std::expected<std::string, std::string> encrypt(std::string_view text, std::string_view key, encryption mode) const override;

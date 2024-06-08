@@ -23,7 +23,7 @@ void build_kmp(const char *pattern, size_t pattern_len, int64_t *KMP_T) {
 }
 
 kmp_result kmp(const char* haystack, size_t len, const char* pattern, size_t pattern_len, size_t offset, int64_t *KMP_T) {
-    int64_t i, j, k, local_kmp_t[pattern_len + 2];
+    int64_t i, j, k, local_kmp_t[258];
     kmp_result result;
     int match = 0;
     result.offset = len;
@@ -45,6 +45,11 @@ kmp_result kmp(const char* haystack, size_t len, const char* pattern, size_t pat
 
     if(KMP_T == NULL) {
         KMP_T = local_kmp_t;
+        if(pattern_len > 256) {
+            result.length = 0;
+            result.offset = -1;
+            return result;
+        }
         build_kmp(pattern, pattern_len, KMP_T);
     }
     

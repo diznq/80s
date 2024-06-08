@@ -630,8 +630,9 @@ end
 --- @param fd aiosocket AIO socket to be handled
 --- @param ssl lightuserdata global SSL context
 --- @param client string|nil true host name if client connection
+--- @param skip_tls_verify boolean skip TLS host verification
 --- @return aiopromise<aiosocket|{error: string}> connection established promise
-function aio:wrap_tls(fd, ssl, client)
+function aio:wrap_tls(fd, ssl, client, skip_tls_verify)
     local resolve, resolver = aio:prepare_promise()
     local on_close = fd.on_close
     local raw_write = fd.write
@@ -641,7 +642,7 @@ function aio:wrap_tls(fd, ssl, client)
     if not fd.bio then
         local bio = nil
         if client then
-            bio = crypto.ssl_bio_new_connect(ssl, client, fd.elfd, fd.fd, KTLS)
+            bio = crypto.ssl_bio_new_connect(ssl, skip_tls_verify and nil or client, fd.elfd, fd.fd, KTLS)
         else
             bio = crypto.ssl_bio_new(ssl, fd.elfd, fd.fd, KTLS)
         end

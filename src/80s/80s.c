@@ -128,25 +128,25 @@ static void* run(void *params_) {
     void *result = NULL;
     dynserve_t fn_serve;
     for(;;) {
-        dbgf(INFO, "run: worker %d acquiring lock\n", params->workerid);
+        dbgf(LOG_INFO, "run: worker %d acquiring lock\n", params->workerid);
         sem_wait(&reload->serve_lock);
         reload->ready++;
         module = reload->modules;
         if(reload->ready == reload->workers) {
-            dbgf(INFO, "run: all workers ready, reloading dynamic library\n");
+            dbgf(LOG_INFO, "run: all workers ready, reloading dynamic library\n");
             if(reload->dlcurrent != NULL && dlclose(reload->dlcurrent) < 0) {
                 error("run: failed to close previous dynamic library");
             }
             // only reload if not quitting, otherwise it's handled in main
             while(params->quit == 0 && module) {
                 if(module->dlcurrent && dlclose(module->dlcurrent) < 0) {
-                    dbgf(INFO, "run: failed to unload module %s\n", module->path);
+                    dbgf(LOG_INFO, "run: failed to unload module %s\n", module->path);
                 }
                 module->dlcurrent = dlopen(module->path, RTLD_LAZY);
                 if(module->dlcurrent) {
                     module->load = (load_module_t)dlsym(module->dlcurrent, "on_load");
                     module->unload = (unload_module_t)dlsym(module->dlcurrent, "on_unload");
-                    dbgf(INFO, "reloaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
+                    dbgf(LOG_INFO, "reloaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
                 }
                 module = module->next;
             }
@@ -163,7 +163,7 @@ static void* run(void *params_) {
                 error("run: failed to locate serve procedure");
             }
         } else {
-            dbgf(INFO, "run: worker %d is pending readiness\n", params->workerid);
+            dbgf(LOG_INFO, "run: worker %d is pending readiness\n", params->workerid);
             reload->serve = NULL;
         }
         sem_post(&reload->serve_lock);
@@ -171,7 +171,7 @@ static void* run(void *params_) {
         for(;;) {
             sem_wait(&reload->serve_lock);
             if(reload->serve != NULL) {
-                dbgf(INFO, "run: worker %d restoring serve\n", params->workerid);
+                dbgf(LOG_INFO, "run: worker %d restoring serve\n", params->workerid);
                 sem_post(&reload->serve_lock);
                 break;
             } else {
@@ -182,7 +182,7 @@ static void* run(void *params_) {
 
         fn_serve = reload->serve;
         result = fn_serve(params_);
-        dbgf(INFO, "run: worker %d stopped, quit: %d\n", params->workerid, params->quit);
+        dbgf(LOG_INFO, "run: worker %d stopped, quit: %d\n", params->workerid, params->quit);
         if(params->quit) return result;
     }
 #endif
@@ -212,7 +212,7 @@ int main(int argc, const char **argv) {
                             *modules = NULL;
     const char *entrypoint;
     const char *module_list = get_sz_arg("-m", argc, argv, NULL, NULL);
-    const char *node_name = get_sz_arg("-n", argc, argv, "NODE", "localhost");
+    const char *node_name = get_sz_arg("-n", argc, argv, "HOSTNAME", "localhost");
     const char *addr = v6 ? "::" : "0.0.0.0";
     char *module_names = NULL;
     serve_params *params = (serve_params*)calloc(workers, sizeof(serve_params));
@@ -271,14 +271,14 @@ int main(int argc, const char **argv) {
                 if(module->dlcurrent) {
                     module->load = (load_module_t)dlsym(module->dlcurrent, "on_load");
                     module->unload = (unload_module_t)dlsym(module->dlcurrent, "on_unload");
-                    dbgf(INFO, "loaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
+                    dbgf(LOG_INFO, "loaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
                 }
             #elif defined(_WIN32)
                 module->dlcurrent = (void*)LoadLibraryA(module->path);
                 if(module->dlcurrent) {
                     module->load = (load_module_t)GetProcAddress((HMODULE)module->dlcurrent, "on_load");
                     module->unload = (unload_module_t)GetProcAddress((HMODULE)module->dlcurrent, "on_unload");
-                    dbgf(INFO, "loaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
+                    dbgf(LOG_INFO, "loaded module %s, on_load: %p, on_unload: %p\n", module->path, module->load, module->unload);
                 }
             #endif
                 q = p + 1;
@@ -361,12 +361,12 @@ int main(int argc, const char **argv) {
             if(inet_pton(AF_INET6, addr, &serveraddr.v6.sin6_addr) <= 0) {
                 error("failed to resolve bind IP address");
             }
-            inet_ntop(AF_INET6, &serveraddr.v6.sin6_addr, resolved, sizeof(serveraddr.v6));
+            inet_ntop(AF_INET6, &serveraddr.v6.sin6_addr, resolved, sizeof(resolved));
         } else {
             serveraddr.v4.sin_family = AF_INET;
             serveraddr.v4.sin_addr.s_addr = inet_addr(addr);
             serveraddr.v4.sin_port = htons((unsigned short)portno);
-            inet_ntop(AF_INET, &serveraddr.v4.sin_addr, resolved, sizeof(serveraddr.v4));
+            inet_ntop(AF_INET, &serveraddr.v4.sin_addr, resolved, sizeof(resolved));
         }
 
         if (bind((sock_t)parentfd, (struct sockaddr *)(v6 ? (void *)&serveraddr.v6 : (void *)&serveraddr.v4), v6 ? sizeof(serveraddr.v6) : sizeof(serveraddr.v4)) < 0)

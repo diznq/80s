@@ -676,19 +676,19 @@ static void ssl_secret_callback(const SSL* ssl, const char* line) {
 	ctx->ktls_state = KTLS_DONE;
         status = setsockopt(childfd, IPPROTO_TCP, TCP_TXTLS_ENABLE, wren, sizeof(struct tls_enable));
         if(status < 0) {
-            dbgf(ERROR, "ssl_callback: failed to set txtls");
+            dbgf(LOG_ERROR, "ssl_callback: failed to set txtls");
             return;
         }
 
         status = setsockopt(childfd, IPPROTO_TCP, TCP_RXTLS_ENABLE, rden, sizeof(struct tls_enable));
         if(status < 0) {
-            dbgf(ERROR, "ssl_callback: failed to set rxtls");
+            dbgf(LOG_ERROR, "ssl_callback: failed to set rxtls");
             return;
         }
 
         EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(S80_FD_KTLS_SOCKET));
         if (kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
-            dbgf(ERROR, "ssl_callback: upgrade to ktls failed");
+            dbgf(LOG_ERROR, "ssl_callback: upgrade to ktls failed");
         }
     }
 }
@@ -696,6 +696,71 @@ static void ssl_secret_callback(const SSL* ssl, const char* line) {
 
 int crypto_random(char *buf, size_t len) {
     RAND_bytes((unsigned char *)buf, len);
+    return 0;
+}
+
+
+int crypto_rsa_sha1(const char *key, const char *data, size_t data_size, dynstr *out, const char **error) {
+    EVP_PKEY *pkey = NULL; // use EVP_PKEY to hold the private key
+    EVP_MD_CTX *md_ctx = NULL; // use EVP_MD_CTX to hold the signing context
+    size_t sig_len = 0;
+    int status = 0;
+    FILE *f = fopen(key, "rb");
+    if(f == NULL) {
+        if(error) *error = "failed to open key file";
+        return -1;
+    }
+    
+    pkey = PEM_read_PrivateKey(f, NULL, NULL, NULL); // use PEM_read_PrivateKey to read the private key as EVP_PKEY
+    fclose(f);
+    
+    if(pkey == NULL) {
+        if(error) *error = "failed to read privkey as EVP_PKEY";
+        return -1;
+    }
+
+    if(!dynstr_check(out, EVP_PKEY_size(pkey))) { // use EVP_PKEY_size to get the maximum size of the signature
+        EVP_PKEY_free(pkey); // use EVP_PKEY_free to free the private key
+        if(error) *error = "failed to allocate enough memory";
+        return -1;
+    } else {
+        sig_len = EVP_PKEY_size(pkey);
+    }
+
+    md_ctx = EVP_MD_CTX_new(); // create a new signing context
+    if(md_ctx == NULL) {
+        EVP_PKEY_free(pkey);
+        if(error) *error = "failed to create signing context";
+        return -1;
+    }
+
+    status = EVP_DigestSignInit(md_ctx, NULL, EVP_sha1(), NULL, pkey); // initialize the signing operation with SHA-256
+    if(status != 1) {
+        EVP_PKEY_free(pkey);
+        EVP_MD_CTX_free(md_ctx); // use EVP_MD_CTX_free to free the signing context
+        if(error) *error = "signing initialization failed";
+        return -1;
+    }
+
+    status = EVP_DigestSignUpdate(md_ctx, data, data_size); // update the signing operation with the data
+    if(status != 1) {
+        EVP_PKEY_free(pkey);
+        EVP_MD_CTX_free(md_ctx);
+        if(error) *error = "signing update failed";
+        return -1;
+    }
+
+    status = EVP_DigestSignFinal(md_ctx, (unsigned char*)out->ptr, &sig_len); // finalize the signing operation and get the signature
+    if(status != 1) {
+        EVP_PKEY_free(pkey);
+        EVP_MD_CTX_free(md_ctx);
+        if(error) *error = "signing finalization failed";
+        return -1;
+    }
+
+    EVP_PKEY_free(pkey);
+    EVP_MD_CTX_free(md_ctx);
+    out->length = sig_len;
     return 0;
 }
 
@@ -760,6 +825,132 @@ int crypto_rsa_sha256(const char *key, const char *data, size_t data_size, dynst
     EVP_PKEY_free(pkey);
     EVP_MD_CTX_free(md_ctx);
     out->length = sig_len;
+    return 0;
+}
+
+int crypto_rsa_sha1_with_key(const void *key, const char *data, size_t data_size, dynstr *out, const char **error) {
+    EVP_PKEY *pkey = (EVP_PKEY*)key; // use EVP_PKEY to hold the private key
+    EVP_MD_CTX *md_ctx = NULL; // use EVP_MD_CTX to hold the signing context
+    size_t sig_len = 0;
+    int status = 0;
+    
+    if(pkey == NULL) {
+        if(error) *error = "failed to read privkey as EVP_PKEY";
+        return -1;
+    }
+
+    if(!dynstr_check(out, EVP_PKEY_size(pkey))) { // use EVP_PKEY_size to get the maximum size of the signature
+        if(error) *error = "failed to allocate enough memory";
+        return -1;
+    } else {
+        sig_len = EVP_PKEY_size(pkey);
+    }
+
+    md_ctx = EVP_MD_CTX_new(); // create a new signing context
+    if(md_ctx == NULL) {
+        if(error) *error = "failed to create signing context";
+        return -1;
+    }
+
+    status = EVP_DigestSignInit(md_ctx, NULL, EVP_sha1(), NULL, pkey); // initialize the signing operation with SHA-256
+    if(status != 1) {
+        EVP_MD_CTX_free(md_ctx); // use EVP_MD_CTX_free to free the signing context
+        if(error) *error = "signing initialization failed";
+        return -1;
+    }
+
+    status = EVP_DigestSignUpdate(md_ctx, data, data_size); // update the signing operation with the data
+    if(status != 1) {
+        EVP_MD_CTX_free(md_ctx);
+        if(error) *error = "signing update failed";
+        return -1;
+    }
+
+    status = EVP_DigestSignFinal(md_ctx, (unsigned char*)out->ptr, &sig_len); // finalize the signing operation and get the signature
+    if(status != 1) {
+        EVP_MD_CTX_free(md_ctx);
+        if(error) *error = "signing finalization failed";
+        return -1;
+    }
+
+    EVP_MD_CTX_free(md_ctx);
+    out->length = sig_len;
+    return 0;
+}
+
+int crypto_rsa_sha256_with_key(const void *key, const char *data, size_t data_size, dynstr *out, const char **error) {
+    EVP_PKEY *pkey = (EVP_PKEY*)key; // use EVP_PKEY to hold the private key
+    EVP_MD_CTX *md_ctx = NULL; // use EVP_MD_CTX to hold the signing context
+    size_t sig_len = 0;
+    int status = 0;
+    
+    if(pkey == NULL) {
+        if(error) *error = "failed to read privkey as EVP_PKEY";
+        return -1;
+    }
+
+    if(!dynstr_check(out, EVP_PKEY_size(pkey))) { // use EVP_PKEY_size to get the maximum size of the signature
+        if(error) *error = "failed to allocate enough memory";
+        return -1;
+    } else {
+        sig_len = EVP_PKEY_size(pkey);
+    }
+
+    md_ctx = EVP_MD_CTX_new(); // create a new signing context
+    if(md_ctx == NULL) {
+        if(error) *error = "failed to create signing context";
+        return -1;
+    }
+
+    status = EVP_DigestSignInit(md_ctx, NULL, EVP_sha256(), NULL, pkey); // initialize the signing operation with SHA-256
+    if(status != 1) {
+        EVP_MD_CTX_free(md_ctx); // use EVP_MD_CTX_free to free the signing context
+        if(error) *error = "signing initialization failed";
+        return -1;
+    }
+
+    status = EVP_DigestSignUpdate(md_ctx, data, data_size); // update the signing operation with the data
+    if(status != 1) {
+        EVP_MD_CTX_free(md_ctx);
+        if(error) *error = "signing update failed";
+        return -1;
+    }
+
+    status = EVP_DigestSignFinal(md_ctx, (unsigned char*)out->ptr, &sig_len); // finalize the signing operation and get the signature
+    if(status != 1) {
+        EVP_MD_CTX_free(md_ctx);
+        if(error) *error = "signing finalization failed";
+        return -1;
+    }
+
+    EVP_MD_CTX_free(md_ctx);
+    out->length = sig_len;
+    return 0;
+}
+
+
+int crypto_private_key_new(const char *key, void **out_key, const char **error) {
+    EVP_PKEY *pkey = NULL;
+    FILE *f = fopen(key, "rb");
+    if(f == NULL) {
+        if(error) *error = "failed to open key file";
+        return -1;
+    }
+    
+    pkey = PEM_read_PrivateKey(f, NULL, NULL, NULL); // use PEM_read_PrivateKey to read the private key as EVP_PKEY
+    fclose(f);
+    if(pkey == NULL) {
+        if(error) *error = "failed to read private key";
+        return -1;
+    }
+    *out_key = pkey;
+    return 0;
+}
+
+int crypto_private_key_release(const void *key) {
+    if(key != NULL) {
+        EVP_PKEY_free((EVP_PKEY*)key);
+    }
     return 0;
 }
 

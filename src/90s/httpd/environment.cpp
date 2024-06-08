@@ -370,6 +370,13 @@ namespace s90 {
             return fd->write(message);
         }
 
+        std::string environment::remote_ip() const {
+            auto r = header("x-real-ip");
+            if(r) return *r;
+            auto [ip, _] = stream()->remote_addr();
+            return ip;
+        }
+
         void environment::write_body(std::string&& data) {
             http_body = std::move(data);
         }
