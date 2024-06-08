@@ -106,6 +106,10 @@ void on_init(struct init_params_ params) {
     }
 }
 
+int is_fd_ready(struct ready_params_ params) {
+    return 1;
+}
+
 static void clean_global(lua_State *L, const char *name) {
 #if (LUA_VERSION_NUM > 501) && defined(S80_DYNAMIC)
     int idx;

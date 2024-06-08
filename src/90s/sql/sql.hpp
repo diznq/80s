@@ -40,7 +40,7 @@ namespace s90 {
             sql_result() {}
             sql_result(const std::string& err) : error(true), error_message(err) {}
             sql_result(bool error) : error(error) {}
-            sql_result(const ptr<std::vector<T>>& result) : error(false), has_rows(true), rows(result) {}
+            sql_result(const ptr<std::vector<T>>& result) : error(!result), has_rows(!!result), rows(result) {}
 
             /// @brief Create a new SQL result with error
             /// @param err error message
@@ -154,12 +154,18 @@ namespace s90 {
             /// @brief Execute a SQL statement (except SELECT)
             /// @param query query to be executed
             /// @return SQL result
-            virtual aiopromise<sql_result<sql_row>> exec(present<std::string> query) = 0;
+            virtual aiopromise<sql_result<sql_row>> native_exec(present<std::string> query) = 0;
 
             /// @brief Execute a SQL SELECT statement
             /// @param query query to be executed
             /// @return SQL result
-            virtual aiopromise<sql_result<sql_row>> select(present<std::string> query) = 0;
+            virtual aiopromise<sql_result<sql_row>> native_select(present<std::string> query) = 0;
+
+            template<typename... Args>
+            auto fixed_make_format_args(const Args&... args)
+            {
+                return std::make_format_args(args...);
+            }
 
             /// @brief Execute a SQL statement (except SELECT)
             /// @tparam ...Args format types
@@ -168,7 +174,16 @@ namespace s90 {
             /// @return SQL result
             template<class ... Args>
             aiopromise<sql_result<sql_row>> exec(std::string_view fmt, Args&& ... args) {
-                return exec(std::vformat(fmt, std::make_format_args(escape(args)...)));
+                return native_exec(std::vformat(fmt, fixed_make_format_args(escape(args)...)));
+            }
+
+            /// @brief Execute a SQL statement (except SELECT)
+            /// @tparam ...Args format types
+            /// @param query SQL query
+            /// @return SQL result
+            template<class ... Args>
+            aiopromise<sql_result<sql_row>> exec(std::string_view query) {
+                return native_exec(std::string(query));
             }
 
             /// @brief Execute a SQL SELECT statement
@@ -178,7 +193,7 @@ namespace s90 {
             /// @return SQL result
             template<class ... Args>
             aiopromise<sql_result<sql_row>> select(std::string_view fmt, Args&& ... args) {
-                return select(std::vformat(fmt, std::make_format_args(escape(args)...)));
+                return native_select(std::vformat(fmt, fixed_make_format_args(escape(args)...)));
             }
 
             /// @brief Execute a SQL SELECT statement returning ORM-ed object array
@@ -188,7 +203,7 @@ namespace s90 {
             template<class T>
             requires orm::with_orm_trait<T>
             aiopromise<sql_result<T>> select(std::string_view query) {
-                auto result = co_await select(query);
+                auto result = co_await native_select(std::string(query));
                 if(result.error) {
                     co_return sql_result<T>::with_error(result.error_message);
                 } else {
@@ -205,7 +220,7 @@ namespace s90 {
             template<class T, class ... Args>
             requires orm::with_orm_trait<T>
             aiopromise<sql_result<T>> select(std::string_view fmt, Args&& ... args) {
-                auto result = co_await select(std::vformat(fmt, std::make_format_args(escape(args)...)));
+                auto result = co_await native_select(std::vformat(fmt, fixed_make_format_args(escape(args)...)));
                 if(result.error) {
                     co_return sql_result<T>::with_error(result.error_message);
                 } else {

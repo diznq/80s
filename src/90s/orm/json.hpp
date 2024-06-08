@@ -106,6 +106,13 @@ namespace s90 {
                             // encode types that yield a string
                             json_encode(out, a.from_native(true, offset));
                             break;
+                            // encode 64 bit numbers are strings as JS cant handle those
+                        case orm::reftype::i64:
+                        case orm::reftype::u64:
+                            out.put('"');
+                            a.from_native(out, true, offset);
+                            out.put('"');
+                            break;
                         default:
                             // encode rest of types that don't yield a string
                             a.from_native(out, true, offset);
@@ -447,6 +454,61 @@ namespace s90 {
                                     if(ref != it->second.end()) [[likely]] {
                                         auto res = decode(in, ref->second, a.get_ref(), carried, depth + 1, max_depth);
                                         if(res.length() > 0) return res;
+                                    } else {
+                                        // read anything
+                                        char left = '\0', right = '\0';
+                                        read_next_c(in, c, carried);
+                                        
+                                        if(c == '[') right = ']', left = '[';
+                                        else if(c == '{') right = '}', left = '{';
+                                        else if(c == '"') right = '"', left = '"';
+
+                                        std::string tok;
+                                        if(c == '-' || (c >= '0' && c <= '9')) {
+                                            if(!read_next_token(in, tok, carried)) return "expected number";
+                                            c = carried ? *carried : 0;
+                                        } else if(c == '"') {
+                                            bool bl_active = false;
+                                            while(in >> c) {
+                                                if(c == '\\') {
+                                                    bl_active = !bl_active;
+                                                } else if(c == '"') {
+                                                    if(!bl_active) break;
+                                                    else bl_active = false;
+                                                } else {
+                                                    bl_active = false;
+                                                }
+                                            }
+                                        } else if(c == 't') {
+                                            if(!read_next_token(in, tok, carried) || tok != "rue") return "expected true";
+                                        } else if(c == 'f') {
+                                            if(!read_next_token(in, tok, carried) || tok != "alse") return "expected false";
+                                        } else if(c == 'n') {
+                                            if(!read_next_token(in, tok, carried) || tok != "ull") return "expected null";
+                                        } else if(left && right) {
+                                            int height = 1;
+                                            bool in_string = false, bl_active = false;
+                                            while(height > 0 && (in >> c)) {
+                                                if(c == '"' && !in_string) {
+                                                    in_string = true;
+                                                    bl_active = false;
+                                                } else if(in_string) {
+                                                    if(c == '\\') {
+                                                        bl_active = !bl_active;
+                                                    } else if(c == '"') {
+                                                        if(!bl_active) in_string = false;
+                                                        else bl_active = false;
+                                                    } else {
+                                                        bl_active = false;
+                                                    }
+                                                } else if(c == left) {
+                                                    height++;
+                                                } else if(c == right) {
+                                                    height--;
+                                                }
+                                            }
+                                            if(height > 0) return "unclosed " + left;
+                                        }
                                     }
                                     read_next_c(in, c, carried);
                                     if(!in) return "unexpected EOF after reading key, value pair";

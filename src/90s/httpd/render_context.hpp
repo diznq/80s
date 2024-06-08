@@ -10,6 +10,11 @@
 namespace s90 {
     namespace httpd {
         class irender_context {
+            template<typename... Args>
+            auto fixed_make_format_args(const Args&... args)
+            {
+                return std::make_format_args(args...);
+            }
         public:
             virtual ~irender_context() = default;
 
@@ -50,7 +55,7 @@ namespace s90 {
             /// @param ...args arguments
             template< class... Args >
             void write_formatted(std::string_view fmt, Args&&... args ) {
-                write(std::vformat(fmt, std::make_format_args(escape(args)...)));
+                write(std::vformat(fmt, fixed_make_format_args(escape(args)...)));
             }
 
             #include "../escape_mixin.hpp.inc"

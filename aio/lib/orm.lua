@@ -71,7 +71,7 @@ local ormtypes = {
             name = function() return "varchar(" .. tostring(size) .. ")" end,
             fromstring = function(text) return text end,
             toformat = function(text)
-                if utf8.len(text) > size then return text:sub(1, utf8.offset(text, size)) end
+                if #text > size then return text:sub(1, size) end
                 return text
             end
         }

@@ -21,7 +21,7 @@ mkdir -p bin
 mkdir -p bin/obj
 
 DEFINES="-DS90_SHARED_ORM"
-LIBS="-lm -ldl -lpthread -lcrypto -lssl"
+LIBS="-lm -ldl -lpthread -lcrypto -lssl -lz -lresolv"
 
 if [ "$(uname -o)" = "Msys" ]; then
   SO_EXT="dll"
@@ -30,9 +30,9 @@ if [ "$(uname -o)" = "Msys" ]; then
   LIBS="$LIBS -lws2_32 -lmswsock -lcrypt32 -liconv"
 fi
 
-if [ "$DEBUG" = "true" ]; then
-    DEFINES="$DEFINES -DS80_DEBUG=1"
-    FLAGS="-O2 -ggdb"
+if [ ! -z "$DEBUG_LEVEL" ]; then
+    DEFINES="$DEFINES -DS80_DEBUG_LEVEL=$DEBUG_LEVEL"
+    FLAGS="-O0 -ggdb"
 else
     FLAGS="$FLAGS -march=native"
 fi
@@ -142,13 +142,15 @@ if [ "$arg" = "pages" ]; then
   fi
 else
   echo "Compiling 90s web server"
-  FLAGS="$FLAGS $DEFINES"
-  xmake "$CXX" "$FLAGS" "$LIBS" "bin/lib80s.a" "$OUT" \
-    src/90s/90s.cpp src/90s/afd.cpp src/90s/context.cpp \
-    src/90s/httpd/environment.cpp src/90s/httpd/render_context.cpp src/90s/httpd/server.cpp \
-    src/90s/util/util.cpp \
-    src/90s/sql/mysql.cpp src/90s/sql/mysql_util.cpp \
-    src/90s/mail/server.cpp src/90s/mail/parser.cpp src/90s/mail/indexed_mail_storage.cpp \
-    src/90s/dns/doh.cpp \
-    src/90s/mail/client.cpp
+    FLAGS="$FLAGS $DEFINES"
+    xmake "$CXX" "$FLAGS" "$LIBS" "bin/lib80s.a" "$OUT" \
+      src/90s/90s.cpp src/90s/afd.cpp src/90s/context.cpp \
+      src/90s/httpd/environment.cpp src/90s/httpd/render_context.cpp src/90s/httpd/server.cpp \
+      src/90s/util/util.cpp \
+      src/90s/sql/mysql.cpp src/90s/sql/mysql_util.cpp \
+      src/90s/storage/disk_storage.cpp\
+      src/90s/dns/doh.cpp \
+      src/90s/dns/resolv.cpp \
+      src/90s/httpd/client.cpp \
+      src/90s/actors/actor.cpp
 fi

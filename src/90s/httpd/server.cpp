@@ -124,8 +124,38 @@ namespace s90 {
             }
         };
 
+        class actor_fw_page : public page {
+        public:
+            const char *name() const override {
+                return "POST /90s/internal/forward";
+            }
+            
+            aiopromise<std::expected<nil, status>> render(std::shared_ptr<ienvironment> env) const {
+                auto from = env->header("from");
+                auto to = env->header("to");
+                auto type = env->header("type");
+                auto signature = env->header("signature");
+                auto message = env->body();
+                if(from && to && type && signature) {
+                    auto result = co_await env->global_context()->on_actor_message(*signature, *to, *from, *type, message);
+                    if(!result) {
+                        env->status("400 Bad request");
+                        env->output()->write(result.error());
+                        co_return nil {};
+                    } else {
+                        co_return nil {};
+                    }
+                } else {
+                    env->status("400 Bad request");
+                    co_return nil {};
+                }
+            }
+        };
+
         httpd_server::httpd_server(icontext *parent, httpd_config config) : config(config) {
             default_page = new generic_error_page;
+            actor_page = new actor_fw_page;
+            load_page(actor_page);
             global_context = parent;
         }
 
@@ -178,10 +208,14 @@ namespace s90 {
 
             if(config.initializer) local_context = config.initializer(global_context, local_context);
             if(config.dynamic_content) {            
-                for(const auto& entry : std::filesystem::recursive_directory_iterator(web_root)) {
-                    if(entry.path().extension() == SO_EXT) {
-                        load_lib(entry.path().string());
+                try {
+                    for(const auto& entry : std::filesystem::recursive_directory_iterator(web_root)) {
+                        if(entry.path().extension() == SO_EXT) {
+                            load_lib(entry.path().string());
+                        }
                     }
+                } catch(std::exception& ex) {
+                    printf("failed to load dynamic content from web root %s\n", web_root.c_str());
                 }
             }
         }
@@ -297,6 +331,8 @@ namespace s90 {
                 peer_name += ',';
                 peer_name += std::to_string(peer_port);
             }
+
+            fd->set_timeout(90);
 
             #if 0
             auto ssl_ctx = global_context->new_ssl_server_context("private/pubkey.pem", "private/privkey.pem");

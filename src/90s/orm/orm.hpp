@@ -8,6 +8,7 @@
 #include <format>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <type_traits>
 #ifdef S90_SHARED_ORM
 #include "../shared.hpp"
@@ -118,7 +119,7 @@ namespace s90 {
         struct any_internals {
             std::function<std::vector<std::pair<orm_key_t, any>>(uintptr_t, bool)> get_orm = nullptr;
             std::function<any(uintptr_t, const any&)> push_back = nullptr;
-            std::function<size_t(const uintptr_t)> size = nullptr;
+            std::function<size_t(const uintptr_t, bool absolute)> size = nullptr;
             std::function<any(const uintptr_t, size_t)> get_item = nullptr;
             uintptr_t orm_id = 0;
         };
@@ -160,7 +161,9 @@ namespace s90 {
             any(const any& a) : 
                 type(a.type), ref(a.ref), template_arg(a.template_arg), 
                 success_wb(a.success_wb), 
-                internals(a.internals) {}
+                internals(a.internals) {
+
+                }
 
             any& operator=(const any& a) { 
                 type = a.type;
@@ -275,6 +278,11 @@ namespace s90 {
                 uint32_t below_32u = 0;
                 bool success = true;
                 uintptr_t addr = ref + offset;
+
+                if(is_numeric() && value.starts_with('"') && value.ends_with('"')) {
+                    value = value.substr(1, value.length() - 2);
+                }
+                
                 switch(type) {
                     case reftype::str:
                     case reftype::vstr:
@@ -555,8 +563,46 @@ namespace s90 {
             /// @brief Get size of the underlyig array
             /// @return size of the array
             inline size_t size(uintptr_t offset = 0) const {
-                if(auto fn = internals.size) return fn(ref + offset);
+                if(auto fn = internals.size) return fn(ref + offset, false);
                 return 0;
+            }
+
+            size_t absolute_size(uintptr_t offset = 0) const {
+                switch(type) {
+                    case reftype::i1:
+                    case reftype::i8:
+                    case reftype::u8:
+                        return 1;
+                    case reftype::i16:
+                    case reftype::u16:
+                        return 2;
+                    case reftype::i32:
+                    case reftype::u32:
+                    case reftype::f32:
+                        return 4;
+                    case reftype::i64:
+                    case reftype::u64:
+                    case reftype::f64:
+                        return 8;
+                    case reftype::f80:
+                        return 10;
+                    case reftype::dt:
+                        return sizeof(orm::datetime);
+                    case reftype::ts:
+                        return sizeof(orm::timestamp);
+                    case reftype::vstr:
+                    case reftype::str:
+                        return sizeof(std::string) +((std::string*)(offset + ref))->capacity();
+                    case reftype::cstr:
+                        return sizeof(void*) + std::strlen((const char*)(offset + ref));
+                    case reftype::empty:
+                        return 0;
+                    case reftype::arr:
+                    case reftype::obj:
+                        return internals.size(ref + offset, true);
+                    default:
+                        return 0;
+                }
             }
         };
 
@@ -568,8 +614,17 @@ namespace s90 {
         /// @brief ORM definition
         using mapper = std::vector<mapping>;
 
+        #define STRINGIZE(x) STRINGIZE2(x)
+        #define STRINGIZE2(x) #x
+        #define LINE_STRING STRINGIZE(__LINE__)
+
+
         /// @brief A required trait if nested entity encoding / decoding is required.
-        #define WITH_ID static uintptr_t get_orm_id() { return (uintptr_t)(&get_orm_id); }
+        #define WITH_ID \
+            static constexpr const char *ORM_ID = __FILE__ "/" LINE_STRING;\
+            static constexpr uintptr_t get_orm_id() { \
+                return (uintptr_t)ORM_ID; \
+            }
         
         /// @brief Class trait for having ORM functionalities, all with_orm classes
         /// should also either implement get_orm_id or use WITH_ID; at beginning
@@ -687,8 +742,8 @@ namespace s90 {
         /// @return transformed result
         template<class T>
         requires with_orm_trait<T>
-        inline ptr<std::vector<T>> transform(ptr<std::vector<dict<std::string, std::string>>>&& items) {
-            auto result = ptr_new<std::vector<T>>();
+        inline std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<dict<std::string, std::string>>>&& items) {
+            auto result = std::make_shared<std::vector<T>>();
             auto orm_base = ((T*)NULL)->get_orm();
             std::transform(items->cbegin(), items->cend(), std::back_inserter(*result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
                 T new_item;
@@ -710,6 +765,16 @@ namespace s90 {
                     auto tr = (std::remove_cv_t<T>*)r;
                     return tr->get_orm();
                 }
+            };
+            internals.size = [](uintptr_t r, bool abs) -> auto {
+                size_t base = 0;
+                if(!abs) return base;
+                auto tr = (std::remove_cv_t<T>*)r;
+                auto active_orm = tr->get_orm();
+                for(const auto& [k, v] : active_orm) {
+                    base += v.absolute_size(0);
+                }
+                return base;
             };
         }
 
@@ -733,8 +798,16 @@ namespace s90 {
                 T& b = tr->at(index);
                 return any(b);
             };
-            internals.size = [](const uintptr_t ref) -> auto {
-                const std::vector<T> *tr = (const std::vector<T>*)ref;
+            internals.size = [](const uintptr_t ref, bool absolute) -> auto {
+                std::vector<T> *tr = (std::vector<T>*)ref;
+                if(absolute) {
+                    size_t base = sizeof(std::vector<T>) + (sizeof(T) * (tr->capacity() - tr->size()));
+                    for(auto& item : *tr) {
+                        any a(item);
+                        base += a.absolute_size(0);
+                    }
+                    return base;
+                }
                 return tr->size();
             };
         }

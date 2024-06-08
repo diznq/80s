@@ -135,11 +135,11 @@ void *serve(void *vparams) {
                     ) == FALSE && WSAGetLastError() == WSA_IO_PENDING
                 ) {
                     if(CreateIoCompletionPort(childfd, els[accepts++], (ULONG_PTR)S80_FD_SOCKET, 0) == NULL) {
-                        dbgf(ERROR, "serve: failed to associate/1");
+                        dbgf(LOG_ERROR, "serve: failed to associate/1");
                     }
                     if(accepts == workers) accepts = 0;
                 } else {
-                    dbgf(ERROR, "serve: acceptex/1 failed");
+                    dbgf(LOG_ERROR, "serve: acceptex/1 failed");
                 }
             }
         }
@@ -185,11 +185,15 @@ void *serve(void *vparams) {
             case S80_WIN_OP_ACCEPT:
                 // if context is in accept state, call wsarecv to move it to read state instead with recv context (cx->recv)
                 // and move it to els[accepts++ % workers] iocp event loop, this is where load balancing happens
-                dbgf(DEBUG, "[%d] accept %llu, flags: %d, length: %d\n", id, cx->fd, cx->flags, events[n].dwNumberOfBytesTransferred);
+                dbgf(LOG_DEBUG, "[%d] accept %llu, flags: %d, length: %d\n", id, cx->fd, cx->flags, events[n].dwNumberOfBytesTransferred);
+
+                memcpy(params_accept.address, cx->data + sizeof(union addr_common), sizeof(union addr_common) > 64 ? 64 : sizeof(union addr_common));
+                params_accept.addrlen = sizeof(union addr_common) > 64 ? 64 : sizeof(union addr_common);
+
                 cx->recv->op = S80_WIN_OP_READ;
                 status = WSARecv((sock_t)childfd, &cx->recv->wsaBuf, 1, NULL, &cx->recv->flags, &cx->recv->ol, NULL);
                 if(status == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
-                    dbgf(DEBUG, "[%d] accept %llu failed, error: %d\n", id, cx->fd, WSAGetLastError());
+                    dbgf(LOG_DEBUG, "[%d] accept %llu failed, error: %d\n", id, cx->fd, WSAGetLastError());
                 }
 
                 // call on_accept, in case it is supposed to run in another worker
@@ -213,10 +217,10 @@ void *serve(void *vparams) {
                     if(message->message) {
                         memcpy(message->message, &params_accept, sizeof(accept_params));
                         if(s80_mail(params->reload->mailboxes + cx->worker, message) < 0) {
-                            dbgf(ERROR, "serve: failed to send mailbox message");
+                            dbgf(LOG_ERROR, "serve: failed to send mailbox message");
                         }
                     } else {
-                        dbgf(ERROR, "serve: failed to allocate message");
+                        dbgf(LOG_ERROR, "serve: failed to allocate message");
                     }
                 }
                 
@@ -239,18 +243,18 @@ void *serve(void *vparams) {
                     ) == FALSE && WSAGetLastError() == WSA_IO_PENDING
                 ) {
                     if(CreateIoCompletionPort(childfd, els[accepts], (ULONG_PTR)S80_FD_SOCKET, 0) == NULL) {
-                        dbgf(ERROR, "serve: failed to associate/2");
+                        dbgf(LOG_ERROR, "serve: failed to associate/2");
                     }
 
                     accepts++;
                     if(accepts == workers) accepts = 0;
                 } else {
-                    dbgf(ERROR, "serve: acceptex/1 failed");
+                    dbgf(LOG_ERROR, "serve: acceptex/1 failed");
                 }
-                dbgf(DEBUG, "[%d] accept event resolved\n", id);
+                dbgf(LOG_DEBUG, "[%d] accept event resolved\n", id);
                 break;
             case S80_WIN_OP_READ:
-                dbgf(DEBUG, "[%d] recv from %llu (%d), flags: %d, length: %d (%d)\n", id, cx->fd, cx->fdtype, cx->flags, events[n].dwNumberOfBytesTransferred, cx->length);
+                dbgf(LOG_DEBUG, "[%d] recv from %llu (%d), flags: %d, length: %d (%d)\n", id, cx->fd, cx->fdtype, cx->flags, events[n].dwNumberOfBytesTransferred, cx->length);
                 if(cx->fd == selfpipe) {
                     ReadFile(cx->recv->fd, cx->recv->wsaBuf.buf, cx->recv->wsaBuf.len, NULL, &cx->recv->ol);
                     for(size_t p = 0; p < events[n].dwNumberOfBytesTransferred; p++) {
@@ -290,21 +294,21 @@ void *serve(void *vparams) {
                                     free(cx->recv->send);
                                     free(cx->recv);
                                 } else {
-                                    dbgf(ERROR, "serve: readfile failed");
+                                    dbgf(LOG_ERROR, "serve: readfile failed");
                                 }
                             }
                         } else {
                             status = WSARecv((sock_t)childfd, &cx->recv->wsaBuf, 1, NULL, &cx->recv->flags, &cx->recv->ol, NULL);
                             if(status != SOCKET_ERROR || WSAGetLastError() != WSA_IO_PENDING) {
-                                dbgf(ERROR, "serve: recv failed");
+                                dbgf(LOG_ERROR, "serve: recv failed");
                             }
                         }
                     }
                 }
-                dbgf(DEBUG, "[%d] read event resolved\n", id);
+                dbgf(LOG_DEBUG, "[%d] read event resolved\n", id);
                 break;
             case S80_WIN_OP_WRITE:
-                dbgf(DEBUG, "[%d] write to %llu (%d), flags: %d, length: %d\n", id, cx->fd, cx->fdtype, cx->flags, events[n].dwNumberOfBytesTransferred);
+                dbgf(LOG_DEBUG, "[%d] write to %llu (%d), flags: %d, length: %d\n", id, cx->fd, cx->fdtype, cx->flags, events[n].dwNumberOfBytesTransferred);
                 if(cx->recv->connected) {
                     // if there was a buffer sent, free that memory as it was throw-away buffer
                     if(cx->send->wsaBuf.buf != NULL) {
@@ -318,15 +322,15 @@ void *serve(void *vparams) {
                     params_write.written = events[n].dwNumberOfBytesTransferred;
                     on_write(params_write);
                 }
-                dbgf(DEBUG, "[%d] write event resolved\n", id);
+                dbgf(LOG_DEBUG, "[%d] write event resolved\n", id);
                 break;
             case S80_WIN_OP_CONNECT:
-                dbgf(DEBUG, "[%d] connect to %llu, flags: %d, length: %d\n", id, cx->fd, cx->flags, events[n].dwNumberOfBytesTransferred);
+                dbgf(LOG_DEBUG, "[%d] connect to %llu, flags: %d, length: %d\n", id, cx->fd, cx->flags, events[n].dwNumberOfBytesTransferred);
                 cx->send->op = S80_WIN_OP_WRITE;
                 // this is a special state for write when connection is created, use setsockopt to check
                 // if creation was okay, if not, close the socket, if yes, move to write state instead
                 if(((sock_t)childfd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0) < 0) {
-                    dbgf(DEBUG, "[%d] connect to %llu, setsockopt failed with %d\n", id, cx->fd, GetLastError());
+                    dbgf(LOG_DEBUG, "[%d] connect to %llu, setsockopt failed with %d\n", id, cx->fd, GetLastError());
                     cx->recv->connected = 0;
                     closesocket((sock_t)cx->fd);
                     params_close.childfd = (fd_t)cx->recv;
@@ -336,7 +340,7 @@ void *serve(void *vparams) {
                     free(cx->recv);
                 } else {
                     cx->recv->connected = 1;
-                    dbgf(DEBUG, "[%d] connect to %llu successful\n", id, cx->fd);
+                    dbgf(LOG_DEBUG, "[%d] connect to %llu successful\n", id, cx->fd);
                     // tell the handlers that this fd is ready for writing, thus also for reading if it's a socket
                     params_write.childfd = (fd_t)cx->recv;
                     params_write.written = events[n].dwNumberOfBytesTransferred;
@@ -344,10 +348,10 @@ void *serve(void *vparams) {
                     // as we are ini proactor mode, we need to force out WSARecv
                     status = WSARecv((sock_t)childfd, &cx->recv->wsaBuf, 1, NULL, &cx->recv->flags, &cx->recv->ol, NULL);
                     if(status > 0 || (status == SOCKET_ERROR && GetLastError() != WSA_IO_PENDING)) {
-                        dbgf(ERROR, "serve: connect recv failed");
+                        dbgf(LOG_ERROR, "serve: connect recv failed");
                     }
                 }
-                dbgf(DEBUG, "[%d] connect event resolved\n", id);
+                dbgf(LOG_DEBUG, "[%d] connect event resolved\n", id);
                 break;
             }
         }

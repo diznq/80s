@@ -40,6 +40,23 @@ namespace s90 {
                 return {};
             }
 
+            void update() override {
+                for(auto it = items.begin(); it != items.end(); ) {
+                    if(!it->second.never_expire && std::chrono::steady_clock::now() > it->second.expire) {
+                        it = items.erase(it);
+                    } else {
+                        it++;
+                    }
+                }
+            }
+
+            void erase(const std::string& key) {
+                auto it = items.find(key);
+                if(it != items.end()) {
+                    items.erase(it);
+                }
+            }
+
             void set(const std::string& key, expirable<T>&& value) {
                 items.emplace(std::make_pair(key, std::move(value)));
             }
@@ -130,6 +147,9 @@ namespace s90 {
                 }
                 for(auto it = races->begin(); it != races->end(); it++) {
                     it->resolve(cached<T>(result));
+                }
+                if(expire == 0) {
+                    layer->erase(key);
                 }
                 co_return std::move(result);
             }

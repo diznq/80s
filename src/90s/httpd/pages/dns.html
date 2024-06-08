@@ -1,0 +1,35 @@
+#! GET /dns
+<?hpp
+    struct error_response : public orm::with_orm {
+        WITH_ID;
+        std::string error;
+
+        error_response(const std::string err) : error(err) {};
+
+        orm::mapper get_orm() {
+            return {
+                {"error", error}
+            };
+        }
+    };
+?>
+<?cpp
+    auto req = env->query("name");
+    auto t_ = env->query("type");
+    auto t = t_ ? *t_ : std::string("A");
+    if(req) {
+        env->header("content-type", "application/json");
+        dns_type type = dns_type::A;
+        if(t == "CNAME") type = dns_type::CNAME;
+        else if(t == "MX") type = dns_type::MX;
+        else if(t == "AAAA") type = dns_type::AAAA;
+        else if(t == "TXT") type = dns_type::TXT;
+        auto resp = co_await env->global_context()->get_dns()->query(*req, type, false);
+        if(!resp) {
+            error_response err { resp.error() };
+            env->output()->write_json(err);
+        } else {
+            env->output()->write_json(*resp);
+        }
+    }
+?>

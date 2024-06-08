@@ -113,7 +113,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
     #endif
 
         if (status < 0) {
-            dbgf(ERROR, "l_net_connect: failed to add child to epoll");
+            dbgf(LOG_ERROR, "l_net_connect: failed to add child to epoll");
             return (fd_t)-1;
         }
         return childfd;
@@ -127,7 +127,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
     int status;
     size_t writelen = write(childfd, data + offset, len - offset);
     if (writelen < 0 && errno != EWOULDBLOCK) {
-        dbgf(ERROR, "l_net_write: write failed");
+        dbgf(LOG_ERROR, "l_net_write: write failed");
         return -1;
     } else {
         // it can happen that we tried to write more than the OS send buffer size is,
@@ -142,7 +142,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
             status = kevent(elfd, &ev, 1, NULL, 0, NULL);
     #endif
             if (status < 0) {
-                dbgf(ERROR, "l_net_write: failed to add socket to out poll");
+                dbgf(LOG_ERROR, "l_net_write: failed to add socket to out poll");
                 return -1;
             }
         }
@@ -161,13 +161,13 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback) {
 #endif
 
     if (status < 0) {
-        dbgf(ERROR, "l_net_close: failed to remove child from epoll");
+        dbgf(LOG_ERROR, "l_net_close: failed to remove child from epoll");
         return status;
     }
     
     status = close(childfd);
     if (status < 0) {
-        dbgf(ERROR, "l_net_close: failed to close childfd");
+        dbgf(LOG_ERROR, "l_net_close: failed to close childfd");
     }
 
     params.ctx = ctx;
@@ -189,11 +189,11 @@ int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port) {
     }
 
     if (clientlen == sizeof(struct sockaddr_in)) {
-        inet_ntop(AF_INET, &addr.v4.sin_addr, buf, clientlen);
+        inet_ntop(AF_INET, &addr.v4.sin_addr, buf, bufsize);
         *port = ntohs(addr.v4.sin_port);
         return 1;
     } else if (clientlen == sizeof(struct sockaddr_in6)) {
-        inet_ntop(AF_INET6, &addr.v6.sin6_addr, buf, clientlen);
+        inet_ntop(AF_INET6, &addr.v6.sin6_addr, buf, bufsize);
         *port = ntohs(addr.v6.sin6_port);
         return 1;
     } else {
@@ -263,7 +263,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
 #ifdef USE_KQUEUE
         EV_SET(ev, pid, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, int_to_void(S80_FD_OTHER));
         if(kevent(elfd, ev, 1, NULL, 0, NULL) < 0) {
-            dbgf(ERROR, "s80_popen: failed to monitor pid");
+            dbgf(LOG_ERROR, "s80_popen: failed to monitor pid");
         }
 #endif
         close(pipewr[0]);
@@ -330,6 +330,13 @@ int s80_mail(mailbox *mailbox, mailbox_message *message) {
     return 0;
 }
 
+int s80_set_recv_timeout(fd_t fd, int timeo) {
+    struct timeval timeout;      
+    timeout.tv_sec = timeo;
+    timeout.tv_usec = 0;
+    return setsockopt ((int)fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+}
+
 void s80_acquire_mailbox(mailbox *mailbox) {
     sem_wait(&mailbox->lock);
 }
@@ -381,14 +388,14 @@ void resolve_mail(serve_params *params, int id) {
                     // add the child socket to the event loop it belongs to based on modulo
                     // with number of workers, to balance the load to other threads
                     if (epoll_ctl(params->els[id], EPOLL_CTL_ADD, childfd, &ev) < 0) {
-                        dbgf(ERROR, "serve: on add child socket to epoll");
+                        dbgf(LOG_ERROR, "serve: on add child socket to epoll");
                     }
                     #elif defined(USE_KQUEUE)
                     EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(fdtype));
                     // add the child socket to the event loop it belongs to based on modulo
                     // with number of workers, to balance the load to other threads
                     if (kevent(params->els[id], &ev, 1, NULL, 0, NULL) < 0) {
-                        dbgf(ERROR, "serve: on add child socket to kqueue");
+                        dbgf(LOG_ERROR, "serve: on add child socket to kqueue");
                     }
                     #endif
                     on_accept(*(accept_params*)message->message);
