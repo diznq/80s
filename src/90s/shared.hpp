@@ -35,6 +35,7 @@ namespace s90 {
         constexpr auto STREAM_CLOSED = "stream_closed";
 
         constexpr auto CORRUPTED_ENTITY = "corrupted_entity";
+        constexpr auto WRITE_ERROR = "write_error";
 
         constexpr auto WAIT = "wait";
 
