@@ -126,7 +126,7 @@ void *serve(void *vparams) {
                 parentfd = childfd;
                 childfd = accept(parentfd, (struct sockaddr *)&clientaddr, &clientlen);
                 if (childfd < 0) {
-                    dbgf(LOG_ERROR, "serve: error on server accept");
+                    dbgf(LOG_ERROR, "serve: error on server accept (%s)\n", strerror(errno));
                     continue;
                 }
                 // set non blocking flag to the newly created child socket
@@ -145,7 +145,7 @@ void *serve(void *vparams) {
                     // add the child socket to the event loop it belongs to based on modulo
                     // with number of workers, to balance the load to other threads
                     if (kevent(els[accepts], &ev, 1, NULL, 0, NULL) < 0) {
-                        dbgf(LOG_ERROR, "serve: on add child socket to kqueue");
+                        dbgf(LOG_ERROR, "serve: on add child socket to kqueue (%s)\n", strerror(errno));
                     }
                     on_accept(params_accept);
                 } else {
@@ -163,7 +163,7 @@ void *serve(void *vparams) {
                             dbgf(LOG_ERROR, "serve: failed to send mailbox message");
                         }
                     } else {
-                        dbgf(LOG_ERROR, "serve: failed to allocate message");
+                        dbgf(LOG_ERROR, "serve: failed to allocate message (%s)\n", strerror(errno));
                     }
                 }
                 accepts++;
@@ -198,7 +198,7 @@ void *serve(void *vparams) {
                     if (flags & (EV_EOF | EV_ERROR)) {
                         if(fdtype == S80_FD_PIPE) {
                             if(close(childfd) < 0) {
-                                dbgf(LOG_ERROR, "serve: failed to close write socket");
+                                dbgf(LOG_ERROR, "serve: failed to close write socket (%s)\n", strerror(errno));
                             }
                             params_close.childfd = childfd;
                             on_close(params_close);
@@ -228,7 +228,7 @@ void *serve(void *vparams) {
                         on_receive(params_read);
                     }
                     // if length is <= 0 or error happens, remove the socket from event loop
-                    if (readlen <= 0 || (flags & (EV_EOF | EV_ERROR))) {
+                    if (flags & (EV_EOF | EV_ERROR)) {
                         while(fdtype == S80_FD_PIPE && readlen > 0) {
                             readlen = read(childfd, buf, BUFSIZE);
                             if(readlen <= 0) break;
@@ -239,7 +239,7 @@ void *serve(void *vparams) {
                             on_receive(params_read);
                         }
                         if (close(childfd) < 0) {
-                            dbgf(LOG_ERROR, "serve: failed to close child socket");
+                            dbgf(LOG_ERROR, "serve: failed to close child socket (%s)\n", strerror(errno));
                         }
                         params_close.childfd = childfd;
                         on_close(params_close);
@@ -247,7 +247,7 @@ void *serve(void *vparams) {
                     break;
                 case EVFILT_PROC:
                     if(waitpid(childfd, NULL, WNOHANG) < 0) {
-                        dbgf(LOG_ERROR, "serve: failed to wait pid");
+                        dbgf(LOG_ERROR, "serve: failed to wait pid (%s)\n", strerror(errno));
                     }
                     break;
                 }
