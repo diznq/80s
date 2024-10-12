@@ -10,6 +10,7 @@ namespace s90 {
             crypto_random(buff, sizeof(buff));
             id = util::to_hex(std::string_view { buff, buff + 20 });
         }
+        
         std::string actor::get_node_ip() const {
             return ctx->get_node_id().name;
         }
@@ -26,11 +27,11 @@ namespace s90 {
             return id;
         }
 
-        void actor::receive_message(const std::string& type, std::function<aiopromise<nil>(std::string, std::string)> callback) {
+        void actor::receive_message(const std::string& type, std::function<aiopromise<nil>(present<std::string>, present<std::string>)> callback) {
             callbacks[type] = callback;
         }
 
-        aiopromise<nil> actor::on_receive(std::string sender, std::string type, std::string message) {
+        aiopromise<nil> actor::on_receive(present<std::string> sender, present<std::string> type, present<std::string> message) {
             auto it = callbacks.find(type);
             if(it == callbacks.end()) {
                 it = callbacks.find("*");

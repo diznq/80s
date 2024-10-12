@@ -700,6 +700,92 @@ int crypto_random(char *buf, size_t len) {
 }
 
 
+int crypto_private_key_new(const char *key, void **out_key, const char **error) {
+    EVP_PKEY *pkey = NULL;
+    FILE *f = fopen(key, "rb");
+    if(f == NULL) {
+        if(error) *error = "failed to open key file";
+        return -1;
+    }
+    
+    pkey = PEM_read_PrivateKey(f, NULL, NULL, NULL);
+    fclose(f);
+    if(pkey == NULL) {
+        if(error) *error = "failed to read private key";
+        return -1;
+    }
+    *out_key = pkey;
+    return 0;
+}
+
+int crypto_private_key_from_buffer_new(const char *key_data, size_t length, void **out_key, const char **error) {
+    EVP_PKEY *pkey = NULL;
+    BIO *bio = BIO_new_mem_buf((void*)key_data, length);
+    if(bio == NULL) {
+        if(error) *error = "failed to create bio";
+        return -1;
+    }
+    
+    pkey = PEM_read_bio_PrivateKey(bio, NULL, NULL, NULL);
+    BIO_free(bio);
+    if(pkey == NULL) {
+        if(error) *error = "failed to read private key";
+        return -1;
+    }
+    *out_key = pkey;
+    return 0;
+}
+
+int crypto_private_key_release(const void *key) {
+    if(key != NULL) {
+        EVP_PKEY_free((EVP_PKEY*)key);
+    }
+    return 0;
+}
+
+int crypto_public_key_new(const char *key, void **out_key, const char **error) {
+    EVP_PKEY *pkey = NULL;
+    FILE *f = fopen(key, "rb");
+    if(f == NULL) {
+        if(error) *error = "failed to open key file";
+        return -1;
+    }
+    
+    pkey = PEM_read_PUBKEY(f, NULL, NULL, NULL);
+    fclose(f);
+    if(pkey == NULL) {
+        if(error) *error = "failed to read public key";
+        return -1;
+    }
+    *out_key = pkey;
+    return 0;
+}
+
+int crypto_public_key_from_buffer_new(const char *key_data, size_t length, void **out_key, const char **error) {
+    EVP_PKEY *pkey = NULL;
+    BIO *bio = BIO_new_mem_buf((void*)key_data, length);
+    if(bio == NULL) {
+        if(error) *error = "failed to create bio";
+        return -1;
+    }
+    
+    pkey = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
+    BIO_free(bio);
+    if(pkey == NULL) {
+        if(error) *error = "failed to read public key";
+        return -1;
+    }
+    *out_key = pkey;
+    return 0;
+}
+
+int crypto_public_key_release(const void *key) {
+    if(key != NULL) {
+        EVP_PKEY_free((EVP_PKEY*)key);
+    }
+    return 0;
+}
+
 int crypto_rsa_sha1(const char *key, const char *data, size_t data_size, dynstr *out, const char **error) {
     EVP_PKEY *pkey = NULL; // use EVP_PKEY to hold the private key
     EVP_MD_CTX *md_ctx = NULL; // use EVP_MD_CTX to hold the signing context
@@ -928,29 +1014,87 @@ int crypto_rsa_sha256_with_key(const void *key, const char *data, size_t data_si
     return 0;
 }
 
-
-int crypto_private_key_new(const char *key, void **out_key, const char **error) {
-    EVP_PKEY *pkey = NULL;
-    FILE *f = fopen(key, "rb");
-    if(f == NULL) {
-        if(error) *error = "failed to open key file";
-        return -1;
-    }
+int crypto_rsa_sha1_verify_with_key(const void *key, const char *data, size_t data_size, const char *signature, size_t signature_size, const char **error) {
+    EVP_PKEY *pkey = (EVP_PKEY*)key;
+    EVP_MD_CTX *md_ctx = NULL;
+    size_t sig_len = 0;
+    int status = 0;
     
-    pkey = PEM_read_PrivateKey(f, NULL, NULL, NULL); // use PEM_read_PrivateKey to read the private key as EVP_PKEY
-    fclose(f);
     if(pkey == NULL) {
-        if(error) *error = "failed to read private key";
+        if(error) *error = "failed to read privkey as EVP_PKEY";
         return -1;
     }
-    *out_key = pkey;
+
+    md_ctx = EVP_MD_CTX_new(); // create a new signing context
+    if(md_ctx == NULL) {
+        if(error) *error = "failed to create verify context";
+        return -1;
+    }
+
+    status = EVP_DigestVerifyInit(md_ctx, NULL, EVP_sha1(), NULL, pkey); // initialize the signing operation with SHA-256
+    if(status != 1) {
+        EVP_MD_CTX_free(md_ctx); // use EVP_MD_CTX_free to free the signing context
+        if(error) *error = "verify initialization failed";
+        return -1;
+    }
+
+    status = EVP_DigestVerifyUpdate(md_ctx, data, data_size); // update the signing operation with the data
+    if(status != 1) {
+        EVP_MD_CTX_free(md_ctx);
+        if(error) *error = "verify update failed";
+        return -1;
+    }
+
+    status = EVP_DigestVerifyFinal(md_ctx, (const unsigned char*)signature, signature_size); // finalize the signing operation and get the signature
+    if(status != 1) {
+        EVP_MD_CTX_free(md_ctx);
+        if(error) *error = "verify finalization failed";
+        return -1;
+    }
+
+    EVP_MD_CTX_free(md_ctx);
     return 0;
 }
 
-int crypto_private_key_release(const void *key) {
-    if(key != NULL) {
-        EVP_PKEY_free((EVP_PKEY*)key);
+int crypto_rsa_sha256_verify_with_key(const void *key, const char *data, size_t data_size, const char *signature, size_t signature_size, const char **error) {
+    EVP_PKEY *pkey = (EVP_PKEY*)key;
+    EVP_MD_CTX *md_ctx = NULL;
+    size_t sig_len = 0;
+    int status = 0;
+    
+    if(pkey == NULL) {
+        if(error) *error = "failed to read privkey as EVP_PKEY";
+        return -1;
     }
+
+    md_ctx = EVP_MD_CTX_new(); // create a new signing context
+    if(md_ctx == NULL) {
+        if(error) *error = "failed to create verify context";
+        return -1;
+    }
+
+    status = EVP_DigestVerifyInit(md_ctx, NULL, EVP_sha256(), NULL, pkey); // initialize the signing operation with SHA-256
+    if(status != 1) {
+        EVP_MD_CTX_free(md_ctx); // use EVP_MD_CTX_free to free the signing context
+        if(error) *error = "verify initialization failed";
+        return -1;
+    }
+
+    status = EVP_DigestVerifyUpdate(md_ctx, data, data_size); // update the signing operation with the data
+    if(status != 1) {
+        EVP_MD_CTX_free(md_ctx);
+        if(error) *error = "verify update failed";
+        return -1;
+    }
+
+    status = EVP_DigestVerifyFinal(md_ctx, (const unsigned char*)signature, signature_size); // finalize the signing operation and get the signature
+    if(status != 1) {
+        EVP_MD_CTX_free(md_ctx);
+        if(error) *error = "verify finalization failed";
+        return -1;
+    }
+
+    EVP_MD_CTX_free(md_ctx);
     return 0;
 }
 

@@ -9,13 +9,14 @@ default_context::default_context(s90::icontext *ctx) : ctx(ctx) {
 }
 
 aiopromise<ptr<isql>> default_context::get_db() {
+    auto db_ref = db;
     if(!db->is_connected()) {
         auto connect_ok = co_await db->connect("localhost", 3306, "80s", "password", "db80");
         if(connect_ok.error) {
             printf("failed to connect to db: %s\n", connect_ok.error_message.c_str());
         }
     }
-    co_return db;
+    co_return std::move(db_ref);
 }
 
 aiopromise<int> default_context::add_post(const std::string& author, const std::string& text) {

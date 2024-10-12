@@ -20,6 +20,7 @@
 union addr_common {
     struct sockaddr_in6 v6;
     struct sockaddr_in v4;
+    struct sockaddr_storage any;
 };
 
 void *serve(void *vparams) {

@@ -109,10 +109,27 @@ namespace s90 {
                         // search based on Knuth-Morris-Pratt algorithm, so it's O(n)
                         if(delim_state.match > 0) {
                             uint64_t rem = command_delim_length - delim_state.match;
-                            part = kmp(window.data(), delim_state.offset + rem > window.length() ? window.length() : delim_state.offset + rem, it.delimiter.c_str() + delim_state.match, command_delim_length - delim_state.match, delim_state.offset, it.pattern_ref ? it.pattern_ref : it.pattern.data());
-                            if(part.length == 0) {
+                            size_t data_length = delim_state.offset + rem > window.length() ? window.length() : delim_state.offset + rem;
+
+                            part = kmp(
+                                window.data(),
+                                data_length,
+                                it.delimiter.c_str() + delim_state.match,
+                                command_delim_length - delim_state.match,
+                                delim_state.offset,
+                                it.pattern_ref ? it.pattern_ref : it.pattern.data()
+                            );
+                            
+                            if(part.length < rem) {
                                 delim_state.match = 0;
-                                part = kmp(window.data(), window.length(), it.delimiter.c_str() + delim_state.match, command_delim_length - delim_state.match, delim_state.offset, it.pattern_ref ? it.pattern_ref : it.pattern.data());
+                                part = kmp(
+                                    window.data(), 
+                                    window.length(), 
+                                    it.delimiter.c_str() + delim_state.match, 
+                                    command_delim_length - delim_state.match,
+                                    delim_state.offset,
+                                    it.pattern_ref ? it.pattern_ref : it.pattern.data()
+                                );
                             }
                         } else {
                             part = kmp(window.data(), window.length(), it.delimiter.c_str() + delim_state.match, command_delim_length - delim_state.match, delim_state.offset, it.pattern_ref ? it.pattern_ref : it.pattern.data());
@@ -181,8 +198,9 @@ namespace s90 {
                 if(promise.sent + written_bytes >= promise.length) [[likely]] {
                     written_bytes -= promise.length - promise.sent;
                     promise.sent = promise.length;
+                    auto copy = promise.promise;
                     write_back_buffer_info.pop();
-                    if(auto p = promise.promise.lock())
+                    if(auto p = copy.lock())
                         aiopromise(p).resolve(true);
                 } else if(written_bytes > 0) {
                     // there is no point iterating any further than this as this is the first
@@ -346,11 +364,16 @@ namespace s90 {
         size_t to_write = buffer_size - write_back_offset;
         int ok = s80_write(ctx, elfd, fd, fd_type, write_back_buffer.data(), write_back_offset, buffer_size);
         if(ok < 0) {
-            close(true);
+            closed = close_state::closing;
+            //close(true);
             return std::make_tuple(ok, false);
         } else [[likely]] {
             return std::make_tuple(ok, (size_t)ok == to_write);
         }
+    }
+
+    std::string_view afd::get_data() {
+        return std::string_view(read_buffer.data(), read_buffer.size());
     }
 
     aiopromise<bool> afd::write(std::string_view data, bool layers) {

@@ -83,7 +83,7 @@ namespace s90 {
         /// @param proto protocol
         /// @param name socket name, if set, connections are cached and re-retrieved later on
         /// @return return an already connected file descriptor
-        virtual aiopromise<connect_result> connect(const std::string& addr, dns_type record_type, int port, proto protocol, std::optional<std::string> name = {}) = 0;
+        virtual aiopromise<connect_result> connect(const std::string& addr, dns_type record_type, int port, proto protocol, std::optional<std::string> name = {}, bool disable_local = false) = 0;
 
         /// @brief Create a new SQL instance
         /// @param type SQL type, currently only "mysql" is accepted
@@ -192,6 +192,18 @@ namespace s90 {
         /// @return new snowflake ID
         virtual uint64_t get_snowflake_id() = 0;
 
+        /// @brief Perform tick
+        virtual aiopromise<nil> on_tick() = 0;
+
+        /// @brief Add tick listener
+        /// @param cb listener
+        virtual void add_tick_listener(std::function<aiopromise<nil>(void*)> cb, void *self, size_t periodicity=0) = 0;
+
+        /// @brief Sleep for N seconds
+        /// @param seconds seconds
+        /// @return promise
+        virtual aiopromise<nil> sleep(int seconds) = 0;
+
         template<class T>
         aiopromise<T> exec_async(std::function<T()> cb) {
             struct holder {
@@ -206,17 +218,28 @@ namespace s90 {
         }
     };
 
+    struct tick_listener_data {
+        std::function<aiopromise<nil>(void *)> fn;
+        void *self;
+        size_t periodicity;
+        size_t next_run;
+    };
+
     class context : public icontext {
         node_id *id;
         reload_context *rld;
         fd_t elfd;
         dict<fd_t, wptr<iafd>> fds;
+
+        size_t current_tick = 0;
         size_t last_flush = 0;
         size_t ctr = 0;
 
         dict<std::string, ptr<iafd>> named_fds;
         dict<std::string, std::queue<aiopromise<connect_result>::weak_type>> named_fd_promises;
         dict<std::string, bool> named_fd_connecting;
+
+        std::list<std::pair<size_t, aiopromise<nil>::weak_type>> sleeps;
 
         dict<fd_t, aiopromise<ptr<iafd>>> connect_promises;
         dict<std::string, ptr<storable>> stores;
@@ -226,6 +249,8 @@ namespace s90 {
         ptr<dns::idns> dns_provider;
         std::vector<std::thread> workers;
         ptr<httpd::ihttp_client> http_cl;
+
+        std::vector<tick_listener_data> tick_listeners;
 
         size_t task_id = 0;
         uint64_t machine_id = 0;
@@ -260,7 +285,7 @@ namespace s90 {
         void on_message(message_params params);
         void on_init(init_params params);
 
-        aiopromise<connect_result> connect(const std::string& addr, dns_type record_type, int port, proto protocol, std::optional<std::string> name = {}) override;
+        aiopromise<connect_result> connect(const std::string& addr, dns_type record_type, int port, proto protocol, std::optional<std::string> name = {}, bool disable_local = false) override;
         ptr<sql::isql> new_sql_instance(const std::string& type) override;
 
         const dict<fd_t, wptr<iafd>>& get_fds() const override;
@@ -296,5 +321,10 @@ namespace s90 {
 
         std::tuple<task_spec, aiopromise<void*>> create_task() override;
         void complete_task(const task_spec& task_id, void *result) override;
+
+        aiopromise<nil> on_tick() override;
+        void add_tick_listener(std::function<aiopromise<nil>(void*)> cb, void *self, size_t periodicity=0) override;
+
+        aiopromise<nil> sleep(int seconds) override;
     };
 }

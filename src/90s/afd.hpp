@@ -188,6 +188,10 @@ namespace s90 {
         /// @param timeout timeout
         /// @return 0 if success, < 0 if error
         virtual int set_timeout(int timeout) = 0;
+
+        /// @brief Get raw data in recv buffer
+        /// @return raw data
+        virtual std::string_view get_data() = 0;
     };
 
     class afd : public iafd {
@@ -307,6 +311,8 @@ namespace s90 {
         int set_timeout(int timeout) override;
 
         void set_remote_addr(const std::string& ip, int port) override;
+
+        std::string_view get_data() override;
     };
 
 }

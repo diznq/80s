@@ -13,6 +13,9 @@ namespace s90 {
     template<class T>
     using present = const T;
 
+    template<class T>
+    using present_mutable = T;
+
     template<typename T>
     class aiopromise;
 
@@ -20,7 +23,6 @@ namespace s90 {
     struct aiopromise_state {
         bool has_result = false;
         T result;
-        std::function<void(T&&)> callback = nullptr;
         std::coroutine_handle<> coro_callback = nullptr;
         std::exception_ptr exception = nullptr;
     };
@@ -65,18 +67,15 @@ namespace s90 {
                 }
             }
 
-            void return_value(const T& value) {
-                state->result = value;
-                state->has_result = true;
-                if(state->coro_callback) {
-                    auto cb = std::move(state->coro_callback);
-                    state->coro_callback = nullptr;
-                    cb();
-                }
-            }
-
             void unhandled_exception() const noexcept {
                 state->exception = std::current_exception();
+                try {
+                    if(state->exception) {
+                        std::rethrow_exception(state->exception);
+                    }
+                } catch(const std::exception& ex) {
+                    printf("captured: %s\n", ex.what());
+                }
                 if(state->coro_callback) {
                     auto cb = std::move(state->coro_callback);
                     state->coro_callback = nullptr;
@@ -101,30 +100,12 @@ namespace s90 {
 
         void resolve(T&& value) {
             auto s = state();
-            if(s->callback) {
-                s->has_result = false;
-                auto cb = std::move(s->callback);
-                s->callback = nullptr;
-                cb(std::move(value));
-            } else if(s->coro_callback) {
-                s->result = std::move(value);
-                s->has_result = true;
+            s->result = std::move(value);
+            s->has_result = true;
+            if(s->coro_callback) {
                 auto cb = std::move(s->coro_callback);
                 s->coro_callback = nullptr;
                 cb();
-            } else {
-                s->result = std::move(value);
-                s->has_result = true;
-            }
-        }
-
-        void then(std::function<void(T&&)> cb) {
-            auto s = state();
-            if(s->has_result) {
-                s->has_result = false;
-                cb(std::move(s->result));
-            } else {
-                s->callback = std::move(cb);
             }
         }
 

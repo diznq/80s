@@ -16,10 +16,13 @@
 
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/un.h>
 
 union addr_common {
     struct sockaddr_in6 v6;
     struct sockaddr_in v4;
+    struct sockaddr_un ux;
+    struct sockaddr_storage any;
 };
 
 static int cleanup_pipes(fd_t elfd, fd_t* pipes, int allocated);
@@ -30,63 +33,103 @@ void s80_enable_async(fd_t fd) {
 
 fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp) {
     struct event_t ev[2];
-    struct sockaddr_in ipv4addr;
-    struct sockaddr_in6 ipv6addr;
-    int status, i, found4 = 0, found6 = 0, usev6 = 0, found = 0, v6 = 0;
+    int protocol = AF_INET;
+    int sock_type = is_udp ? SOCK_DGRAM : SOCK_STREAM;
+    int ip_proto = is_udp ? IPPROTO_UDP : IPPROTO_TCP;
+    int status, i, 
+        found_v4 = 0, found_v6 = 0, found_ux = 0,
+        found = 0;
     fd_t childfd;
+
     struct hostent *hp;
+
+    union addr_common addr_v4;
+    union addr_common addr_v6;
+    union addr_common addr_ux;
+
     struct in_addr **ipv4;
     struct in6_addr **ipv6;
+    union addr_common *final = NULL;
+    size_t final_len = 0;
 
     if (strstr(addr, "v6:") == addr) {
-        v6 = 1;
+        protocol = AF_INET6;
         addr += 3;
-    }
-
-    hp = gethostbyname(addr);
-    if (hp == NULL) {
-        errno = EINVAL;
-        return (fd_t)-1;
-    }
-
-    memset((void *)&ipv4addr, 0, sizeof(ipv4addr));
-    memset((void *)&ipv6addr, 0, sizeof(ipv6addr));
-
-    ipv4addr.sin_family = AF_INET;
-    ipv4addr.sin_port = htons((unsigned short)portno);
-    ipv6addr.sin6_family = AF_INET6;
-    ipv6addr.sin6_port = htons((unsigned short)portno);
-
-    switch (hp->h_addrtype) {
-    case AF_INET:
-        ipv4 = (struct in_addr **)hp->h_addr_list;
-        for (i = 0; ipv4[i] != NULL; i++) {
-            ipv4addr.sin_addr.s_addr = ipv4[i]->s_addr;
-            found4 = 1;
-            break;
-        }
-        break;
-    case AF_INET6:
-        ipv6 = (struct in6_addr **)hp->h_addr_list;
-        for (i = 0; ipv6[i] != NULL; i++) {
-            ipv6addr.sin6_addr = ipv6[i][0];
-            found6 = 1;
-            break;
-        }
-    }
-
-    // create a non-blocking socket
-    childfd = (fd_t)socket(AF_INET, is_udp ? SOCK_DGRAM : SOCK_STREAM, is_udp ? IPPROTO_UDP : IPPROTO_TCP);
-    s80_enable_async(childfd);
-
-    if (found6 && v6) {
-        found = 1;
-        usev6 = 1;
-    } else if (found4) {
-        found = 1;
-        usev6 = 0;
+    } else if(strstr(addr, "unix:") == addr) {
+        protocol = AF_UNIX;
+        addr += 5;
     } else {
-        found = 0;
+        protocol = AF_INET;
+    }
+
+    memset((void *)&addr_v4, 0, sizeof(addr_v4));
+    memset((void *)&addr_v6, 0, sizeof(addr_v6));
+    memset((void *)&addr_ux, 0, sizeof(addr_ux));
+
+    addr_v4.v4.sin_family = AF_INET;
+    addr_v6.v6.sin6_family = AF_INET6;
+    addr_ux.ux.sun_family = AF_UNIX;
+
+    if(protocol == AF_INET || protocol == AF_INET6) {
+        hp = gethostbyname(addr);
+        if (hp == NULL) {
+            errno = EINVAL;
+            return (fd_t)-1;
+        }
+
+        addr_v4.v4.sin_port = htons((unsigned short)portno);
+        addr_v6.v6.sin6_port = htons((unsigned short)portno);
+
+        switch (hp->h_addrtype) {
+        case AF_INET:
+            ipv4 = (struct in_addr **)hp->h_addr_list;
+            for (i = 0; ipv4[i] != NULL; i++) {
+                addr_v4.v4.sin_addr.s_addr = ipv4[i]->s_addr;
+                found_v4 = 1;
+                break;
+            }
+            break;
+        case AF_INET6:
+            ipv6 = (struct in6_addr **)hp->h_addr_list;
+            for (i = 0; ipv6[i] != NULL; i++) {
+                addr_v6.v6.sin6_addr = ipv6[i][0];
+                found_v6 = 1;
+                break;
+            }
+        }
+    } else if(protocol == AF_UNIX) {
+        strncpy(addr_ux.ux.sun_path, addr, sizeof(addr_ux.ux.sun_path));
+        found_ux = 1;
+    }
+
+    if(protocol == AF_INET6) {
+        if(found_v6) {
+            final = &addr_v6;
+            final_len = sizeof(addr_v6.v6);
+            found = 1;
+        } else if(found_v4) {
+            protocol = AF_INET;
+            final = &addr_v4;
+            final_len = sizeof(addr_v4.v4);
+            found = 1;
+        } else {
+            found = 0;
+        }
+    } else if(protocol == AF_INET) {
+        if(found_v4) {
+            final = &addr_v4;
+            final_len = sizeof(addr_v4.v4);
+            found = 1;
+        } else {
+            found = 0;
+        }
+    } else if(protocol == AF_UNIX) {
+        if(found_ux) {
+            final = &addr_ux;
+            final_len = sizeof(addr_ux.ux);
+            found = 1;
+            ip_proto = 0;
+        }
     }
 
     if (!found) {
@@ -94,11 +137,16 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
         return (fd_t)-1;
     }
 
-    if (usev6) {
-        status = connect((sock_t)childfd, (const struct sockaddr *)&ipv6addr, sizeof(ipv6addr));
-    } else {
-        status = connect((sock_t)childfd, (const struct sockaddr *)&ipv4addr, sizeof(ipv4addr));
+    // create a non-blocking socket
+    childfd = (fd_t)socket(protocol, sock_type, ip_proto);
+    s80_enable_async(childfd);
+
+    if(childfd < 0) {
+        return (fd_t)-1;
     }
+
+    status = connect((sock_t)childfd, (const struct sockaddr *)final, final_len);
+
     if (status == 0 || errno == EINPROGRESS) {
     #ifdef USE_EPOLL
         // use [0] to keep code compatibility with kqueue that is able to set multiple events at once
@@ -113,7 +161,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
     #endif
 
         if (status < 0) {
-            dbgf(LOG_ERROR, "l_net_connect: failed to add child to epoll");
+            dbgf(LOG_ERROR, "l_net_connect: failed to add child to epoll\n");
             return (fd_t)-1;
         }
         return childfd;
@@ -127,7 +175,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
     int status;
     size_t writelen = write(childfd, data + offset, len - offset);
     if (writelen < 0 && errno != EWOULDBLOCK) {
-        dbgf(LOG_ERROR, "l_net_write: write failed");
+        dbgf(LOG_ERROR, "l_net_write: write failed\n");
         return -1;
     } else {
         // it can happen that we tried to write more than the OS send buffer size is,
@@ -142,7 +190,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
             status = kevent(elfd, &ev, 1, NULL, 0, NULL);
     #endif
             if (status < 0) {
-                dbgf(LOG_ERROR, "l_net_write: failed to add socket to out poll");
+                dbgf(LOG_ERROR, "l_net_write: failed to add socket to out poll\n");
                 return -1;
             }
         }
@@ -161,13 +209,13 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback) {
 #endif
 
     if (status < 0) {
-        dbgf(LOG_ERROR, "l_net_close: failed to remove child from epoll");
+        dbgf(LOG_ERROR, "l_net_close: failed to remove child from epoll\n");
         return status;
     }
     
     status = close(childfd);
     if (status < 0) {
-        dbgf(LOG_ERROR, "l_net_close: failed to close childfd");
+        dbgf(LOG_ERROR, "l_net_close: failed to close \n");
     }
 
     params.ctx = ctx;
@@ -188,11 +236,11 @@ int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port) {
         return 0;
     }
 
-    if (clientlen == sizeof(struct sockaddr_in)) {
+    if (addr.any.ss_family == AF_INET) {
         inet_ntop(AF_INET, &addr.v4.sin_addr, buf, bufsize);
         *port = ntohs(addr.v4.sin_port);
         return 1;
-    } else if (clientlen == sizeof(struct sockaddr_in6)) {
+    } else if (addr.any.ss_family == AF_INET6) {
         inet_ntop(AF_INET6, &addr.v6.sin6_addr, buf, bufsize);
         *port = ntohs(addr.v6.sin6_port);
         return 1;
@@ -263,7 +311,7 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
 #ifdef USE_KQUEUE
         EV_SET(ev, pid, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, int_to_void(S80_FD_OTHER));
         if(kevent(elfd, ev, 1, NULL, 0, NULL) < 0) {
-            dbgf(LOG_ERROR, "s80_popen: failed to monitor pid");
+            dbgf(LOG_ERROR, "s80_popen: failed to monitor pid\n");
         }
 #endif
         close(pipewr[0]);
@@ -388,14 +436,14 @@ void resolve_mail(serve_params *params, int id) {
                     // add the child socket to the event loop it belongs to based on modulo
                     // with number of workers, to balance the load to other threads
                     if (epoll_ctl(params->els[id], EPOLL_CTL_ADD, childfd, &ev) < 0) {
-                        dbgf(LOG_ERROR, "serve: on add child socket to epoll");
+                        dbgf(LOG_ERROR, "serve: on add child socket to epoll\n");
                     }
                     #elif defined(USE_KQUEUE)
                     EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(fdtype));
                     // add the child socket to the event loop it belongs to based on modulo
                     // with number of workers, to balance the load to other threads
                     if (kevent(params->els[id], &ev, 1, NULL, 0, NULL) < 0) {
-                        dbgf(LOG_ERROR, "serve: on add child socket to kqueue");
+                        dbgf(LOG_ERROR, "serve: on add child socket to kqueue\n");
                     }
                     #endif
                     on_accept(*(accept_params*)message->message);

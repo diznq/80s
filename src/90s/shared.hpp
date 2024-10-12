@@ -22,7 +22,7 @@ namespace s90 {
         constexpr auto DISK_WRITE = "disk_write";
         constexpr auto DISK_DELETE_ERROR = "disk_delete";
         constexpr auto DISK_CREATE_DIRECTORIES = "disk_directories";
-
+        
         constexpr auto DNS_WRITE = "dns_write";
         constexpr auto DNS_READ = "dns_read";
         constexpr auto DNS_INVALID = "dns_invalid";

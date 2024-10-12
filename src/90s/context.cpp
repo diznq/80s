@@ -20,6 +20,30 @@ namespace s90 {
 
     #define MSG_TASK 1
     #define MSG_ACTOR 2
+    #define MSG_TICK 3
+
+    namespace {
+        constexpr size_t tick_period = 1;
+    }
+
+    bool is_local_address(const std::string& addr) {
+        if(addr.starts_with("v6:")) return false;
+        uint32_t a, b, c, d;
+        int s = sscanf(addr.c_str(), "%u.%u.%u.%u", &a, &b, &c, &d);
+        if(s == 4) {
+            if(a > 255 || b > 255 || c > 255 || d > 255) return true;
+            uint32_t ip = ((a << 24) | (b << 16) | (c << 8) | d);
+            return 
+                    ((ip & 0xFF000000) == 0x00000000)   //   0.  0.  0.  0/8
+                ||  ((ip & 0x7F000000) == 0x7F000000)   // 127.  0.  0.  0/8  | 255.  0.  0.  0/8
+                ||  ((ip & 0xFF000000) == 0x0A000000)   //  10.  0.  0.  0/8
+                ||  ((ip & 0xFFFF0000) == 0xC0A80000)   // 192.168.  0.  0/16
+                ||  ((ip & 0xFFF00000) == 0xAC100000)   // 172. 16.  0.  0/12
+                ||  ((ip & 0xFFFF0000) == 0xA9FE0000);  // 169.254.  0.  0/16
+        } else {
+            return false;
+        }
+    }
 
     void set_fd_remote(const accept_params& params, ptr<iafd> fd) {
         char buf[200];
@@ -58,7 +82,7 @@ namespace s90 {
     }
 
     context::context(node_id *id, reload_context *rctx) : id(id), rld(rctx) {
-        machine_id = ((id->id << 4) | (id->port & 0xF)) & 0x3FF;
+        machine_id = (id->port + id->id) & 0x3FF;
         for(int i = 0; i < 4; i++) {
             std::thread([this](int worker_id) -> void {
                 while(true) {
@@ -72,6 +96,41 @@ namespace s90 {
                     create_completion_message(rld, elfd, worker_id, task_id, result);
                 }
             }, id->id).detach();
+        }
+
+        if(id->id == 0) {
+            std::thread([this]() -> void {
+                auto time_now = time(NULL);
+                auto min_rem = 60 - time_now % 60;
+
+                #ifdef WIN32
+                Sleep(min_rem * 1000);
+                #else
+                ::sleep(min_rem);
+                #endif
+
+                while(true) {
+                    for(int worker_id = 0; worker_id < rld->workers; worker_id++) {
+                        mailbox_message msg;
+                        msg.sender_elfd = elfd;
+                        msg.sender_fd = 0;
+                        msg.sender_id = worker_id;
+                        msg.receiver_fd = 0;
+                        msg.type = S80_MB_MESSAGE;
+                        msg.message = (void*)calloc(1, sizeof(char));
+                        msg.size = sizeof(char);
+                        char *cptr = (char*)msg.message;
+                        *(cptr) = MSG_TICK;
+                        mailbox *mb = rld->mailboxes + worker_id;
+                        s80_mail(mb, &msg);
+                    }
+                    #ifdef WIN32
+                    Sleep(tick_period * 1000);
+                    #else
+                    ::sleep(tick_period);
+                    #endif
+                }
+            }).detach();
         }
     }
 
@@ -101,10 +160,6 @@ namespace s90 {
     }
 
     void context::on_receive(read_params params) {
-        if(last_flush > 5000) {
-            last_flush = 0;
-            flush_stores();
-        }
         auto it = fds.find(params.childfd);
         if(it != fds.end()) [[likely]] {
             if(auto fd = it->second.lock()) [[likely]] {
@@ -227,10 +282,12 @@ namespace s90 {
                 dbgf(LOG_DEBUG, "To: %s\nFrom: %s\nType: %s\nMessage: %s\n", to.c_str(), from.c_str(), type.c_str(), message.c_str());
                 on_actor_message(sig, to, from, type, message);
             })(msg);
+        } else if(*msg == MSG_TICK) {
+            on_tick();
         }
     }
 
-    aiopromise<connect_result> context::connect(const std::string& addr, dns_type record_type, int port, proto protocol, std::optional<std::string> name) {
+    aiopromise<connect_result> context::connect(const std::string& addr, dns_type record_type, int port, proto protocol, std::optional<std::string> name, bool disable_local) {
         if(name) {
             auto it = named_fds.find(*name);
             if(it != named_fds.end()) {
@@ -264,13 +321,28 @@ namespace s90 {
             target_ip = addr;
             host_name = addr;
         }
-        fd_t fd = s80_connect(this, elfd, target_ip.c_str(), port, protocol == proto::udp);
+        fd_t fd = (fd_t)0;
         connect_result result;
+        bool locality_check = true;
+        if(disable_local && is_local_address(target_ip)) {
+            locality_check = false;
+        }
+
+        if(locality_check) { 
+            fd = s80_connect(this, elfd, target_ip.c_str(), port, protocol == proto::udp);
+        }
+
         if(fd == (fd_t)-1) {
             result = {
                 true,
                 static_pointer_cast<iafd>(ptr_new<afd>(this, elfd, true)),
                 "failed to create fd"
+            };
+        } else if(!locality_check) {
+            result = {
+                true,
+                static_pointer_cast<iafd>(ptr_new<afd>(this, elfd, true)),
+                errors::INVALID_ADDRESS
             };
         } else if(protocol == proto::udp) {
             auto p = static_pointer_cast<iafd>(ptr_new<afd>(this, elfd, fd, S80_FD_SOCKET));
@@ -321,6 +393,7 @@ namespace s90 {
                 };
             }
         }
+
         if(name) {
             if(!result.error) {
                 result.fd->set_name(*name);
@@ -343,6 +416,7 @@ namespace s90 {
                 named_fd_connecting.erase(connect_it);
             }
         }
+
         co_return std::move(result);
     }
 
@@ -617,12 +691,72 @@ namespace s90 {
         snowflake |= get_machine_id() << 22;
         snowflake |= incr() & 0x00CFFFFF;
 
-        snowflake ^= 0x3840802b8a25a5b4ULL;
+        //snowflake ^= 0x3840802b8a25a5b4ULL;
 
         return snowflake;
     }
 
     uint64_t context::incr() {
         return ctr++;
+    }
+
+    aiopromise<nil> context::on_tick() {
+        flush_stores();
+
+        size_t i = 0;
+        for(auto& listener : tick_listeners) {
+            if(current_tick >= listener.next_run) {
+                listener.next_run = current_tick + listener.periodicity;
+                dbgf(LOG_INFO, "[cron %p/%p] Executing tick listener %zu/%zu\n", this, this->id, ++i, tick_listeners.size());
+                auto res = listener.fn(listener.self);
+                if(res.has_exception()) {
+                    dbgf(LOG_ERROR, "[tick] Failed to handle tick event!\n");
+                } else {
+                    co_await res;
+                }
+                dbgf(LOG_INFO, "[cron %p/%p] Executing tick listener %zu/%zu - done\n", this, id, i, tick_listeners.size());
+            }
+        }
+
+        auto tick_now = current_tick;
+
+        std::vector<aiopromise<nil>::weak_type> awaitables;
+        for(auto it = sleeps.begin(); it != sleeps.end(); ) {
+            auto t = it->first;
+            if(current_tick >= t) {
+                awaitables.push_back(it->second);
+                it = sleeps.erase(it);
+            } else {
+                it++;
+            }
+        }
+
+        current_tick += tick_period;
+
+        for(auto& w : awaitables) {
+            if(auto p = w.lock()) {
+                aiopromise prom(p);
+                prom.resolve(nil{});
+            }
+        }
+
+        co_return nil {};
+    }
+
+    void context::add_tick_listener(std::function<aiopromise<nil>(void*)> cb, void *self, size_t periodicity) {
+        dbgf(LOG_INFO, "%d | Add tick listener (%zu)\n", get_node_id().id, tick_listeners.size());
+        tick_listeners.emplace_back(tick_listener_data {
+            .fn = cb,
+            .self = self,
+            .periodicity = periodicity,
+            .next_run = current_tick + periodicity
+        });
+    }
+
+
+    aiopromise<nil> context::sleep(int seconds) {
+        aiopromise<nil> prom;
+        sleeps.push_back(std::make_pair(current_tick + seconds, prom.weak()));
+        return prom;
     }
 }

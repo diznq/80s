@@ -213,7 +213,7 @@ namespace s90 {
             return out;
         }
 
-        std::string template_compiler::compile(const std::string& file_name, const std::filesystem::path& path, const std::string& output_context, const std::string& input_data) {
+        std::string template_compiler::compile(const std::string& file_name, const std::filesystem::path& path, const std::string& output_context, const std::string& input_data, const std::string& class_name, const std::string& base_name) {
             size_t offset = 0;
             size_t block_counter = 0;
             std::string estimate_name = file_name;
@@ -334,7 +334,7 @@ namespace s90 {
                     "using namespace s90;\n\n"
                     + includes + 
                     "\n\n"
-                    "class renderable : public page {\n"
+                    "class " + class_name + " : public " + base_name + " {\n"
                     "public:\n"
                     "    const char *name() const override {\n"
                     "        return \"" + script_name + "\";\n"
@@ -346,8 +346,8 @@ namespace s90 {
                     "    }\n"
                     "};\n\n"
                     "#ifndef PAGE_INCLUDE\n"
-                    "extern \"C\" LIBRARY_EXPORT void* load_page() { return new renderable; }\n"
-                    "extern \"C\" LIBRARY_EXPORT void unload_page(renderable *entity) { delete entity; }\n"
+                    "extern \"C\" LIBRARY_EXPORT void* load_" + class_name + "() { return new " + class_name + "; }\n"
+                    "extern \"C\" LIBRARY_EXPORT void unload_" + class_name + "(" + class_name + " *entity) { delete entity; }\n"
                     "#endif\n";
         }
     }
@@ -356,9 +356,19 @@ namespace s90 {
 
 int main(int argc, const char **argv) {
     s90::httpd::template_compiler compiler;
+    std::string class_name = "renderable";
+    std::string base_name = "page";
     if(argc < 4) {
-        std::cerr << "usage: " << argv[0] << " script_name input_file output_file\n";
+        std::cerr << "usage: " << argv[0] << " script_name input_file output_file [class_name]\n";
         return 1;
+    }
+
+    if(argc >= 5) {
+        class_name = argv[4];
+    }
+
+    if(argc >= 6) {
+        base_name = argv[5];
     }
 
     std::ifstream is(argv[2]);
@@ -370,7 +380,7 @@ int main(int argc, const char **argv) {
     std::stringstream ss;
     ss << is.rdbuf();
 
-    auto out = compiler.compile(argv[1], std::filesystem::path(argv[2]), "env->output()", ss.str());
+    auto out = compiler.compile(argv[1], std::filesystem::path(argv[2]), "env->output()", ss.str(), class_name, base_name);
 
     if(!std::strcmp(argv[3], "stdout")) {
         std::cout << out;

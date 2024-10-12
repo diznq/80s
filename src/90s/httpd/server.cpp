@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
-#include <iostream>
 #include <80s/algo.h>
 
 #ifdef _WIN32
@@ -237,9 +236,9 @@ namespace s90 {
                     local_context = it->second.initialize(global_context, local_context);
                 }
             } else {
-                std::cout << "loading library " << name << std::endl;
+                dbgf(LOG_INFO, "Loading library %s\n", name.c_str());
                 auto hLib = DL_OPEN(name.c_str());
-                if(hLib != DL_INVALID){
+                if(hLib != DL_INVALID) {
                     pfnloadpage loader = (pfnloadpage)DL_FIND(hLib, "load_page");
                     pfnunloadwebpage unloader = (pfnunloadwebpage)DL_FIND(hLib, "unload_page");
                     pfnloadpages loader_n = (pfnloadpages)DL_FIND(hLib, "load_pages");
@@ -249,9 +248,18 @@ namespace s90 {
                     page* webpage = nullptr, **webpages;
                     size_t no_web_pages;
 
+                    if(!loader) {
+                        loader = (pfnloadpage)DL_FIND(hLib, "load_renderable");
+                    }
+
+                    if(!unloader) {
+                        unloader = (pfnunloadwebpage)DL_FIND(hLib, "unload_renderable");
+                    }
+
                     // if there is no procedures, don't load it
                     if(loader == NULL && unloader == NULL && initializer == NULL && releaser == NULL && loader_n == NULL && unloader_n == NULL) {
                         DL_CLOSE(hLib);
+                        dbgf(LOG_ERROR, "Couldn't find any procedures in %s library\n", name.c_str());
                         return;
                     }
 
@@ -278,6 +286,8 @@ namespace s90 {
                         loader_n, unloader_n,
                         webpages, no_web_pages
                     };
+                } else {
+                    dbgf(LOG_ERROR, "Library %s is invalid: %s\n", name.c_str(), strerror(errno));
                 }
             }
         }
@@ -294,7 +304,7 @@ namespace s90 {
                 }
                 it->second.references--;
                 if(it->second.references == 0) {
-                    std::cout << "unloading library " << it->first << std::endl;
+                    dbgf(LOG_INFO, "Unloading library %s\n", it->first.c_str());
                     if(it->second.unload) it->second.unload((void*)page_it->second.webpage);
                     if(it->second.unload_pages) it->second.unload_pages((void**)it->second.loaded_pages, it->second.n_loaded_pages);
                     DL_CLOSE(it->second.lib);

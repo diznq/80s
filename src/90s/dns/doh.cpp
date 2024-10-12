@@ -109,7 +109,7 @@ namespace s90 {
             mtx.unlock();
         }
 
-        aiopromise<std::expected<dns_response, std::string>> doh::internal_resolver(std::string name, dns_type type, bool prefer_ipv6, bool mx_treatment) {
+        aiopromise<std::expected<dns_response, std::string>> doh::internal_resolver(present<std::string> name, dns_type type, bool prefer_ipv6, bool mx_treatment) {
             if(likely_ip(name)) co_return dns_response { .records = {name} };
             std::string main_key = std::format("{}_{}", (int)type, name);
             mtx.lock();
@@ -211,7 +211,7 @@ namespace s90 {
         }
 
 
-        aiopromise<std::expected<dns_response, std::string>> doh::query(std::string name, dns_type type, bool prefer_ipv6, bool mx_treatment) {
+        aiopromise<std::expected<dns_response, std::string>> doh::query(present<std::string> name, dns_type type, bool prefer_ipv6, bool mx_treatment) {
             return internal_resolver(name, type, prefer_ipv6, mx_treatment);
         }
     }

@@ -29,69 +29,122 @@ void s80_enable_async(fd_t fd) {
 }
 
 fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp) {
-    struct sockaddr_in ipv4addr;
-    struct sockaddr_in6 ipv6addr;
-    int status, i, found4 = 0, found6 = 0, usev6 = 0, found = 0, v6 = 0;
+    struct event_t ev[2];
+    int protocol = AF_INET;
+    int sock_type = is_udp ? SOCK_DGRAM : SOCK_STREAM;
+    int ip_proto = is_udp ? IPPROTO_UDP : IPPROTO_TCP;
+    int status, i, 
+        found_v4 = 0, found_v6 = 0, found_ux = 0,
+        found = 0;
     fd_t childfd;
+
     struct hostent *hp;
+
+    union addr_common addr_v4;
+    union addr_common addr_v6;
+    union addr_common addr_ux;
+
     struct in_addr **ipv4;
     struct in6_addr **ipv6;
+    union addr_common *final = NULL;
+    size_t final_len = 0;
 
     if (strstr(addr, "v6:") == addr) {
-        v6 = 1;
+        protocol = AF_INET6;
         addr += 3;
+    } else if(strstr(addr, "unix:") == addr) {
+        protocol = AF_UNIX;
+        addr += 5;
+    } else {
+        protocol = AF_INET;
     }
 
-    hp = gethostbyname(addr);
-    if (hp == NULL) {
-        errno = EINVAL;
+    if(protocol == AF_UNIX) {
         return (fd_t)-1;
     }
 
-    memset((void *)&ipv4addr, 0, sizeof(ipv4addr));
-    memset((void *)&ipv6addr, 0, sizeof(ipv6addr));
+    memset((void *)&addr_v4, 0, sizeof(addr_v4));
+    memset((void *)&addr_v6, 0, sizeof(addr_v6));
+    memset((void *)&addr_ux, 0, sizeof(addr_ux));
 
-    ipv4addr.sin_family = AF_INET;
-    ipv4addr.sin_port = htons((unsigned short)portno);
-    ipv6addr.sin6_family = AF_INET6;
-    ipv6addr.sin6_port = htons((unsigned short)portno);
+    addr_v4.v4.sin_family = AF_INET;
+    addr_v6.v6.sin6_family = AF_INET6;
+    //addr_ux.ux.sun_family = AF_PIP;
 
-    switch (hp->h_addrtype) {
-    case AF_INET:
-        ipv4 = (struct in_addr **)hp->h_addr_list;
-        for (i = 0; ipv4[i] != NULL; i++) {
-            ipv4addr.sin_addr.s_addr = ipv4[i]->s_addr;
-            found4 = 1;
-            break;
+    if(protocol == AF_INET || protocol == AF_INET6) {
+        hp = gethostbyname(addr);
+        if (hp == NULL) {
+            errno = EINVAL;
+            return (fd_t)-1;
         }
-        break;
-    case AF_INET6:
-        ipv6 = (struct in6_addr **)hp->h_addr_list;
-        for (i = 0; ipv6[i] != NULL; i++) {
-            ipv6addr.sin6_addr = ipv6[i][0];
-            found6 = 1;
+
+        addr_v4.v4.sin_port = htons((unsigned short)portno);
+        addr_v6.v6.sin6_port = htons((unsigned short)portno);
+
+        switch (hp->h_addrtype) {
+        case AF_INET:
+            ipv4 = (struct in_addr **)hp->h_addr_list;
+            for (i = 0; ipv4[i] != NULL; i++) {
+                addr_v4.v4.sin_addr.s_addr = ipv4[i]->s_addr;
+                found_v4 = 1;
+                break;
+            }
             break;
+        case AF_INET6:
+            ipv6 = (struct in6_addr **)hp->h_addr_list;
+            for (i = 0; ipv6[i] != NULL; i++) {
+                addr_v6.v6.sin6_addr = ipv6[i][0];
+                found_v6 = 1;
+                break;
+            }
         }
-    }
+    }/* else if(protocol == AF_UNIX) {
+        strncpy(addr_ux.ux.sun_path, addr, sizeof(addr_ux.ux.sun_path));
+        found_ux = 1;
+    }*/
 
-    // create a non-blocking socket
-    childfd = (fd_t)WSASocket(AF_INET, is_udp ? SOCK_DGRAM : SOCK_STREAM, is_udp ? IPPROTO_UDP : IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
-    s80_enable_async(childfd);
-
-    if (found6 && v6) {
-        found = 1;
-        usev6 = 1;
-    } else if (found4) {
-        found = 1;
-        usev6 = 0;
-    } else {
-        found = 0;
-    }
+    if(protocol == AF_INET6) {
+        if(found_v6) {
+            final = &addr_v6;
+            final_len = sizeof(addr_v6.v6);
+            found = 1;
+        } else if(found_v4) {
+            protocol = AF_INET;
+            final = &addr_v4;
+            final_len = sizeof(addr_v4.v4);
+            found = 1;
+        } else {
+            found = 0;
+        }
+    } else if(protocol == AF_INET) {
+        if(found_v4) {
+            final = &addr_v4;
+            final_len = sizeof(addr_v4.v4);
+            found = 1;
+        } else {
+            found = 0;
+        }
+    }/* else if(protocol == AF_UNIX) {
+        if(found_ux) {
+            final = &addr_ux;
+            final_len = sizeof(addr_ux.ux);
+            found = 1;
+            ip_proto = 0;
+        }
+    }*/
 
     if (!found) {
         errno = EINVAL;
         return (fd_t)-1;
     }
+    
+    // create a non-blocking socket
+    childfd = (fd_t)WSASocket(AF_INET, sock_type, ip_proto, NULL, 0, WSA_FLAG_OVERLAPPED);
+    if(childfd == (fd_t)INVALID_SOCKET) {
+        return (fd_t)-1;
+    }
+
+    s80_enable_async(childfd);
 
     // things work quite differently on Windows, so first we need to receive pointer for ConnectEx
     LPFN_CONNECTEX lpConnectEx = NULL;
@@ -104,20 +157,8 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
         return (fd_t)-1;
     }
 
-    // helpers for handling different types of addresses
-    const struct sockaddr *sa = NULL;
-    union addr_common binding;
-    memset(&binding, 0, sizeof(binding));
-    if(usev6) {
-        binding.v6.sin6_family = AF_INET6;
-        sa = (const struct sockaddr*)&binding.v6;
-    } else {
-        binding.v4.sin_family = AF_INET;
-        sa = (const struct sockaddr*)&binding.v4;
-    }
-
     // connectex requires the socket to be bound before it's being used
-    if(bind((sock_t)childfd, sa, usev6 ? sizeof(binding.v6) : sizeof(binding.v4)) < 0) {
+    if(bind((sock_t)childfd, (struct sockaddr*)final, final_len) < 0) {
         dbgf(LOG_ERROR, "l_net_connect: bind failed");
         return (fd_t)-1;
     }
@@ -131,12 +172,6 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
     // finally initialize new tied fd context
     context_holder *cx = new_fd_context(childfd, S80_FD_SOCKET);
 
-    if(usev6) {
-        sa = (const struct sockaddr *)&ipv6addr;
-    } else {
-        sa = (const struct sockaddr *)&ipv4addr;
-    }
-
     // set proper state for both send and recv iocp context
     cx->send->op = S80_WIN_OP_CONNECT;
     cx->recv->op = S80_WIN_OP_READ;
@@ -144,9 +179,9 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
     cx->recv->connected = is_udp;
 
     if(!is_udp) {
-        status = lpConnectEx((sock_t)childfd, sa, usev6 ? sizeof(ipv6addr) : sizeof(ipv4addr), NULL, 0, &cx->send->length, &cx->send->ol);
+        status = lpConnectEx((sock_t)childfd, (const struct sockaddr*)final, final_len, NULL, 0, &cx->send->length, &cx->send->ol);
     } else {
-        status = connect((sock_t)childfd, sa, usev6 ? sizeof(ipv6addr) : sizeof(ipv4addr)) >= 0;
+        status = connect((sock_t)childfd, (const struct sockaddr*)final, final_len) >= 0;
     }
     if(status == TRUE || GetLastError() == WSA_IO_PENDING) {
         // this is the state we should always get into

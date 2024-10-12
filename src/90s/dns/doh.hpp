@@ -15,8 +15,8 @@ namespace s90 {
         public:
             doh(icontext *ctx, const std::string& dns_provider);
             ~doh();
-            aiopromise<std::expected<dns_response, std::string>> query(std::string name, dns_type type, bool prefer_ipv6 = false, bool mx_treatment = true) override;
-            aiopromise<std::expected<dns_response, std::string>> internal_resolver(std::string name, dns_type type, bool prefer_ipv6 = false, bool mx_treatment = true);
+            aiopromise<std::expected<dns_response, std::string>> query(present<std::string> name, dns_type type, bool prefer_ipv6 = false, bool mx_treatment = true) override;
+            aiopromise<std::expected<dns_response, std::string>> internal_resolver(present<std::string> name, dns_type type, bool prefer_ipv6 = false, bool mx_treatment = true);
             void memorize(const std::string& host, const std::string& addr) override;
         };
     }

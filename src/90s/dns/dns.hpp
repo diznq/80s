@@ -26,7 +26,7 @@ namespace s90 {
         class idns {
         public:
             virtual ~idns() = default;
-            virtual aiopromise<std::expected<dns_response, std::string>> query(std::string name, dns_type type, bool prefer_ipv6 = false, bool mx_treatment = true) = 0;
+            virtual aiopromise<std::expected<dns_response, std::string>> query(present<std::string> name, dns_type type, bool prefer_ipv6 = false, bool mx_treatment = true) = 0;
             virtual void memorize(const std::string& host, const std::string& addr) = 0;
         };
     }

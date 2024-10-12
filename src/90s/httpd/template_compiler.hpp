@@ -30,7 +30,14 @@ namespace s90 {
                 bool indefinite = false);
 
             public:
-            std::string compile(const std::string& file_name, const std::filesystem::path& path, const std::string& output_context, const std::string& data);
+            std::string compile(
+                const std::string& file_name,
+                const std::filesystem::path& path,
+                const std::string& output_context,
+                const std::string& data,
+                const std::string& class_name,
+                const std::string& base_name
+            );
         };
     }
 }
