@@ -30,7 +30,11 @@ extern "C" {
 #define S80_MB_CLOSE 4
 #define S80_MB_MESSAGE 5
 
+#ifdef _MSC_VER
 #define BUFSIZE 16384
+#else
+#define BUFSIZE (1 << 20)
+#endif
 #define MAX_EVENTS 100
 
 #if defined(__FreeBSD__) || defined(__APPLE__)

@@ -216,7 +216,7 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback) {
     
     status = close(childfd);
     if (status < 0) {
-        dbgf(LOG_ERROR, "l_net_close: failed to close \n");
+        dbgf(LOG_ERROR, "l_net_close: failed to close (%s)\n", strerror(errno));
     }
 
     params.ctx = ctx;
