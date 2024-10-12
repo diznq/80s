@@ -110,6 +110,14 @@ int is_fd_ready(struct ready_params_ params) {
     return 1;
 }
 
+void s80_print(const char *fmt, ...) {   
+    va_list args;
+    va_start(args, fmt);
+    char buf[5120];
+    vprintf(fmt, args);
+    va_end(args);
+}
+
 static void clean_global(lua_State *L, const char *name) {
 #if (LUA_VERSION_NUM > 501) && defined(S80_DYNAMIC)
     int idx;

@@ -31,14 +31,14 @@ namespace s90 {
 
         static std::string_view trim(std::string_view str) {
             size_t off = 0;
-            for(char c : str) {
-                if(iswhite(c)) off++;
+            for(auto c = str.begin(); c != str.end(); c++) {
+                if(iswhite(*c)) off++;
                 else break;
             }
             str = str.substr(off);
             off = 0;
-            for(size_t i = str.length() - 1; i >= 0; i--) {
-                if(iswhite(str[i])) off++;
+            for(auto c = str.rbegin(); c != str.rend(); c++) {
+                if(iswhite(*c)) off++;
                 else break;
             }
             str = str.substr(0, str.length() - off);

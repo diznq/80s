@@ -215,6 +215,8 @@ namespace s90 {
             /// @return value reference
             inline uintptr_t get_ref() const { return ref; }
 
+            inline void set_ref(uintptr_t new_ref) { ref = new_ref; }
+
             /// @brief Set present flag if optional
             inline void set_present(bool value = true, uintptr_t offset = 0) const {
                 if(is_optional()) {
@@ -621,16 +623,15 @@ namespace s90 {
 
         /// @brief A required trait if nested entity encoding / decoding is required.
         #define WITH_ID \
-            static constexpr const char *ORM_ID = __FILE__ "/" LINE_STRING;\
             static constexpr uintptr_t get_orm_id() { \
-                return (uintptr_t)ORM_ID; \
+                return (uintptr_t)&get_orm_id; \
             }
         
         /// @brief Class trait for having ORM functionalities, all with_orm classes
         /// should also either implement get_orm_id or use WITH_ID; at beginning
         class with_orm {
         public:
-            static uintptr_t get_orm_id() { return (uintptr_t)0; }
+            static constexpr uintptr_t get_orm_id() { return (uintptr_t)0; }
             mapper get_orm();
         };
 

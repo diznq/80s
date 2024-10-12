@@ -131,7 +131,7 @@ namespace s90 {
 
             auto found = layer->get(key);
             if(found) {
-                co_return found;
+                co_return std::move(found);
             }
             auto races = layer->get_races(key);
             if(races) {

@@ -27,7 +27,7 @@ namespace s90 {
         class ihttp_client {
         public:
             virtual ~ihttp_client() = default;
-            virtual aiopromise<http_response> request(std::string method, std::string url, dict<std::string, std::string> headers, std::string body) = 0;
+            virtual aiopromise<http_response> request(present<std::string> method, present<std::string> url, present<dict<std::string, std::string>> headers, present<std::string> body) = 0;
         };
 
         class http_client : public ihttp_client {
@@ -35,7 +35,7 @@ namespace s90 {
 
         public:
             http_client(icontext *cx);
-            aiopromise<http_response> request(std::string method, std::string url, dict<std::string, std::string> headers, std::string body) override;
+            aiopromise<http_response> request(present<std::string> method, present<std::string> url, present<dict<std::string, std::string>> headers, present<std::string> body) override;
         };
     }
 }

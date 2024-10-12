@@ -52,7 +52,10 @@ namespace s90 {
                             out.write("\\b", 2);
                             break;
                         case '\0': [[unlikely]]
-                            out.write("\\0", 2);
+                            out.write("\\u0000", 6);
+                            break;
+                        case '\\': [[unlikely]]
+                            out.write("\\\\", 2);
                             break;
                         default: [[likely]]
                             x_fill[4] = "0123456789ABCDEF"[(c >> 4) & 15];
@@ -94,7 +97,7 @@ namespace s90 {
                                 }
                                 // actually encode the object, we must also pass a.get_ref() as offset
                                 // since ORM offsets are NULL based
-                                escape_object(out, it->second, a.get_ref());
+                                escape_object(out, it->second, offset + a.get_ref());
                             } else  [[unlikely]] {
                                 out << "{\"error\":\"invalid class, object must contain WITH_ID!\"}";
                             }
@@ -381,6 +384,7 @@ namespace s90 {
                 std::string helper, key, err;
                 char c;
                 //std::optional<char> carried;
+
                 if(depth >= max_depth) [[unlikely]] return "reached max nested depth of " + std::to_string(depth);
                 if(a.is_optional()) [[unlikely]] {
                     // test for `null` occurence in case of optionals
@@ -418,7 +422,9 @@ namespace s90 {
                                         carried = c;
                                         //in.seekg(-1, std::ios_base::cur);
                                         orm::any el = a.push_back({}, offset);
-                                        auto res = decode(in, el, 0, carried, depth + 1, max_depth);
+                                        auto el_offset = el.get_ref(); el.set_ref(0);
+                                        auto res = decode(in, el, el_offset, carried, depth + 1, max_depth);
+                                        el.set_ref(el_offset);
                                         if(res.length() > 0) return res;
                                         read_next_c(in, c, carried);
                                         if(!in) return "unexpected EOF on reading next array item";
@@ -452,7 +458,7 @@ namespace s90 {
                                     }
                                     auto ref = it->second.find(std::string_view(key));
                                     if(ref != it->second.end()) [[likely]] {
-                                        auto res = decode(in, ref->second, a.get_ref(), carried, depth + 1, max_depth);
+                                        auto res = decode(in, ref->second, offset + a.get_ref(), carried, depth + 1, max_depth);
                                         if(res.length() > 0) return res;
                                     } else {
                                         // read anything
@@ -569,7 +575,9 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 std::optional<char> carried;
-                auto err = decode(ss >> std::skipws, a, a.get_ref(), carried, 0, max_depth);
+                auto offset = a.get_ref(); a.set_ref(0);
+                auto err = decode(ss >> std::skipws, a, offset, carried, 0, max_depth);
+                a.set_ref(offset);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
@@ -590,7 +598,9 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 std::optional<char> carried;
-                auto err = decode(ss >> std::skipws, a, 0, carried, 0, max_depth);
+                auto offset = a.get_ref(); a.set_ref(0);
+                auto err = decode(ss >> std::skipws, a, offset, carried, 0, max_depth);
+                a.set_ref(offset);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
@@ -611,7 +621,9 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 std::optional<char> carried;
-                auto err = decode(ss >> std::skipws, a, a.get_ref(), carried, 0, max_depth);
+                auto offset = a.get_ref(); a.set_ref(0);
+                auto err = decode(ss >> std::skipws, a, offset, carried, 0, max_depth);
+                a.set_ref(offset);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
@@ -632,7 +644,9 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 std::optional<char> carried;
-                auto err = decode(ss >> std::skipws, a, 0, carried, 0, max_depth);
+                auto offset = a.get_ref(); a.set_ref(0);
+                auto err = decode(ss >> std::skipws, a, offset, carried, 0, max_depth);
+                a.set_ref(offset);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
@@ -651,7 +665,9 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 std::optional<char> carried;
-                auto err = decode(text >> std::skipws, a, a.get_ref(), carried, 0, max_depth);
+                auto offset = a.get_ref(); a.set_ref(0);
+                auto err = decode(text >> std::skipws, a, offset, carried, 0, max_depth);
+                a.set_ref(offset);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }
@@ -670,7 +686,9 @@ namespace s90 {
                 T obj;
                 orm::any a(obj);
                 std::optional<char> carried;
-                auto err = decode(text >> std::skipws, a, 0, carried, 0, max_depth);
+                auto offset = a.get_ref(); a.set_ref(0);
+                auto err = decode(text >> std::skipws, a, offset, carried, 0, max_depth);
+                a.set_ref(offset);
                 if(err.length() > 0) [[unlikely]] {
                     return std::unexpected(err);
                 }

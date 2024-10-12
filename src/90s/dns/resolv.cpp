@@ -58,8 +58,12 @@ namespace s90 {
             dict<std::string, dns_response> responses;
 
             bool likely_ip(const std::string& str) {
-                int a, b, c, d;
-                return sscanf(str.c_str(), "%d.%d.%d.%d", &a, &b, &c, &d) == 4;
+                unsigned a, b, c, d;
+                int ok = sscanf(str.c_str(), "%u.%u.%u.%u", &a, &b, &c, &d) == 4;
+                if(!ok) return false;
+                char buf[255];
+                sprintf(buf, "%u.%u.%u.%u", a, b, c, d);
+                return str == buf;
             }
 
             dict<std::string, resolv_response> cached_responses;
@@ -116,7 +120,7 @@ namespace s90 {
             return result;
         }
 
-        aiopromise<std::expected<dns_response, std::string>> resolvdns::internal_resolver(std::string name, dns_type type, bool prefer_ipv6, bool mx_treatment) {
+        aiopromise<std::expected<dns_response, std::string>> resolvdns::internal_resolver(present<std::string> name, dns_type type, bool prefer_ipv6, bool mx_treatment) {
             if(likely_ip(name)) co_return dns_response { .records = {name} };
 
             std::string main_key = std::format("{}_{}", (int)type, name);
@@ -206,7 +210,16 @@ namespace s90 {
                                 if(!expansion) return std::unexpected(expansion.error());
                                 data = std::format("{} {}", priority, *expansion);
                             } else if(rr.type == (int)dns_type::TXT && rr.rdlength > 1) {
-                                data = std::string((const char*)rr.rdata + 1, rr.rdlength - 1);
+                                std::string_view sv { (const char*)rr.rdata, (const char*)rr.rdata + rr.rdlength };
+                                uint8_t follows = (uint8_t)sv[0];
+                                while(sv.length() > 0 && follows > 0 && follows < sv.length()) {
+                                    auto now = sv.substr(1, follows);
+                                    sv = sv.substr(1 + follows);
+                                    data += now;
+                                    if(sv.length() < 1) break;
+                                    follows = (uint8_t)sv[0];
+                                }
+                                //data = std::string((const char*)rr.rdata + 1, rr.rdlength - 1);
                             }
 
                             if(ttl_min == 0 || rr.ttl < ttl_min) ttl_min = rr.ttl;
@@ -282,14 +295,15 @@ namespace s90 {
         }
 
 
-        aiopromise<std::expected<dns_response, std::string>> resolvdns::query(std::string name, dns_type type, bool prefer_ipv6, bool mx_treatment) {
+        aiopromise<std::expected<dns_response, std::string>> resolvdns::query(present<std::string> name, dns_type type, bool prefer_ipv6, bool mx_treatment) {
             auto result = co_await cache::async_cache<std::expected<dns_response, std::string>>(
                 ctx, std::format("dns:{}:{}", name, (int)type), 1200, [this, name, type, prefer_ipv6, mx_treatment]() -> cache::async_cached<std::expected<dns_response, std::string>> {
-                    auto result = co_await internal_resolver(name, type, prefer_ipv6, mx_treatment);
+                    auto result {co_await internal_resolver(name, type, prefer_ipv6, mx_treatment)};
                     std::shared_ptr<std::expected<dns_response, std::string>> resp = ptr_new<std::expected<dns_response, std::string>>(result);
-                    co_return resp;
+                    co_return std::move(resp);
                 });
-            co_return *result;            
+            auto copy = *result;
+            co_return std::move(copy);            
         }
     }
 }

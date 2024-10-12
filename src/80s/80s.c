@@ -25,6 +25,11 @@
 
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/un.h>
+
+#include <execinfo.h>
+#include <signal.h>
+
 #ifdef USE_KQUEUE
 #include <sys/sysctl.h>
 #endif
@@ -35,6 +40,10 @@ reload_context reload;
 union addr_common {
     struct sockaddr_in6 v6;
     struct sockaddr_in v4;
+    #ifdef UNIX_BASED
+    struct sockaddr_un ux;
+    #endif
+    struct sockaddr_storage any;
 };
 
 typedef void* pvoid;
@@ -201,10 +210,12 @@ int main(int argc, const char **argv) {
     const int cli = get_arg("--cli", 0, 1, argc, argv);
     const int workers = get_arg("-c", cli ? 1 : get_cpus(), 0, argc, argv);
     const int show_cfg = get_arg("--cfg", 0, 1, argc, argv);
-    char resolved[100], *p, *q;
+
+    size_t client_len = 0;
+
+    char resolved[200], *p, *q;
     int optval, i,
-        portno = get_arg("-p", 8080, 0, argc, argv),
-        v6 = get_arg("--6", 0, 1, argc, argv);
+        portno = get_arg("-p", 8080, 0, argc, argv);
     fd_t parentfd;
     union addr_common serveraddr;
     module_extension *module = NULL, 
@@ -213,7 +224,10 @@ int main(int argc, const char **argv) {
     const char *entrypoint;
     const char *module_list = get_sz_arg("-m", argc, argv, NULL, NULL);
     const char *node_name = get_sz_arg("-n", argc, argv, "HOSTNAME", "localhost");
-    const char *addr = v6 ? "::" : "0.0.0.0";
+    const char *addr = "0.0.0.0";
+    int protocol = AF_INET;
+    int sock_type = SOCK_STREAM;
+    int ip_proto = IPPROTO_TCP;
     char *module_names = NULL;
     serve_params *params = (serve_params*)calloc(workers, sizeof(serve_params));
     node_id node;
@@ -234,7 +248,6 @@ int main(int argc, const char **argv) {
         printf("Concurrency: %d\n", workers);
         printf("Address: %s\n", addr);
         printf("Port: %d\n", portno);
-        printf("IPv6: %s\n", v6 ? "yes" : "no");
         printf("CLI: %s\n", cli ? "yes" : "no");
         printf("Modules: %s\n", module_list ? module_list : "no modules");
     }
@@ -338,7 +351,42 @@ int main(int argc, const char **argv) {
     #endif
 
     if(!cli) {
-        parentfd = (fd_t)socket(v6 ? AF_INET6 : AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+        memset((void *)&serveraddr, 0, sizeof(serveraddr));
+
+        if(strstr(addr, "unix:") == addr) {
+            protocol = AF_UNIX;
+            ip_proto = 0;
+            #ifdef UNIX_BASED
+            serveraddr.ux.sun_family = protocol;
+            addr += 5;
+            strncpy(serveraddr.ux.sun_path, addr, sizeof(serveraddr.ux.sun_path));
+            strncpy(resolved, addr, sizeof(resolved));
+            client_len = sizeof(serveraddr.ux);
+            #else
+            error("main: UDS not supported on Windows");
+            exit(1);
+            #endif
+        } else if (strstr(addr, "v6:") == addr) {
+            protocol = AF_INET6;
+            addr += 3;
+            serveraddr.v6.sin6_family = protocol;
+            serveraddr.v6.sin6_port = htons((unsigned short)portno);
+            if(inet_pton(AF_INET6, addr, &serveraddr.v6.sin6_addr) <= 0) {
+                error("failed to resolve bind IP address");
+            }
+            inet_ntop(AF_INET6, &serveraddr.v6.sin6_addr, resolved, sizeof(resolved));
+            client_len = sizeof(serveraddr.v6);
+        } else {
+            protocol = AF_INET;
+            serveraddr.v4.sin_family = protocol;
+            serveraddr.v4.sin_addr.s_addr = inet_addr(addr);
+            serveraddr.v4.sin_port = htons((unsigned short)portno);
+            inet_ntop(AF_INET, &serveraddr.v4.sin_addr, resolved, sizeof(resolved));
+            client_len = sizeof(serveraddr.v4);
+        }
+
+        parentfd = (fd_t)socket(protocol, sock_type, ip_proto);
 
 #ifdef _WIN32
         if (parentfd == (fd_t)INVALID_SOCKET)
@@ -353,23 +401,8 @@ int main(int argc, const char **argv) {
         #else
         setsockopt((sock_t)parentfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
         #endif
-        memset((void *)&serveraddr, 0, sizeof(serveraddr));
 
-        if (v6) {
-            serveraddr.v6.sin6_family = AF_INET6;
-            serveraddr.v6.sin6_port = htons((unsigned short)portno);
-            if(inet_pton(AF_INET6, addr, &serveraddr.v6.sin6_addr) <= 0) {
-                error("failed to resolve bind IP address");
-            }
-            inet_ntop(AF_INET6, &serveraddr.v6.sin6_addr, resolved, sizeof(resolved));
-        } else {
-            serveraddr.v4.sin_family = AF_INET;
-            serveraddr.v4.sin_addr.s_addr = inet_addr(addr);
-            serveraddr.v4.sin_port = htons((unsigned short)portno);
-            inet_ntop(AF_INET, &serveraddr.v4.sin_addr, resolved, sizeof(resolved));
-        }
-
-        if (bind((sock_t)parentfd, (struct sockaddr *)(v6 ? (void *)&serveraddr.v6 : (void *)&serveraddr.v4), v6 ? sizeof(serveraddr.v6) : sizeof(serveraddr.v4)) < 0)
+        if (bind((sock_t)parentfd, (struct sockaddr *)&serveraddr, client_len) < 0)
             error("main: failed to bind server socket");
 
         if (listen((sock_t)parentfd, 20000) < 0)

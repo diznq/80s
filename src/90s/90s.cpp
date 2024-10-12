@@ -1,4 +1,5 @@
 #include <80s/80s.h>
+#include <80s/dynstr.h>
 #include <mutex>
 #include "afd.hpp"
 #include "context.hpp"
@@ -14,7 +15,28 @@ namespace {
     std::mutex lck;
 }
 
+moodycamel::BlockingConcurrentQueue<std::pair<s90::orm::datetime, std::string>> logs;
+
 void on_global_init();
+
+void log_worker() {
+    while(true) {
+        std::pair<s90::orm::datetime, std::string> task;
+        logs.wait_dequeue(task);
+        printf("%s", task.second.c_str());
+        //printf("%s - %s", task.first.from_native().c_str(), task.second.c_str());
+        fflush(stdout);
+    }
+}
+
+void s80_print(const char *fmt, ...) {   
+    va_list args;
+    va_start(args, fmt);
+    char buf[5120];
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    logs.enqueue(std::make_pair(s90::orm::datetime::now(), std::string(buf)));
+}
 
 void *create_context(fd_t elfd, node_id *id, const char *entrypoint, reload_context *reload) {
     context* ctx = new context(id, reload);
@@ -27,7 +49,7 @@ void *create_context(fd_t elfd, node_id *id, const char *entrypoint, reload_cont
 
     ctx->set_init_callback([](context *ctx){
         std::string protocol = "http";
-
+        
         const char *env = getenv("PROTOCOL");
         if(env) {
             protocol = env;
@@ -93,6 +115,7 @@ void on_global_init() {
     Aws::SDKOptions options;
     Aws::InitAPI(options);
     #endif
+    std::thread(log_worker).detach();
 }
 
 int is_fd_ready(ready_params params) {

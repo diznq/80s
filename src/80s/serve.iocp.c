@@ -4,6 +4,7 @@
 union addr_common {
     struct sockaddr_in6 v6;
     struct sockaddr_in v4;
+    struct sockaddr_storage any;
 };
 
 // create a new iocp context
@@ -41,6 +42,9 @@ context_holder* new_fd_context(fd_t childfd, int fdtype) {
 
     send_helper->wsaBuf.buf = NULL;
     send_helper->wsaBuf.len = 0;
+
+    recv_helper->parentfd = (fd_t)0;
+    send_helper->parentfd = (fd_t)0;
 
     return recv_helper;
 }
@@ -125,6 +129,7 @@ void *serve(void *vparams) {
                     continue;
                 }
                 cx->recv->op = S80_WIN_OP_ACCEPT;
+                cx->parentfd = parentfd;
                 cx->worker = accepts;
                 
                 if(
@@ -187,6 +192,7 @@ void *serve(void *vparams) {
                 // and move it to els[accepts++ % workers] iocp event loop, this is where load balancing happens
                 dbgf(LOG_DEBUG, "[%d] accept %llu, flags: %d, length: %d\n", id, cx->fd, cx->flags, events[n].dwNumberOfBytesTransferred);
 
+                parentfd = cx->parentfd;
                 memcpy(params_accept.address, cx->data + sizeof(union addr_common), sizeof(union addr_common) > 64 ? 64 : sizeof(union addr_common));
                 params_accept.addrlen = sizeof(union addr_common) > 64 ? 64 : sizeof(union addr_common);
 
@@ -233,6 +239,7 @@ void *serve(void *vparams) {
                     continue;
                 }
                 cx->recv->op = S80_WIN_OP_ACCEPT;
+                cx->parentfd = parentfd;
                 cx->worker = accepts;
 
                 if(

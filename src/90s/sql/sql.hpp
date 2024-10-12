@@ -9,6 +9,15 @@ namespace s90 {
     namespace sql {
         using sql_row = dict<std::string, std::string>;
 
+        constexpr auto TX_BREAK_IF_ZERO_AFFECTED = "@B0";
+        constexpr auto TX_ROLLBACK_IF_ZERO_AFFECTED = "@R0";
+
+        constexpr auto TX_BREAK_IF_ZERO_SELECTED = "@B1";
+        constexpr auto TX_ROLLBACK_IF_ZERO_SELECTED = "@R1";
+
+        constexpr uint8_t TX_BROKEN_ON_ZERO = 1;
+        constexpr uint8_t TX_ROLLEDBACK_ON_ZERO = 2;
+
         struct count_result : public orm::with_orm {
             WITH_ID;
 
@@ -33,6 +42,7 @@ namespace s90 {
             int affected_rows = 0;
             size_t front_offset = 0;
             size_t back_offset = 0;
+            uint8_t flags = 0;
 
             std::string info_message;
             std::string error_message;
@@ -53,6 +63,17 @@ namespace s90 {
                 return result;
             }
 
+            /// @brief Create a new SQL result with error
+            /// @param err error message
+            /// @return faulty SQL result
+            static inline sql_result with_error(std::string&& err) {
+                sql_result result;
+                result.error_message = std::move(err);
+                result.error = true;
+                result.has_rows = false;
+                return result;
+            }
+
             /// @brief Create a new SQL result with result of a SELECT command
             /// @param rows selected rows
             /// @return SELECT SQL result
@@ -60,6 +81,16 @@ namespace s90 {
                 sql_result result;
                 result.has_rows = true;
                 result.rows = rows;
+                return result;
+            }
+
+            /// @brief Create a new SQL result with result of a SELECT command
+            /// @param rows selected rows
+            /// @return SELECT SQL result
+            static inline sql_result with_rows(ptr<std::vector<T>>&& rows) {
+                sql_result result;
+                result.has_rows = true;
+                result.rows = std::move(rows);
                 return result;
             }
             
@@ -132,7 +163,7 @@ namespace s90 {
             /// @param passphrase password
             /// @param database database name
             /// @return SQL connect result
-            virtual aiopromise<sql_connect> connect(const std::string& hostname, int port, const std::string& username, const std::string& passphrase, const std::string& database) = 0;
+            virtual aiopromise<sql_connect> connect(present<std::string> hostname, int port, present<std::string> username, present<std::string> passphrase, present<std::string> database) = 0;
             
             /// @brief Reestablish the connection
             /// @return SQL connect result
@@ -161,10 +192,24 @@ namespace s90 {
             /// @return SQL result
             virtual aiopromise<sql_result<sql_row>> native_select(present<std::string> query) = 0;
 
+            /// @brief Execute the queries atomically as a transaction, on failure rollback
+            /// @return last query
+            virtual aiopromise<sql_result<sql_row>> atomically(present<std::vector<std::string>> queries) = 0;
+
             template<typename... Args>
             auto fixed_make_format_args(const Args&... args)
             {
                 return std::make_format_args(args...);
+            }
+
+            /// @brief Prepare a SQL statement)
+            /// @tparam ...Args format types
+            /// @param fmt SQL query base using std::format syntax
+            /// @param ...args arguments
+            /// @return SQL result
+            template<class ... Args>
+            std::string prepare(std::string_view fmt, const Args& ... args) {
+                return std::vformat(fmt, fixed_make_format_args(escape(args)...));
             }
 
             /// @brief Execute a SQL statement (except SELECT)
@@ -173,7 +218,7 @@ namespace s90 {
             /// @param ...args arguments
             /// @return SQL result
             template<class ... Args>
-            aiopromise<sql_result<sql_row>> exec(std::string_view fmt, Args&& ... args) {
+            aiopromise<sql_result<sql_row>> exec(std::string_view fmt, const Args& ... args) {
                 return native_exec(std::vformat(fmt, fixed_make_format_args(escape(args)...)));
             }
 
@@ -192,7 +237,7 @@ namespace s90 {
             /// @param ...args arguments
             /// @return SQL result
             template<class ... Args>
-            aiopromise<sql_result<sql_row>> select(std::string_view fmt, Args&& ... args) {
+            aiopromise<sql_result<sql_row>> select(std::string_view fmt, const Args& ... args) {
                 return native_select(std::vformat(fmt, fixed_make_format_args(escape(args)...)));
             }
 
@@ -207,7 +252,7 @@ namespace s90 {
                 if(result.error) {
                     co_return sql_result<T>::with_error(result.error_message);
                 } else {
-                    co_return sql_result<T>::with_rows(orm::transform<T>(std::move(result.rows)));
+                    co_return sql_result<T>::with_rows(std::move(orm::transform<T>(std::move(result.rows))));
                 }
             }
 
@@ -219,12 +264,12 @@ namespace s90 {
             /// @return SQL result
             template<class T, class ... Args>
             requires orm::with_orm_trait<T>
-            aiopromise<sql_result<T>> select(std::string_view fmt, Args&& ... args) {
+            aiopromise<sql_result<T>> select(std::string_view fmt, const Args& ... args) {
                 auto result = co_await native_select(std::vformat(fmt, fixed_make_format_args(escape(args)...)));
                 if(result.error) {
                     co_return sql_result<T>::with_error(result.error_message);
                 } else {
-                    co_return sql_result<T>::with_rows(orm::transform<T>(std::move(result.rows)));
+                    co_return sql_result<T>::with_rows(std::move(orm::transform<T>(std::move(result.rows))));
                 }
             }
 

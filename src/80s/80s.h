@@ -86,6 +86,7 @@ extern "C" {
         int connected;
         int worker;
         fd_t fd;
+        fd_t parentfd;
         DWORD length;
         DWORD flags;
         WSABUF wsaBuf;
@@ -303,10 +304,23 @@ void resolve_mail(serve_params *params, int id);
 #define LOG_INFO 3
 #define LOG_DEBUG 4
 
+void s80_print(const char *fmt, ...);
+
+#define DEBUG_PRINT s80_print
+#define DEBUG_FLUSH 
+
+#ifndef DEBUG_PRINT
+#define DEBUG_PRINT printf
+#endif
+
+#ifndef DEBUG_FLUSH
+#define DEBUG_FLUSH fflush(stdout)
+#endif
+
 #ifdef S80_DEBUG_LEVEL
-#define dbgf(LEVEL, ...) do {if(LEVEL <= S80_DEBUG_LEVEL) printf(__VA_ARGS__); fflush(stdout);} while(0)
+#define dbgf(LEVEL, ...) do {if(LEVEL <= S80_DEBUG_LEVEL) {DEBUG_PRINT(__VA_ARGS__); DEBUG_FLUSH; }} while(0)
 #else
-#define dbgf(LEVEL, ...) do {if(LEVEL <= 0) printf(__VA_ARGS__); fflush(stdout);} while(0)
+#define dbgf(LEVEL, ...) do {if(LEVEL <= LOG_ERROR) {DEBUG_PRINT(__VA_ARGS__); DEBUG_FLUSH; }} while(0)
 #endif
 
 #ifdef __cplusplus

@@ -14,7 +14,7 @@ namespace s90 {
             return resp;
         }
 
-        aiopromise<http_response> http_client::request(std::string method, std::string url, dict<std::string, std::string> headers, std::string body) {
+        aiopromise<http_response> http_client::request(present<std::string> method, present<std::string> url, present<dict<std::string, std::string>> user_headers, present<std::string> body) {
             if(!(url.starts_with("https://") || url.starts_with("http://"))) co_return with_error(errors::INVALID_ADDRESS);
             std::string host_name;
             std::string script = "/";
@@ -25,6 +25,8 @@ namespace s90 {
             if(idx == std::string::npos) co_return with_error(std::string(errors::INVALID_ADDRESS) + "|script");
             host_name = url.substr(ssl ? 8 : 7, idx - (ssl ? 8 : 7));
             script = url.substr(idx);
+
+            auto headers = user_headers;
             
             size_t auth_split = host_name.find('@');
             if(auth_split != std::string::npos) {
@@ -36,38 +38,63 @@ namespace s90 {
             auto dns_resp = co_await ctx->get_dns()->query(host_name, dns_type::A, false);
             if(!dns_resp) co_return with_error("dns:" + dns_resp.error());
 
-            auto fd = co_await ctx->connect(
-                host_name + "@" + dns_resp->records[0],
-                dns_type::A,
-                port,
-                ssl ? proto::tls : proto::tcp,
-                "http:" + host_name + ":" + std::to_string(port)
-            );
-            if(!fd) {
-                co_return with_error(fd.error_message + "|connect");
-            }
-            //fd->set_timeout(90);
+            s90::connect_result fd;
+            s90::read_arg arg;
 
             std::string data = method;
             data += ' '; data += script; data += " HTTP/1.1\r\n";
             headers["content-length"] = std::to_string(body.length());
             headers["host"] = host_name;
+
             for(auto& [k, v] : headers) {
                 data += k; data += ": "; data += v; data += "\r\n";
             }
+
             data += "\r\n";
             data += body;
 
-            co_await fd->lock();
-            if(!co_await fd->write(data)) {
-                fd->unlock();
-                co_return with_error(std::string(errors::PROTOCOL_ERROR) + "|initial_write");
-            }
+            int max_attempts = 2;
+            
+            for(int i = 0; i < max_attempts; i++) {
+                
+                if(i > 0) {
+                    dbgf(LOG_ALWAYS, "[http_client] Reconnect attempt %d to %s://%s:%d [ip=%s]\n", i + 1, ssl ? "https" : "http", host_name.c_str(), port, dns_resp->records[0].c_str());
+                    co_await ctx->sleep(5);
+                }
 
-            auto arg = co_await fd->read_until("\r\n\r\n");
-            if(!arg) {
-                fd->unlock();
-                co_return with_error(std::string(errors::PROTOCOL_ERROR) + "|read_header");
+                fd = co_await ctx->connect(
+                    host_name + "@" + dns_resp->records[0],
+                    dns_type::A,
+                    port,
+                    ssl ? proto::tls : proto::tcp,
+                    "http:" + host_name + ":" + std::to_string(port)
+                );
+
+                if(!fd) {
+                    ctx->revoke_named_fd(fd.fd);
+                    if(i < max_attempts - 1) continue;
+                    co_return with_error(fd.error_message + "|connect");
+                }
+                //fd->set_timeout(90);
+
+                co_await fd->lock();
+                if(!co_await fd->write(data)) {
+                    ctx->revoke_named_fd(fd.fd);
+                    fd->unlock();
+                    if(i < max_attempts - 1) continue;
+                    co_return with_error(std::string(errors::PROTOCOL_ERROR) + "|initial_write");
+                }
+
+                arg = co_await fd->read_until("\r\n\r\n");
+
+                if(!arg) {
+                    ctx->revoke_named_fd(fd.fd);
+                    fd->unlock();
+                    if(i < max_attempts - 1) continue;
+                    co_return with_error(std::string(errors::PROTOCOL_ERROR) + "|read_header");
+                }
+
+                break;
             }
 
             http_response resp;
@@ -88,7 +115,7 @@ namespace s90 {
             // parse the status line
             if(pivot != std::string::npos) {
                 resp.status_line = status;
-                resp.status = atoi(status.data());
+                resp.status = atoi(status.substr(pivot + 1).data());
             } else {
                 fd->unlock();
                 co_return with_error(std::string(errors::PROTOCOL_ERROR) + "|status_line_invalid");
