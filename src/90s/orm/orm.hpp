@@ -684,7 +684,7 @@ namespace s90 {
         inline std::vector<T> transform(std::span<dict<std::string, std::string>> items) {
             std::vector<T> result;
             auto orm_base = ((T*)NULL)->get_orm();
-            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
+            std::transform(items.begin(), items.end(), std::back_inserter(result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
                 T new_item;
                 to_native(orm_base, item, (uintptr_t)&new_item);
                 return new_item;
@@ -701,7 +701,7 @@ namespace s90 {
         inline std::vector<T> transform(std::vector<dict<std::string, std::string>>&& items) {
             std::vector<T> result;
             auto orm_base = ((T*)NULL)->get_orm();
-            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
+            std::transform(items.begin(), items.end(), std::back_inserter(result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
                 T new_item;
                 to_native(orm_base, item, (uintptr_t)&new_item);
                 return new_item;
@@ -718,7 +718,7 @@ namespace s90 {
         inline std::vector<dict<std::string,std::string>> transform(std::span<T> items, bool bool_as_text = false) {
             std::vector<dict<std::string,std::string>> result;
             auto orm_base = ((T*)NULL)->get_orm();
-            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text, &orm_base](T& item) -> auto {
+            std::transform(items.begin(), items.end(), std::back_inserter(result), [bool_as_text, &orm_base](T& item) -> auto {
                 return from_native(orm_base, bool_as_text, (uintptr_t)&item);
             });
             return result;
@@ -733,7 +733,7 @@ namespace s90 {
         inline std::vector<dict<std::string,std::string>> transform(std::vector<T>&& items, bool bool_as_text = false) {
             std::vector<dict<std::string,std::string>> result;
             auto orm_base = ((T*)NULL)->get_orm();
-            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text, &orm_base](T& item) -> auto {
+            std::transform(items.begin(), items.end(), std::back_inserter(result), [bool_as_text, &orm_base](T& item) -> auto {
                 return from_native(orm_base, bool_as_text, (uintptr_t)&item);
             });
             return result;
@@ -748,7 +748,7 @@ namespace s90 {
         inline std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<dict<std::string, std::string>>>&& items) {
             auto result = std::make_shared<std::vector<T>>();
             auto orm_base = ((T*)NULL)->get_orm();
-            std::transform(items->cbegin(), items->cend(), std::back_inserter(*result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
+            std::transform(items->begin(), items->end(), std::back_inserter(*result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
                 T new_item;
                 to_native(orm_base, item, (uintptr_t)&new_item);
                 return new_item;
