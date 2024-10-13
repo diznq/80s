@@ -8,6 +8,7 @@
 #include <format>
 #include <span>
 #include <utility>
+#include <charconv>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
