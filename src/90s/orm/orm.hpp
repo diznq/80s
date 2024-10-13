@@ -363,11 +363,11 @@ namespace s90 {
                         break;
                     case reftype::f64:
                         buf.assign(value);
-                        sscanf(buf.c_str(), "%lf", (float*)addr);
+                        sscanf(buf.c_str(), "%lf", (double*)addr);
                         break;
                     case reftype::f80:
                         buf.assign(value);
-                        sscanf(buf.c_str(), "%Lf", (float*)addr);
+                        sscanf(buf.c_str(), "%Lf", (long double*)addr);
                         break;
                     #else
                     case reftype::f32:

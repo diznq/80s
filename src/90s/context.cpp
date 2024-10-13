@@ -9,6 +9,7 @@
 #ifdef _WIN32
 #include <WinSock2.h>
 #else
+#include <unistd.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
