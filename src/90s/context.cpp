@@ -633,7 +633,9 @@ namespace s90 {
     aiopromise<std::expected<bool, std::string>> context::on_actor_message(std::string signature, std::string recipient, std::string sender, std::string type, std::string message) {
         auto together = std::format("{},{},{},{}", recipient, sender, type, message);
         auto sig = util::to_hex(util::hmac_sha256(together, "ACTOR_KEY"));
-        if(sig != signature) co_return std::unexpected("invalid signature");
+        if(sig != signature) {
+            co_return std::unexpected("invalid signature");
+        }
 
         if(recipient.starts_with("<") && recipient.ends_with(">")) {
             std::string_view view { recipient };
@@ -659,6 +661,8 @@ namespace s90 {
                 } else {
                     co_return std::unexpected(errors::INVALID_ADDRESS);
                 }
+            } else {
+                co_return std::unexpected(errors::INVALID_ADDRESS);
             }
         } else {
             co_return std::unexpected(errors::INVALID_ADDRESS);
