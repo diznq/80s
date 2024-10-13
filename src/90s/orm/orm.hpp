@@ -282,6 +282,9 @@ namespace s90 {
                 int32_t below_32 = 0;
                 uint32_t below_32u = 0;
                 bool success = true;
+                #ifdef __clang__
+                std::string buf;
+                #endif
                 uintptr_t addr = ref + offset;
 
                 if(is_numeric() && value.starts_with('"') && value.ends_with('"')) {
@@ -353,6 +356,20 @@ namespace s90 {
                         *(bool*)addr = value.length() > 0 && (value[0] == '\1' || value[0] == '1' || value[0] == 't' || value[0] == 'T' || value[0] == 'y' || value[0] == 'Y');
                         break;
                     // floats
+                    #ifdef __clang__
+                    case reftype::f32:
+                        buf.assign(value);
+                        sscanf(buf.c_str(), "%f", (float*)addr);
+                        break;
+                    case reftype::f64:
+                        buf.assign(value);
+                        sscanf(buf.c_str(), "%lf", (float*)addr);
+                        break;
+                    case reftype::f80:
+                        buf.assign(value);
+                        sscanf(buf.c_str(), "%Lf", (float*)addr);
+                        break;
+                    #else
                     case reftype::f32:
                         std::from_chars(value.begin(), value.end(), *(float*)addr);
                         break;
@@ -362,6 +379,7 @@ namespace s90 {
                     case reftype::f80:
                         std::from_chars(value.begin(), value.end(), *(long double*)addr);
                         break;
+                    #endif
                     // dates
                     case reftype::dt:
                         success = ((orm::datetime*)addr)->to_native(value);
