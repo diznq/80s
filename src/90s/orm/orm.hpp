@@ -6,6 +6,9 @@
 #include <initializer_list>
 #include <concepts>
 #include <format>
+#include <span>
+#include <utility>
+#include <charconv>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -279,6 +282,9 @@ namespace s90 {
                 int32_t below_32 = 0;
                 uint32_t below_32u = 0;
                 bool success = true;
+                #ifdef __clang__
+                std::string buf;
+                #endif
                 uintptr_t addr = ref + offset;
 
                 if(is_numeric() && value.starts_with('"') && value.ends_with('"')) {
@@ -350,6 +356,20 @@ namespace s90 {
                         *(bool*)addr = value.length() > 0 && (value[0] == '\1' || value[0] == '1' || value[0] == 't' || value[0] == 'T' || value[0] == 'y' || value[0] == 'Y');
                         break;
                     // floats
+                    #ifdef __clang__
+                    case reftype::f32:
+                        buf.assign(value);
+                        sscanf(buf.c_str(), "%f", (float*)addr);
+                        break;
+                    case reftype::f64:
+                        buf.assign(value);
+                        sscanf(buf.c_str(), "%lf", (double*)addr);
+                        break;
+                    case reftype::f80:
+                        buf.assign(value);
+                        sscanf(buf.c_str(), "%Lf", (long double*)addr);
+                        break;
+                    #else
                     case reftype::f32:
                         std::from_chars(value.begin(), value.end(), *(float*)addr);
                         break;
@@ -359,6 +379,7 @@ namespace s90 {
                     case reftype::f80:
                         std::from_chars(value.begin(), value.end(), *(long double*)addr);
                         break;
+                    #endif
                     // dates
                     case reftype::dt:
                         success = ((orm::datetime*)addr)->to_native(value);
@@ -501,7 +522,7 @@ namespace s90 {
                         break;
                     // bool
                     case reftype::i1:
-                        out << *(bool*)addr ? (bool_as_text ? "true" : "1") : (bool_as_text ? "false" : "0");
+                        out << (*(bool*)addr ? (bool_as_text ? "true" : "1") : (bool_as_text ? "false" : "0"));
                         break;
                     // floats
                     case reftype::f32:
@@ -623,7 +644,7 @@ namespace s90 {
 
         /// @brief A required trait if nested entity encoding / decoding is required.
         #define WITH_ID \
-            static constexpr uintptr_t get_orm_id() { \
+            static uintptr_t get_orm_id() { \
                 return (uintptr_t)&get_orm_id; \
             }
         
@@ -631,7 +652,7 @@ namespace s90 {
         /// should also either implement get_orm_id or use WITH_ID; at beginning
         class with_orm {
         public:
-            static constexpr uintptr_t get_orm_id() { return (uintptr_t)0; }
+            static uintptr_t get_orm_id() { return (uintptr_t)0; }
             mapper get_orm();
         };
 
@@ -682,7 +703,7 @@ namespace s90 {
         inline std::vector<T> transform(std::span<dict<std::string, std::string>> items) {
             std::vector<T> result;
             auto orm_base = ((T*)NULL)->get_orm();
-            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
+            std::transform(items.begin(), items.end(), std::back_inserter(result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
                 T new_item;
                 to_native(orm_base, item, (uintptr_t)&new_item);
                 return new_item;
@@ -699,7 +720,7 @@ namespace s90 {
         inline std::vector<T> transform(std::vector<dict<std::string, std::string>>&& items) {
             std::vector<T> result;
             auto orm_base = ((T*)NULL)->get_orm();
-            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
+            std::transform(items.begin(), items.end(), std::back_inserter(result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
                 T new_item;
                 to_native(orm_base, item, (uintptr_t)&new_item);
                 return new_item;
@@ -716,7 +737,7 @@ namespace s90 {
         inline std::vector<dict<std::string,std::string>> transform(std::span<T> items, bool bool_as_text = false) {
             std::vector<dict<std::string,std::string>> result;
             auto orm_base = ((T*)NULL)->get_orm();
-            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text, &orm_base](T& item) -> auto {
+            std::transform(items.begin(), items.end(), std::back_inserter(result), [bool_as_text, &orm_base](T& item) -> auto {
                 return from_native(orm_base, bool_as_text, (uintptr_t)&item);
             });
             return result;
@@ -731,7 +752,7 @@ namespace s90 {
         inline std::vector<dict<std::string,std::string>> transform(std::vector<T>&& items, bool bool_as_text = false) {
             std::vector<dict<std::string,std::string>> result;
             auto orm_base = ((T*)NULL)->get_orm();
-            std::transform(items.cbegin(), items.cend(), std::back_inserter(result), [bool_as_text, &orm_base](T& item) -> auto {
+            std::transform(items.begin(), items.end(), std::back_inserter(result), [bool_as_text, &orm_base](T& item) -> auto {
                 return from_native(orm_base, bool_as_text, (uintptr_t)&item);
             });
             return result;
@@ -746,7 +767,7 @@ namespace s90 {
         inline std::shared_ptr<std::vector<T>> transform(std::shared_ptr<std::vector<dict<std::string, std::string>>>&& items) {
             auto result = std::make_shared<std::vector<T>>();
             auto orm_base = ((T*)NULL)->get_orm();
-            std::transform(items->cbegin(), items->cend(), std::back_inserter(*result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
+            std::transform(items->begin(), items->end(), std::back_inserter(*result), [&orm_base](const dict<std::string, std::string>& item) -> auto {
                 T new_item;
                 to_native(orm_base, item, (uintptr_t)&new_item);
                 return new_item;

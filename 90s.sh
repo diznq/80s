@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
-DEFAULT_C_COMPILER="gcc"
-DEFAULT_COMPILER="g++"
+DEFAULT_C_COMPILER="cc"
+DEFAULT_COMPILER="c++"
 EXE_EXT=""
 SO_EXT="so"
 
@@ -28,6 +28,10 @@ if [ "$(uname -o)" = "Msys" ]; then
   EXE_EXT=".exe"
   LIBS=$(echo "$LIBS" | sed "s/-ldl//g")
   LIBS="$LIBS -lws2_32 -lmswsock -lcrypt32 -liconv"
+fi
+
+if [ $(uname) = "FreeBSD" ]; then
+  LIBS=$(echo "$LIBS" | sed "s/-lresolv//g")
 fi
 
 if [ ! -z "$DEBUG_LEVEL" ]; then

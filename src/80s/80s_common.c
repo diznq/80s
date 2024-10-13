@@ -16,6 +16,7 @@
 
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/un.h>
 
 union addr_common {
@@ -215,7 +216,7 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback) {
     
     status = close(childfd);
     if (status < 0) {
-        dbgf(LOG_ERROR, "l_net_close: failed to close \n");
+        dbgf(LOG_ERROR, "l_net_close: failed to close (%s)\n", strerror(errno));
     }
 
     params.ctx = ctx;
@@ -436,14 +437,14 @@ void resolve_mail(serve_params *params, int id) {
                     // add the child socket to the event loop it belongs to based on modulo
                     // with number of workers, to balance the load to other threads
                     if (epoll_ctl(params->els[id], EPOLL_CTL_ADD, childfd, &ev) < 0) {
-                        dbgf(LOG_ERROR, "serve: on add child socket to epoll\n");
+                        dbgf(LOG_ERROR, "serve: on add child socket to epoll (%s)\n", strerror(errno));
                     }
                     #elif defined(USE_KQUEUE)
                     EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(fdtype));
                     // add the child socket to the event loop it belongs to based on modulo
                     // with number of workers, to balance the load to other threads
                     if (kevent(params->els[id], &ev, 1, NULL, 0, NULL) < 0) {
-                        dbgf(LOG_ERROR, "serve: on add child socket to kqueue\n");
+                        dbgf(LOG_ERROR, "serve: on add child socket to kqueue (%s)\n", strerror(errno));
                     }
                     #endif
                     on_accept(*(accept_params*)message->message);

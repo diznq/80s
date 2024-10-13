@@ -291,7 +291,7 @@ namespace s90 {
         aiopromise<bool> write(std::string_view data, bool layers = true) override;
         fd_meminfo usage() const override;
         std::string name() const override;
-        void set_name(std::string_view name);
+        void set_name(std::string_view name) override;
         void close(bool immediate) override;
 
         aiopromise<ssl_result> enable_client_ssl(void *ssl_context, const std::string& hostname) override;

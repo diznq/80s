@@ -7,6 +7,7 @@
 #include <ostream>
 #include <expected>
 #include <charconv>
+#include <utility>
 
 namespace s90 {
     namespace util {
