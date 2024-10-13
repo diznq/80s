@@ -6,6 +6,8 @@
 #include <initializer_list>
 #include <concepts>
 #include <format>
+#include <span>
+#include <utility>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -501,7 +503,7 @@ namespace s90 {
                         break;
                     // bool
                     case reftype::i1:
-                        out << *(bool*)addr ? (bool_as_text ? "true" : "1") : (bool_as_text ? "false" : "0");
+                        out << (*(bool*)addr ? (bool_as_text ? "true" : "1") : (bool_as_text ? "false" : "0"));
                         break;
                     // floats
                     case reftype::f32:
@@ -623,7 +625,7 @@ namespace s90 {
 
         /// @brief A required trait if nested entity encoding / decoding is required.
         #define WITH_ID \
-            static constexpr uintptr_t get_orm_id() { \
+            static uintptr_t get_orm_id() { \
                 return (uintptr_t)&get_orm_id; \
             }
         
@@ -631,7 +633,7 @@ namespace s90 {
         /// should also either implement get_orm_id or use WITH_ID; at beginning
         class with_orm {
         public:
-            static constexpr uintptr_t get_orm_id() { return (uintptr_t)0; }
+            static uintptr_t get_orm_id() { return (uintptr_t)0; }
             mapper get_orm();
         };
 
