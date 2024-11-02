@@ -711,6 +711,9 @@ static int l_codec_mysql_encode(lua_State *L) {
             case '\b':
                 dynstr_puts(&str, "\\b", 2);
                 break;
+            case '\\':
+                dynstr_puts(&str, "\\\\", 2);
+                break;
             case '\0':
                 dynstr_puts(&str, "\\0", 2);
                 break;
