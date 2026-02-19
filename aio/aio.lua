@@ -794,6 +794,12 @@ function aio:wrap_tls(fd, ssl, client, skip_tls_verify)
     return resolver
 end
 
+--- Set IP HTTP header
+---@param header string IP address header
+function aio:set_ip_header(header)
+    self.ip_header = header
+end
+
 ---Get IP address of a socket
 ---@param sock aiosocket remote socket
 ---@param headers table|nil http headers if available
@@ -803,6 +809,12 @@ function aio:get_ip(sock, headers)
     local fd = sock.fd
     local ip, port = net.sockname(fd)
     if headers ~= nil then
+        if self.ip_header ~= nil then
+            local value = headers[self.ip_header]
+            if value ~= nil then
+                return value, port
+            end
+        end
         if headers["x-real-ip"] then
             ip = headers["x-real-ip"]
         end
