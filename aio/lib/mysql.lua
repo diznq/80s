@@ -489,10 +489,7 @@ function mysql:escape(text)
         else
             local results = {}
             for _, v in ipairs(text) do
-                if type(v) ~= "string" then
-                    error("mysql:escape: array elements must be strings")
-                end
-                table.insert(results, "'" .. codec.mysql_encode(v) .. "'")
+                table.insert(results, "'" .. codec.mysql_encode(tostring(v)) .. "'")
             end
             return string.format("(%s)", table.concat(results, ","))
         end
