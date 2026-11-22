@@ -397,15 +397,25 @@ The following hardening measures are applied by default:
 
 - Request framing is strict: `Transfer-Encoding` is rejected, duplicate/ambiguous `Content-Length` is rejected, and malformed lengths return `400`. This prevents request smuggling when the server sits behind a proxy.
 - HTTP request header/body sizes and per-connection read/write buffers are bounded (see `HTTP_MAX_HEADER_SIZE` / `HTTP_MAX_BODY_SIZE`); SMTP and the HTTP client have equivalent caps.
-- `aio:get_ip()` only trusts a proxy header after `aio:set_ip_header(...)` is called explicitly; it no longer honours client-supplied `X-Real-IP` by default.
+- `aio:get_ip()` trusts `X-Real-IP` (and any header configured with `aio:set_ip_header(...)`) as the client address. This assumes the server sits behind a trusted proxy that overwrites that header; do not expose the origin directly, or clients can spoof their address.
 - HTTP response status lines and header names/values are sanitized against CR/LF injection; template includes cannot escape the template root; template compiler errors are not reflected to clients.
 - MySQL string escaping is independent of `NO_BACKSLASH_ESCAPES` for quote break-out (single quotes are doubled); untrusted values should still be passed as `:exec`/`:select` arguments rather than concatenated into SQL.
 - HTTP clients validate request methods, URLs and header names and verify TLS certificates; SMTP STARTTLS verifies the server certificate and refuses to fall back to plaintext when TLS was requested.
 - `server/simple_http.lua` requires `RELOAD_TOKEN` for `POST /reload`, restricts `/visit` to absolute `http(s)` URLs with bounded output, and sanitizes chat input.
+- `crypto.cipher` payloads are versioned. New encryptions use version 1 with HKDF-SHA256-derived, domain-separated AES and HMAC keys; legacy version 0 payloads (XOR-folded key) are still decrypted for compatibility.
+
+### Cipher payload format
+
+`crypto.cipher` produces `hmac[32] || length[4] || [iv[16]] || ciphertext`, where the length is a 32-bit little-endian integer. The most significant byte of that integer is the format version and the low 24 bits are the plaintext length, so plaintexts are limited to `2^24 - 1` bytes:
+
+- version `0`: legacy key derivation (fold the supplied key to 128 bits with XOR, use it for both AES-CBC and HMAC-SHA256);
+- version `1`: HKDF-SHA256 key derivation with separate encryption and MAC keys, used for all new ciphertexts.
+
+The version byte is covered by the HMAC, so modifying it makes authentication fail. Decryption selects the derivation from the payload itself; existing version 0 data keeps working without re-encryption. New version 1 ciphertexts are not readable by binaries that predate this format (they use a different key derivation), so upgrade all nodes before issuing them.
 
 Residual risks that require deployment-specific decisions:
 
-- **Encrypted URL format**: `crypto.cipher` uses AES-128-CBC with HMAC-SHA256 and derives a 128-bit key by folding `master_key .. endpoint`. The wire format is unchanged for compatibility, so key strength beyond 128 bits is not retained. Rotate `MASTER_KEY` and migrate to a versioned format if you need a stronger KDF or separate MAC key.
+- **Legacy ciphertexts (version 0)**: compatibility requires retaining the old XOR-folded 128-bit derivation for decryption, so old messages retain the old key strength and the single-key AES/HMAC construction. Re-encrypt or reissue them to migrate to version 1, and rotate `MASTER_KEY` if it may have been weak or exposed.
 - **MySQL transport** is plaintext (no TLS support in the bundled client); do not connect over untrusted networks.
 - **Templates are trusted code** and execute with full Lua privileges; they must not be writable by untrusted users.
 - The `server/simple_http.lua` endpoints `/visit` (fetches a caller-supplied URL) and `/cipher` (encrypts with a caller-supplied key) are demonstrations and should be removed or access-controlled in production; `/visit` remains SSRF-capable by design.

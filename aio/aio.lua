@@ -34,7 +34,7 @@ net = net or {}
 --- @field sha1 fun(data: string): string perform sha1(data), returns bytestring with raw data
 --- @field sha256 fun(data: string): string perform sha256(data), returns bytestring with raw data
 --- @field hmac_sha256 fun(data: string, key: string): string perform HMAC SHA256, returns bytestring with raw data
---- @field cipher fun(data: string, key: string, iv: boolean, encrypt: boolean): result: string?, error: string perform encryption/decryption, if iv is false, iv is all zeros and not inserted to result, key must be at least 128 bits
+--- @field cipher fun(data: string, key: string, iv: boolean, encrypt: boolean): result: string?, error: string encrypt/decrypt; new payloads use format version 1 (HKDF-SHA256 with separate encryption/MAC keys) while legacy version 0 payloads remain decryptable; if iv is false the IV is all zeros and omitted from the result; plaintext is limited to 2^24 - 1 bytes
 --- @field to64 fun(data: string): string encode to base64
 --- @field rsa_sha256 fun(privkey: string, data: string): string sign with rsa_sha256
 --- @field from64 fun(data: string): string decode from base64
@@ -853,17 +853,17 @@ end
 function aio:get_ip(sock, headers)
     local fd = sock.fd
     local ip, port = net.sockname(fd)
-    -- Only an explicitly configured proxy header is trusted. Previously the
-    -- client-controlled X-Real-IP header was always honoured, which let any
-    -- request spoof its source address for rate limiting/audit decisions.
-    if headers ~= nil and self.ip_header ~= nil then
-        local value = headers[self.ip_header]
-        if type(value) == "string" then
-            -- accept the leading address (X-Forwarded-For may be a list)
-            local candidate = value:match("^%s*([%x%.:%-]+)")
-            if candidate then
-                return candidate, port
+    -- This server is expected to run behind a proxy that overwrites X-Real-IP,
+    -- so the header is trusted and takes precedence over the socket address.
+    if headers ~= nil then
+        if self.ip_header ~= nil then
+            local value = headers[self.ip_header]
+            if value ~= nil then
+                return value, port
             end
+        end
+        if headers["x-real-ip"] then
+            ip = headers["x-real-ip"]
         end
     end
     return ip, port
