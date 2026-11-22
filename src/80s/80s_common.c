@@ -2,11 +2,13 @@
 #ifdef UNIX_BASED
 #include <stdio.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <fcntl.h>
 #include <netdb.h>
+#include <pthread.h>
 #include <strings.h>
 #include <unistd.h>
 #include <signal.h>
@@ -27,6 +29,10 @@ union addr_common {
 };
 
 static int cleanup_pipes(fd_t elfd, fd_t* pipes, int allocated);
+
+// gethostbyname() returns a process-wide static buffer; each worker runs in its
+// own thread, so lookups have to be serialized and copied out before use.
+static pthread_mutex_t s80_dns_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void s80_enable_async(fd_t fd) {
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
@@ -72,8 +78,10 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
     addr_ux.ux.sun_family = AF_UNIX;
 
     if(protocol == AF_INET || protocol == AF_INET6) {
+        pthread_mutex_lock(&s80_dns_lock);
         hp = gethostbyname(addr);
         if (hp == NULL) {
+            pthread_mutex_unlock(&s80_dns_lock);
             errno = EINVAL;
             return (fd_t)-1;
         }
@@ -98,8 +106,14 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
                 break;
             }
         }
+        pthread_mutex_unlock(&s80_dns_lock);
     } else if(protocol == AF_UNIX) {
-        strncpy(addr_ux.ux.sun_path, addr, sizeof(addr_ux.ux.sun_path));
+        size_t path_len = strlen(addr);
+        if (path_len >= sizeof(addr_ux.ux.sun_path)) {
+            errno = ENAMETOOLONG;
+            return (fd_t)-1;
+        }
+        memcpy(addr_ux.ux.sun_path, addr, path_len + 1);
         found_ux = 1;
     }
 
@@ -127,7 +141,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
     } else if(protocol == AF_UNIX) {
         if(found_ux) {
             final = &addr_ux;
-            final_len = sizeof(addr_ux.ux);
+            final_len = offsetof(struct sockaddr_un, sun_path) + strlen(addr_ux.ux.sun_path) + 1;
             found = 1;
             ip_proto = 0;
         }
@@ -174,29 +188,52 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
 int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, size_t offset, size_t len) {
     struct event_t ev;
     int status;
-    size_t writelen = write(childfd, data + offset, len - offset);
-    if (writelen < 0 && errno != EWOULDBLOCK) {
-        dbgf(LOG_ERROR, "l_net_write: write failed\n");
+    size_t remaining;
+    ssize_t written;
+
+    // never let a negative/oversized offset underflow the length and read
+    // outside the caller's buffer
+    if (offset > len) {
+        errno = EINVAL;
         return -1;
-    } else {
+    }
+    remaining = len - offset;
+    if (remaining == 0) {
+        return 0;
+    }
+    if (remaining > (size_t)INT_MAX) {
+        errno = EMSGSIZE;
+        return -1;
+    }
+
+    written = write(childfd, data + offset, remaining);
+    if (written < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // try again once the socket becomes writable instead of treating
+            // backpressure as a fatal connection error
+            written = 0;
+        } else {
+            dbgf(LOG_ERROR, "l_net_write: write failed (%s)\n", strerror(errno));
+            return -1;
+        }
+    }
+    if ((size_t)written < remaining) {
         // it can happen that we tried to write more than the OS send buffer size is,
         // in this case subscribe for next write availability event
-        if (writelen < len) {
-    #ifdef USE_EPOLL
-            ev.events = EPOLLIN | EPOLLOUT;
-            SET_FD_HOLDER(ev, fdtype, childfd);
-            status = epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev);
-    #elif defined(USE_KQUEUE)
-            EV_SET(&ev, childfd, EVFILT_WRITE, fdtype == S80_FD_PIPE ? (EV_ADD | EV_CLEAR) : (EV_ADD | EV_ONESHOT), 0, 0, int_to_void(fdtype));
-            status = kevent(elfd, &ev, 1, NULL, 0, NULL);
-    #endif
-            if (status < 0) {
-                dbgf(LOG_ERROR, "l_net_write: failed to add socket to out poll\n");
-                return -1;
-            }
+#ifdef USE_EPOLL
+        ev.events = EPOLLIN | EPOLLOUT;
+        SET_FD_HOLDER(ev, fdtype, childfd);
+        status = epoll_ctl(elfd, EPOLL_CTL_MOD, childfd, &ev);
+#elif defined(USE_KQUEUE)
+        EV_SET(&ev, childfd, EVFILT_WRITE, fdtype == S80_FD_PIPE ? (EV_ADD | EV_CLEAR) : (EV_ADD | EV_ONESHOT), 0, 0, int_to_void(fdtype));
+        status = kevent(elfd, &ev, 1, NULL, 0, NULL);
+#endif
+        if (status < 0) {
+            dbgf(LOG_ERROR, "l_net_write: failed to add socket to out poll\n");
+            return -1;
         }
-        return writelen;
     }
+    return (int)written;
 }
 
 int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback) {
@@ -207,6 +244,14 @@ int s80_close(void *ctx, fd_t elfd, fd_t childfd, int fdtype, int callback) {
     ev.events = EPOLLIN | EPOLLOUT;
     SET_FD_HOLDER(ev, fdtype, childfd);
     status = epoll_ctl(elfd, EPOLL_CTL_DEL, childfd, &ev);
+#elif defined(USE_KQUEUE)
+    // kqueue removes filters automatically on close(); guard against closing a
+    // descriptor that a Lua callback already closed (and which may have been
+    // reused) by checking that it is still open
+    if (fcntl(childfd, F_GETFD) < 0) {
+        return -1;
+    }
+    status = 0;
 #endif
 
     if (status < 0) {
@@ -307,6 +352,14 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
 
         close(pipewr[1]);
         close(piperd[0]);
+        // the spawned program must not inherit the listening socket, client
+        // sockets, epoll fds or other workers' pipes
+        {
+            long maxfd = sysconf(_SC_OPEN_MAX);
+            int fd;
+            if (maxfd < 0 || maxfd > 65536) maxfd = 65536;
+            for (fd = 3; fd < maxfd; fd++) close(fd);
+        }
         _exit(execvp(command, args));
     } else {
 #ifdef USE_KQUEUE
@@ -363,12 +416,20 @@ int s80_mail(mailbox *mailbox, mailbox_message *message) {
     buf[0] = S80_SIGNAL_MAIL;
     s80_acquire_mailbox(mailbox);
     if(mailbox->size >= mailbox->reserved) {
-        mailbox->reserved = mailbox->reserved + 1000;
-        mailbox->messages = (mailbox_message*)realloc(mailbox->messages, sizeof(mailbox_message) * mailbox->reserved);
-        if(!mailbox->messages) {
+        mailbox_message *grown;
+        if(mailbox->reserved > 100000 || mailbox->reserved > INT_MAX - 1000) {
+            // apply backpressure instead of growing without bound when the
+            // target worker is not draining its mailbox
             s80_release_mailbox(mailbox);
             return -1;
         }
+        mailbox->reserved = mailbox->reserved + 1000;
+        grown = (mailbox_message*)realloc(mailbox->messages, sizeof(mailbox_message) * mailbox->reserved);
+        if(!grown) {
+            s80_release_mailbox(mailbox);
+            return -1;
+        }
+        mailbox->messages = grown;
     }
     mailbox->messages[mailbox->size++] = *message;
     if(!mailbox->signaled) {
@@ -419,16 +480,20 @@ void resolve_mail(serve_params *params, int id) {
         message = &messages[i];
         switch(message->type) {
             case S80_MB_READ:
+                if(!message->message || message->size != sizeof(read_params)) break;
                 on_receive(*(read_params*)message->message);
                 break;
             case S80_MB_WRITE:
+                if(!message->message || message->size != sizeof(write_params)) break;
                 on_write(*(write_params*)message->message);
                 break;
             case S80_MB_CLOSE:
+                if(!message->message || message->size != sizeof(close_params)) break;
                 on_close(*(close_params*)message->message);
                 break;
             case S80_MB_ACCEPT:
                 {
+                    if(!message->message || message->size != sizeof(accept_params)) break;
                     childfd = ((accept_params*)message->message)->childfd;
                     fdtype =  ((accept_params*)message->message)->fdtype;
                     #if defined(USE_EPOLL)

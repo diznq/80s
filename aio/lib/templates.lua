@@ -41,6 +41,17 @@ local function await(callback)
     return aio:await(callback)
 end
 
+--- Escape a value for use inside a Lua long-bracket string
+---@param text string
+---@return string
+local function long_string(text)
+    local eq = ""
+    while text:find("]" .. eq .. "]", 1, true) do
+        eq = eq .. "="
+    end
+    return "[" .. eq .. "[" .. text .. "]" .. eq .. "]"
+end
+
 local function transform_to_code(match)
     local args = {}
     match = match:gsub("%s*[\r\n]%s*", "")
@@ -50,27 +61,51 @@ local function transform_to_code(match)
             local format_type = "s"
             local item, maybe_type = format_item:match("^(.+):([.sfd0-9]+)$")
             if item and maybe_type then
-                format_item = maybe_type
                 format_item = item
+                format_type = maybe_type
             end
             table.insert(args, format_item)
             return "%" .. format_type
         end)
     end
     if #args == 0 then
-        return " write([[" .. match .. "]])"
+        return " write(" .. long_string(match) .. ")"
     else
-        return " write([[" .. match .. "]], " .. table.concat(args, ", ") .. ")"
+        return " write(" .. long_string(match) .. ", " .. table.concat(args, ", ") .. ")"
     end
+end
+
+--- Normalize a path textually (resolve "." and ".." components)
+---@param path string
+---@return string
+local function normalize_path(path)
+    local parts = {}
+    local absolute = path:sub(1, 1) == "/"
+    for part in path:gmatch("[^/\\]+") do
+        if part == ".." then
+            if #parts > 0 and parts[#parts] ~= ".." then
+                table.remove(parts)
+            elseif not absolute then
+                parts[#parts + 1] = ".."
+            end
+        elseif part ~= "." then
+            parts[#parts + 1] = part
+        end
+    end
+    return (absolute and "/" or "") .. table.concat(parts, "/")
 end
 
 ---Prepare a template context
 ---@param content string template file
 ---@param base string directory that current file is located in
+---@param file_name string|nil name used for diagnostics
+---@param root string|nil template root; when set, includes may not escape it
 ---@return templatectx
-function templates:prepare(content, base, file_name)
+function templates:prepare(content, base, file_name, root)
     local context = { content = "", parts = {}, parallel = false }
     local depth, max_depth, matches = 0, 32, 1
+    local expansion_limit = 4 * 1024 * 1024
+    local normalized_root = root and root ~= "" and normalize_path(root) or nil
 
     while depth < max_depth and matches > 0 do
         content = content:gsub("^#!%s*parallel%s-\n", function ()
@@ -78,19 +113,54 @@ function templates:prepare(content, base, file_name)
             return "";
         end)
 
+        if #content > expansion_limit then
+            content = "template include expansion limit exceeded"
+            break
+        end
+
         content, matches = content:gsub("<%?%s*include%s+%\"?(.-)\"?%s*%?>", function(path)
-            if not path:match("^/") then
-                path = base .. path
+            if path:find("%z") then
+                return "failed to include invalid path"
             end
-            local content = aio:read_file_sync(path, "r")
-            if not content then
+            local full = path
+            if not path:match("^/") then
+                full = base .. path
+            end
+            if normalized_root then
+                local normalized = normalize_path(full)
+                local under_root = normalized == normalized_root
+                if not under_root then
+                    if normalized_root == "/" then
+                        under_root = normalized:sub(1, 1) == "/"
+                    else
+                        under_root = normalized:sub(1, #normalized_root + 1) == normalized_root .. "/"
+                    end
+                end
+                if not under_root then
+                    return "failed to include file outside of template root"
+                end
+            end
+            local included = aio:read_file_sync(full, "r")
+            if not included then
                 return "failed to include " .. path
             end
-            return content
+            if #included > expansion_limit then
+                return "failed to include file (too large)"
+            end
+            return included
         end)
 
         depth = depth + 1
     end
+
+    -- the file name is only used for diagnostics; wrap it in a dynamically
+    -- sized long-bracket comment so it cannot break out and inject code
+    local comment_safe_name = (file_name or ""):gsub("[\r\n]", " ")
+    local comment_eq = ""
+    while comment_safe_name:find("]" .. comment_eq .. "]", 1, true) do
+        comment_eq = comment_eq .. "="
+    end
+    local file_comment = "--[" .. comment_eq .. "[" .. comment_safe_name .. "]" .. comment_eq .. "]"
 
     context.content = content:gsub("<%?lu(a?)%s+(.-)%s*%?>", function (async, match)
         local lines = {}
@@ -100,10 +170,13 @@ function templates:prepare(content, base, file_name)
             table.insert(lines, line)
         end
         match = table.concat(lines, "\n") .. "\n"
-        local compiled, err = load("--" .. file_name .. "\nreturn function(fd, session, locals, headers, body, method, endpoint, query, write, escape, post_render, await, header, status, done, to_url)" .. match .. "end")
+        local compiled, err = load(file_comment .. "\nreturn function(fd, session, locals, headers, body, method, endpoint, query, write, escape, post_render, await, header, status, done, to_url)" .. match .. "end")
         if not compiled then
             table.insert(context.parts, function (input, output, done)
-                done(err)
+                -- never reflect compiler errors (source paths, snippets) to clients
+                print("[templates] failed to compile " .. tostring(file_name) .. ": " .. tostring(err))
+                output.status = "500 Internal Server Error"
+                done("Template compilation error")
             end)
             return "<?l" .. tostring(#context.parts) .. "?>"
         end

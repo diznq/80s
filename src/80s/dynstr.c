@@ -1,12 +1,27 @@
 #include "dynstr.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 
 int dynstr_check(dynstr *self, size_t space) {
-    size_t new_size;
+    size_t new_size, grow;
     char *arr;
+    // reject arithmetic that would overflow the size calculation; callers must
+    // treat a failed check as a hard error even if they computed `space` from
+    // untrusted input
+    if (space > SIZE_MAX - self->length - 1) {
+        self->ok = 0;
+        return 0;
+    }
     if (self->length + space >= self->size) {
-        new_size = self->size + space + (self->size >> 1) + 65536;
+        grow = self->size >> 1;
+        if (grow > SIZE_MAX - self->size ||
+            self->size + grow > SIZE_MAX - 65536 ||
+            space > SIZE_MAX - (self->size + grow) - 65536) {
+            self->ok = 0;
+            return 0;
+        }
+        new_size = self->size + grow + 65536 + space;
         if (self->on_stack) {
             arr = (char*)calloc(new_size, 1);
             if (!arr) {
@@ -52,14 +67,23 @@ int dynstr_putsz(dynstr *self, const char *data) {
 int dynstr_putg(dynstr *self, double num) {
     size_t buf_size = self->size - self->length;
     int written = snprintf(self->ptr + self->length, buf_size, "%.20g", num);
-    if (written < buf_size) {
-        self->length += written;
+    if (written < 0) {
+        self->ok = 0;
+        return 0;
+    }
+    if ((size_t)written < buf_size) {
+        self->length += (size_t)written;
         return 1;
     }
     if (!dynstr_check(self, (size_t)written))
         return 0;
     buf_size = self->size - self->length;
-    self->length += snprintf(self->ptr + self->length, buf_size, "%.20g", num);
+    written = snprintf(self->ptr + self->length, buf_size, "%.20g", num);
+    if (written < 0) {
+        self->ok = 0;
+        return 0;
+    }
+    self->length += (size_t)written;
     return 1;
 }
 
@@ -69,16 +93,25 @@ int dynstr_putfmt(dynstr *self, const char *fmt, ...) {
     va_start(args, fmt);
     int written = vsnprintf(self->ptr + self->length, buf_size, fmt, args);
     va_end( args );
-    if (written < buf_size) {
-        self->length += written;
+    if (written < 0) {
+        self->ok = 0;
+        return 0;
+    }
+    if ((size_t)written < buf_size) {
+        self->length += (size_t)written;
         return 1;
     }
     if (!dynstr_check(self, (size_t)written))
         return 0;
     buf_size = self->size - self->length;
     va_start(args, fmt);
-    self->length += vsnprintf(self->ptr + self->length, buf_size, fmt, args);
+    written = vsnprintf(self->ptr + self->length, buf_size, fmt, args);
     va_end(args);
+    if (written < 0) {
+        self->ok = 0;
+        return 0;
+    }
+    self->length += (size_t)written;
     return 1;
 }
 

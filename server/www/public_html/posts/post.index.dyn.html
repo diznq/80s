@@ -2,7 +2,7 @@
     local post = aio:parse_query(body)
     if not post.submit or not post.name or not post.text or #post.name == 0 or #post.text == 0 then
         status("400 Bad Request")
-        write("Missing body: " .. body)
+        write("Missing body: %s", body)
         return done()
     end
     local result, err = await(Posts:insert({author=post.name, text=post.text}))

@@ -16,7 +16,7 @@ function httpd:create_endpoint(base, method, endpoint, mime, content, dynamic)
     local resp_headers = nil
     endpoint = self.base_prefix .. endpoint
     if dynamic then
-        ctx = templates:prepare(content, base, method .. " " .. endpoint)
+        ctx = templates:prepare(content, base, method .. " " .. endpoint, self.root)
     else
         resp_headers = {}
         resp_headers["content-type"] = mime
@@ -58,10 +58,16 @@ end
 ---@param root string root directory
 ---@param base string current base directory
 ---@param prefix string api endpoint prefix
+---@param depth integer|nil current recursion depth
 ---@return string[]
-function httpd:init_dir(root, base, prefix)
+function httpd:init_dir(root, base, prefix, depth)
     prefix = prefix or "/"
+    depth = depth or 0
     local dirs = {base}
+    if depth > 32 then
+        -- defensive limit against symlink/directory cycles
+        return dirs
+    end
     for _, file in pairs(net.listdir(base)) do
         if file:match("/$") then
             -- all folders that begin with i. will be ignored, i.e. they might contain large files
@@ -70,9 +76,9 @@ function httpd:init_dir(root, base, prefix)
                 -- treat files in public_html/ as in root /
                 local found_dirs = {}
                 if prefix == "/" and file == "public_html/" then
-                    found_dirs = self:init_dir(root, base .. file, prefix)
+                    found_dirs = self:init_dir(root, base .. file, prefix, depth + 1)
                 else
-                    found_dirs = self:init_dir(root, base .. file, prefix .. file)
+                    found_dirs = self:init_dir(root, base .. file, prefix .. file, depth + 1)
                 end
                 for _, dir in ipairs(found_dirs) do
                     table.insert(dirs, dir)
@@ -141,8 +147,11 @@ function httpd:init_dir(root, base, prefix)
                     endpoint = ""
                 end
 
-                -- exclude private files
-                if not file:match("%.priv%.") then
+                -- exclude private files, dotfiles and editor/backup leftovers
+                if not file:match("%.priv%.")
+                    and not file:match("^%.")
+                    and not file:match("[~#]$")
+                    and not file:match("%.bak$") then
                     self:create_endpoint(base, method, prefix .. endpoint, mime, content, dynamic)
                 end
             else
@@ -175,8 +184,9 @@ function httpd:initialize(params)
                     fd.init = true
                     aio:wrap_tls(aio:handle_as_http(fd), SSL)
                 end,
-                matches = function()
-                    return true
+                matches = function(data)
+                    -- TLS record content type 22 (handshake)
+                    return type(data) == "string" and data:byte(1) == 22
                 end,
                 handle = function(fd)
                     -- ...

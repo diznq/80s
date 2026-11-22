@@ -14,6 +14,7 @@
 #include <Windows.h>
 #else
 #include <dirent.h>
+#include <unistd.h>
 #endif
 
 #ifdef USE_INOTIFY
@@ -31,7 +32,11 @@ static int l_net_write(lua_State *L) {
     fd_t childfd = void_to_fd(lua_touserdata(L, 2));
     int fdtype = void_to_int(lua_touserdata(L, 3));
     const char *data = lua_tolstring(L, 4, &len);
-    size_t offset = (size_t)lua_tointeger(L, 5);
+    lua_Integer requested_offset = lua_tointeger(L, 5);
+    if (requested_offset < 0 || (size_t)requested_offset > len) {
+        return luaL_error(L, "net.write: offset is out of range");
+    }
+    size_t offset = (size_t)requested_offset;
     int writelen = s80_write((void *)L, elfd, childfd, fdtype, data, offset, len);
     if (writelen < 0) {
         lua_pushboolean(L, 0);
@@ -130,9 +135,14 @@ static int l_net_mail(lua_State *L) {
     int type = lua_tointeger(L, 7);
     const char *data = lua_tolstring(L, 8, &len);
 
-    if(id >= reload->workers || id < 0) {
+    if(id < 0 || id >= reload->workers || target_id < 0 || target_id >= reload->workers) {
         lua_pushboolean(L, 0);
         return 1;
+    }
+    // only the generic message type is part of the script-facing ABI; the other
+    // types carry raw C structs whose payloads must never come from Lua
+    if(type != S80_MB_MESSAGE) {
+        return luaL_error(L, "net.mail: message type is reserved for internal use");
     }
 
     msg.sender_elfd = elfd;
@@ -140,9 +150,13 @@ static int l_net_mail(lua_State *L) {
     msg.sender_id = id;
     msg.receiver_fd = targetfd;
     msg.type = type;
-    msg.message = (void*)calloc(len, sizeof(char));
+    msg.message = NULL;
     msg.size = len;
-    memcpy(msg.message, data, len);
+    if(len > 0) {
+        msg.message = (void*)calloc(len, sizeof(char));
+        if(!msg.message) return luaL_error(L, "net.mail: out of memory");
+        memcpy(msg.message, data, len);
+    }
 
     if(id == target_id) {
         message_params params;
@@ -153,7 +167,12 @@ static int l_net_mail(lua_State *L) {
         free(msg.message);
         lua_pushboolean(L, 1);
     } else {
-        lua_pushboolean(L, s80_mail(reload->mailboxes + target_id, &msg) >= 0);
+        if(s80_mail(reload->mailboxes + target_id, &msg) >= 0) {
+            lua_pushboolean(L, 1);
+        } else {
+            free(msg.message);
+            lua_pushboolean(L, 0);
+        }
     }
     return 1;
 }
@@ -164,26 +183,37 @@ static int l_net_readfile(lua_State *L) {
     }
     char buf[10000];
     dynstr dyn;
-    size_t size;
     const char *name = lua_tostring(L, 1);
-    const char *mode = lua_tostring(L, 2);
     FILE *f = fopen(name, "rb");
     if(!f) {
         return 0;
     }
-    fseek(f, 0, SEEK_END);
-    size = (size_t)ftell(f);
-    fseek(f, 0, SEEK_SET);
+    // Read in chunks instead of trusting ftell(): non-seekable files (pipes,
+    // procfs, devices) report -1 which used to overflow the size calculation.
     dynstr_init(&dyn, buf, sizeof(buf));
-    if(dynstr_check(&dyn, size + 1)) {
-        fread(dyn.ptr, size, 1, f);
-        lua_pushlstring(L, dyn.ptr, size);
-        dynstr_release(&dyn);
-        fclose(f);
-        return 1;
+    for(;;) {
+        if(!dynstr_check(&dyn, 4096)) {
+            dyn.ok = 0;
+            break;
+        }
+        size_t n = fread(dyn.ptr + dyn.length, 1, dyn.size - dyn.length, f);
+        dyn.length += n;
+        if(n == 0) break;
+        // hard cap so a very large or endless file cannot exhaust memory
+        if(dyn.length > (size_t)256 * 1024 * 1024) {
+            dyn.ok = 0;
+            break;
+        }
     }
+    int read_error = ferror(f);
     fclose(f);
-    return 0;
+    if(!dyn.ok || read_error) {
+        dynstr_release(&dyn);
+        return luaL_error(L, "failed to read file");
+    }
+    lua_pushlstring(L, dyn.ptr, dyn.length);
+    dynstr_release(&dyn);
+    return 1;
 }
 
 static int l_net_reload(lua_State *L) {
@@ -198,11 +228,18 @@ static int l_net_reload(lua_State *L) {
     } else {
         lua_getglobal(L, "ENTRYPOINT");
         entrypoint = lua_tostring(L, -1);
+        if (!entrypoint) {
+            lua_pop(L, 1);
+            lua_pushboolean(L, 0);
+            return 1;
+        }
 
         status = luaL_dofile(L, entrypoint);
         if (status) {
             fprintf(stderr, "l_net_reload: error running %s: %s\n", entrypoint, lua_tostring(L, -1));
+            lua_pop(L, 1);
         }
+        lua_pop(L, 1);
     }
 
     lua_pushboolean(L, status == 0);
@@ -232,14 +269,22 @@ static int l_net_inotify_init(lua_State *L) {
 
     elfd = void_to_fd(lua_touserdata(L, 1));
     childfd = (fd_t)inotify_init();
+    if (childfd < 0) {
+        lua_pushnil(L);
+        lua_pushstring(L, strerror(errno));
+        return 2;
+    }
+    s80_enable_async(childfd);
 
+    status = 0;
 #ifdef USE_EPOLL
     ev.events = EPOLLIN;
     SET_FD_HOLDER(ev, S80_FD_OTHER, childfd);
     status = epoll_ctl(elfd, EPOLL_CTL_ADD, childfd, &ev);
 #endif
     if (status < 0) {
-        dbgf(LOG_ERROR, "l_net_write: failed to add socket to out poll");
+        dbgf(LOG_ERROR, "l_net_inotify_init: failed to add fd to event loop");
+        close(childfd);
         lua_pushnil(L);
         lua_pushstring(L, strerror(errno));
         return 2;
@@ -313,13 +358,15 @@ static int l_net_inotify_read(lua_State *L) {
     clock_gettime(CLOCK_MONOTONIC, &tp);
     t = tp.tv_sec + tp.tv_nsec / 1000000000.0;
     lua_newtable(L);
-    while (i < length) {
+    while (i + sizeof(struct inotify_event) <= length) {
         struct inotify_event *evt = (struct inotify_event *)(data + i);
-        if (evt->len && (i + evt->len + (sizeof(struct inotify_event))) <= length) {
+        size_t evlen = sizeof(struct inotify_event) + (size_t)evt->len;
+        if (evt->len && evlen <= length - i) {
+            size_t namelen = strnlen(evt->name, evt->len);
             lua_createtable(L, 6, 0);
 
             lua_pushstring(L, "name");
-            lua_pushstring(L, evt->name);
+            lua_pushlstring(L, evt->name, namelen);
             lua_settable(L, -3);
 
             lua_pushstring(L, "wd");
@@ -360,7 +407,7 @@ static int l_net_listdir(lua_State *L) {
     if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TSTRING) {
         return luaL_error(L, "expecting 1 argument: directory name (string)");
     }
-    int n, i;
+    int n, i = 0, idx;
     char full_path[2000], buf[1000];
     const char *dir_name = lua_tostring(L, 1);
     
@@ -368,14 +415,12 @@ static int l_net_listdir(lua_State *L) {
 #ifdef _WIN32
     WIN32_FIND_DATAA data;
     memset(&data, 0, sizeof(data));
-    strncpy(full_path, dir_name, sizeof(full_path) - 4);
-    dir_name = full_path;
-    i = 0;
-    while(full_path[i]) {
-        if(full_path[i] == '/') full_path[i] = '\\';
-        i++;
+    if (snprintf(full_path, sizeof(full_path), "%s*", dir_name) >= (int)sizeof(full_path)) {
+        return luaL_error(L, "directory name too long");
     }
-    strncat(full_path, "*", sizeof(full_path) - 1);
+    for(i = 0; full_path[i]; i++) {
+        if(full_path[i] == '/') full_path[i] = '\\';
+    }
     HANDLE hFind = FindFirstFileA(full_path, &data);
     if(hFind == INVALID_HANDLE_VALUE) {
         return 1;
@@ -387,42 +432,51 @@ static int l_net_listdir(lua_State *L) {
         if(!strcmp(data.cFileName, ".") || !strcmp(data.cFileName, ".."))
             continue;
         if(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            strncpy(buf, data.cFileName, 996);
-            strncat(buf, "/", 996);
-            lua_pushstring(L, buf);
+            if (snprintf(buf, sizeof(buf), "%s/", data.cFileName) < (int)sizeof(buf)) {
+                lua_pushstring(L, buf);
+            } else {
+                lua_pushstring(L, data.cFileName);
+            }
         } else {
             lua_pushstring(L, data.cFileName);
         }
         lua_rawseti(L, -2, ++i);
     } while(FindNextFileA(hFind, &data));
+    FindClose(hFind);
 #else
     struct dirent **eps = NULL;
     struct stat s;
     n = scandir(dir_name, &eps, NULL, alphasort);
-    while (n >= 0 && n--) {
-        if (!strcmp(eps[n]->d_name, ".") || !strcmp(eps[n]->d_name, "..")) {
+    if (n < 0 || eps == NULL) {
+        return 1;
+    }
+    for (idx = 0; idx < n; idx++) {
+        if (!strcmp(eps[idx]->d_name, ".") || !strcmp(eps[idx]->d_name, "..")) {
             continue;
         }
-        // treat directores special way, they will end with / always
+        // treat directories special way, they will end with / always
         // so we don't need isdir? later
-        strncpy(full_path, dir_name, 1996);
-        strncat(full_path, eps[n]->d_name, 1996);
+        if (snprintf(full_path, sizeof(full_path), "%s%s", dir_name, eps[idx]->d_name) >= (int)sizeof(full_path))
+            continue;
         if (stat(full_path, &s) < 0)
             continue;
         if (S_ISDIR(s.st_mode))
         {
-            strncpy(buf, eps[n]->d_name, 996);
-            strncat(buf, "/", 996);
-            lua_pushstring(L, buf);
+            if (snprintf(buf, sizeof(buf), "%s/", eps[idx]->d_name) < (int)sizeof(buf)) {
+                lua_pushstring(L, buf);
+            } else {
+                lua_pushstring(L, eps[idx]->d_name);
+            }
         } else {
-            lua_pushstring(L, eps[n]->d_name);
+            lua_pushstring(L, eps[idx]->d_name);
         }
         lua_rawseti(L, -2, ++i);
     }
     
-    if (eps != NULL) {
-        free(eps);
+    for (idx = 0; idx < n; idx++) {
+        free(eps[idx]);
     }
+    free(eps);
 #endif
     return 1;
 }
@@ -432,7 +486,7 @@ static int l_net_mkdir(lua_State *L) {
         return luaL_error(L, "expecting at least 1 argument: directory name (string), permissions=0777 (int)");
     }
     const char *dir_name = lua_tostring(L, 1);
-    int permissions = 0777;
+    int permissions = 0755;
     if(lua_gettop(L) == 2 && lua_type(L, 2) == LUA_TNUMBER) permissions = lua_tointeger(L, 2);
 #ifdef UNIX_BASED
     struct stat st = {0};
@@ -483,7 +537,16 @@ static int l_net_partscan(lua_State *L) {
     size_t len, pattern_len, offset;
     const char *haystack = lua_tolstring(L, 1, &len);
     const char *pattern = lua_tolstring(L, 2, &pattern_len);
-    offset = ((size_t)lua_tointeger(L, 3)) - 1;
+    lua_Integer base = lua_tointeger(L, 3);
+    // offsets are 1-based; tolerate 0 from older callers and never let the
+    // value underflow or point past the haystack
+    if (base < 1) base = 1;
+    offset = (size_t)(base - 1);
+    if (offset > len) {
+        lua_pushinteger(L, (lua_Integer)len + 1);
+        lua_pushinteger(L, 0);
+        return 2;
+    }
 
     kmp_result result = kmp(haystack, len, pattern, pattern_len, offset, NULL);
     lua_pushinteger(L, (lua_Integer)(result.offset + 1));
@@ -520,134 +583,70 @@ static int l_net_popen(lua_State *L) {
     return 2;
 }
 
+// Parse an HTTP request or status line plus all following header lines.
+// The input string is never modified: Lua strings are immutable and interned.
 static int l_net_parse_http_headers(lua_State *L) {
     if(lua_gettop(L) < 1 || lua_type(L, 1) != LUA_TSTRING) {
         return luaL_error(L, "expecting 1 argument: header (string)");
     }
-    int64_t pattern[6];
-    kmp_result match;
-    size_t i = 0, len;
-    size_t offset = 0;
-    const char *header_key_begin, *header_key_end, *header_value_begin, *header_value_end,
-               *status_code_begin, *status_code_end, *status_message_begin, *status_message_end,
-               *status_http_begin, *status_http_end,
-               **current_ptr, *now;
-    char c;
-    int flushed = 0;
-    enum parse_state {
-        read_status_code, read_status_code_spaces_after,
-        read_status_message, read_status_message_spaces_after,
-        read_status_http_version,
-        read_header_end,
-        read_header_key, read_header_mid, read_header_value,
-    } current_state = read_status_code;
+    size_t len = 0, i = 0;
     const char *text = lua_tolstring(L, 1, &len);
-
-    header_key_begin = header_key_end = header_value_begin = header_value_end
-                     = status_code_begin = status_code_end = status_message_begin = status_message_end
-                     = status_http_begin = status_http_end = now = text;
-
-    current_ptr = &status_code_end;
+    char key[256];
 
     lua_createtable(L, 0, 0);
-    for(i=0; i < len; i++) {
-        now = text + i;
-        flushed = 0;
-        switch(*now) {
-            case '\r':
-            case '\n':
-                if(current_state == read_status_http_version) {
-                    lua_pushstring(L, ":method");
-                    lua_pushlstring(L, status_code_begin, status_code_end - status_code_begin + 1);
-                    lua_settable(L, -3);
 
-                    lua_pushstring(L, ":script");
-                    lua_pushlstring(L, status_message_begin, status_message_end - status_message_begin + 1);
-                    lua_settable(L, -3);
+    // status line: METHOD SP SCRIPT SP HTTP/x.y
+    size_t m0 = i;
+    while (i < len && text[i] != ' ' && text[i] != '\r' && text[i] != '\n') i++;
+    size_t m1 = i;
+    if (i < len && text[i] == ' ') i++;
+    size_t s0 = i;
+    while (i < len && text[i] != ' ' && text[i] != '\r' && text[i] != '\n') i++;
+    size_t s1 = i;
+    if (i < len && text[i] == ' ') i++;
+    size_t h0 = i;
+    while (i < len && text[i] != '\r' && text[i] != '\n') i++;
+    size_t h1 = i;
 
-                    lua_pushstring(L, ":http");
-                    lua_pushlstring(L, status_http_begin, status_http_end - status_http_begin + 1);
-                    lua_settable(L, -3);
-                    current_state = read_header_end;
-                }
-                break;
-            case ' ':
-                if(current_state == read_header_key) {
-                    header_key_end = now;
-                } else if(current_state == read_header_value) {
-                    header_value_end = now;
-                } else if(current_state == read_status_code) {
-                    current_state = read_status_code_spaces_after;
-                } else if(current_state == read_status_message) {
-                    current_state = read_status_message_spaces_after;
-                } else if(current_state == read_status_http_version) {
-                    status_http_end = now;
-                }
-                break;
-            case ':':
-                if(current_state == read_header_key) {
-                    current_state = read_header_mid;
-                } else if(current_state == read_header_value) {
-                    header_value_end = now;
-                } else if(current_state == read_status_code) {
-                    status_code_end = now;
-                } else if(current_state == read_status_message) {
-                    status_message_end = now;
-                } else if(current_state == read_status_http_version) {
-                    status_http_end = now;
-                } else if(current_state == read_status_code_spaces_after) {
-                    status_message_begin = status_message_end = now;
-                    current_state = read_status_message;
-                } else if(current_state == read_status_message_spaces_after) {
-                    status_http_begin = status_http_end = now;
-                    current_state = read_status_http_version;
-                }
-                break;
-            default:
-                if(current_state == read_header_end) {
-                    if(header_key_end - header_key_begin > 0 && header_value_end - header_value_begin > 0) {
-                        lua_pushlstring(L, header_key_begin, header_key_end - header_key_begin + 1);
-                        lua_pushlstring(L, header_value_begin, header_value_end - header_value_begin + 1);
-                        lua_settable(L, -3);
-                    }
-                    if(*now >= 'A' && *now <= 'Z') {
-                        *(char*)now = *now + 32;
-                    }
-                    header_key_begin = header_key_end = now;
-                    header_value_begin = header_value_end = header_key_begin;
-                    current_ptr = &header_key_end;
-                    current_state = read_header_key;
-                } else if(current_state == read_header_mid) {
-                    header_value_begin = header_value_end = now;
-                    current_ptr = &header_value_end;
-                    current_state = read_header_value;
-                } else if(current_state == read_header_value) {
-                    header_value_end = now;
-                } else if(current_state == read_header_key) {
-                    if(*now >= 'A' && *now <= 'Z') {
-                        *(char*)now = *now + 32;
-                    }
-                    header_key_end = now;
-                } else if(current_state == read_status_code) {
-                    status_code_end = now;
-                } else if(current_state == read_status_message) {
-                    status_message_end = now;
-                } else if(current_state == read_status_http_version) {
-                    status_http_end = now;
-                } else if(current_state == read_status_code_spaces_after) {
-                    status_message_begin = status_message_end = now;
-                    current_state = read_status_message;
-                } else if(current_state == read_status_message_spaces_after) {
-                    status_http_begin = status_http_end = now;
-                    current_state = read_status_http_version;
-                }
-                break;
+    lua_pushliteral(L, ":method");
+    lua_pushlstring(L, text + m0, m1 - m0);
+    lua_settable(L, -3);
+
+    lua_pushliteral(L, ":script");
+    lua_pushlstring(L, text + s0, s1 - s0);
+    lua_settable(L, -3);
+
+    lua_pushliteral(L, ":http");
+    lua_pushlstring(L, text + h0, h1 - h0);
+    lua_settable(L, -3);
+
+    // header lines
+    while (i < len) {
+        while (i < len && (text[i] == '\r' || text[i] == '\n')) i++;
+        if (i >= len) break;
+        size_t k0 = i;
+        while (i < len && text[i] != ':' && text[i] != '\r' && text[i] != '\n') i++;
+        if (i >= len || text[i] != ':') {
+            while (i < len && text[i] != '\n') i++;
+            continue;
         }
-    }
-    if(header_key_end - header_key_begin > 0 && header_value_end - header_value_begin > 0) {
-        lua_pushlstring(L, header_key_begin, header_key_end - header_key_begin + 1);
-        lua_pushlstring(L, header_value_begin, header_value_end - header_value_begin + 1);
-        lua_settable(L, -3);
+        size_t k1 = i++;
+        while (i < len && (text[i] == ' ' || text[i] == '\t')) i++;
+        size_t v0 = i;
+        while (i < len && text[i] != '\r' && text[i] != '\n') i++;
+        size_t v1 = i;
+
+        size_t kl = k1 - k0;
+        if (kl > 0 && kl < sizeof(key)) {
+            size_t k;
+            for (k = 0; k < kl; k++) {
+                char c = text[k0 + k];
+                key[k] = (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c;
+            }
+            lua_pushlstring(L, key, kl);
+            lua_pushlstring(L, text + v0, v1 - v0);
+            lua_settable(L, -3);
+        }
     }
 
     return 1;
@@ -690,11 +689,12 @@ static int l_net_info(lua_State *L) {
 #ifdef S80_DEBUG
     dynstr_putsz(&str, "debug, ");
 #endif
-    if(str.ok) {
+    if(str.ok && str.length >= 2) {
         lua_pushlstring(L, str.ptr, str.length - 2);
     } else {
         lua_pushnil(L);
     }
+    dynstr_release(&str);
     return 1;
 }
 

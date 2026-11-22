@@ -72,10 +72,12 @@ function smtp_client:send_mail(params)
                 return resolve(make_error("EHLO status was " .. status .. " instead of expected 250"))
             end
 
-            if self.tls and self.ssl_enforced and not response:find("STARTTLS") then
-                fd:close()
-                return resolve(make_error("EHLO server doesn't support STARTTLS, but client enforces TLS"))
-            elseif self.tls and response:find("STARTTLS") ~= nil then
+            if ssl then
+                -- fail closed: never fall back to plaintext when TLS was requested
+                if not response:find("STARTTLS", 1, true) then
+                    fd:close()
+                    return resolve(make_error("SMTP server doesn't support STARTTLS"))
+                end
                 status, response = self:send_command(fd, "STARTTLS")
                 if not status then
                     return resolve(make_error("STARTTLS failed to read response from server"))
@@ -83,7 +85,7 @@ function smtp_client:send_mail(params)
                     fd:close()
                     return resolve(make_error("STARTTLS status was " .. status .. " instead of expected 220"))
                 end
-                aio:wrap_tls(fd, self.tls, fd.host, true)(function (result)
+                aio:wrap_tls(fd, self.tls, fd.host)(function (result)
                     if not result then
                         fd:close()
                         resolve(make_error("STARTTLS failed to wrap TLS"))
@@ -125,12 +127,22 @@ end
 ---@param body string email body
 ---@return string
 function smtp_client:encode_message(from, recipients, headers, subject, body)
+    --- strip CR/LF/NUL so message data cannot inject additional headers
+    local function header_safe(value)
+        return (tostring(value):gsub("[\r\n%z]", " "))
+    end
+    local function header_name_safe(name)
+        name = tostring(name)
+        if not name:match("^[%w%-_]+$") then return nil end
+        return name
+    end
+
     if headers["Message-ID"] == nil then
         headers["Message-ID"] = self:generate_message_id()
     end
-    headers["From"] = from
-    headers["To"] = table.concat(recipients, ", ")
-    headers["Subject"] = subject or "No subject"
+    headers["From"] = header_safe(from)
+    headers["To"] = header_safe(table.concat(recipients, ", "))
+    headers["Subject"] = header_safe(subject or "No subject")
 
     local canon = {}
     local header_keys = {}
@@ -138,8 +150,11 @@ function smtp_client:encode_message(from, recipients, headers, subject, body)
 
     local headers_list = {}
     for key, value in pairs(headers) do
-        header_keys[#header_keys+1] = key
-        headers_list[#headers_list+1] = key .. ": " .. tostring(value)
+        local safe_name = header_name_safe(key)
+        if safe_name then
+            header_keys[#header_keys+1] = safe_name
+            headers_list[#headers_list+1] = safe_name .. ": " .. header_safe(value)
+        end
     end
 
     local headers_str = table.concat(headers_list, "\r\n")
@@ -182,6 +197,23 @@ end
 ---@param resolve fun(result: any)|thread continuation
 ---@return any
 function smtp_client:mail_flow(fd, from , recipients, headers, subject, body, resolve)
+    -- addresses become SMTP commands, so control characters, whitespace and
+    -- angle brackets must never be accepted
+    local function valid_address(address)
+        if type(address) ~= "string" or address:find("[%s%c<>]") then return false end
+        return address:match("^[^@]+@[^@]+$") ~= nil
+    end
+    if not valid_address(from) then
+        fd:close()
+        return resolve(make_error("invalid sender address"))
+    end
+    for _, recipient in ipairs(recipients) do
+        if not valid_address(recipient) then
+            fd:close()
+            return resolve(make_error("invalid recipient address"))
+        end
+    end
+
     local status, response = self:send_command(fd, "MAIL FROM:<" .. from .. ">")
     if not status then
         return resolve(make_error("MAIL FROM failed to read response from server"))
@@ -215,7 +247,13 @@ function smtp_client:mail_flow(fd, from , recipients, headers, subject, body, re
         print(email_message)
         print("-----------------------/")
     end
-    fd:write(email_message .. "\r\n.\r\n")
+    -- dot-stuff the body: a line consisting of "." would otherwise terminate
+    -- the DATA section early and turn the rest into SMTP commands
+    local payload = email_message:gsub("\n%.", "\n.."):gsub("^%.", "..")
+    if payload:sub(-2) ~= "\r\n" then
+        payload = payload .. "\r\n"
+    end
+    fd:write(payload .. ".\r\n")
     status, response = self:read_response()
     if not status then
         return resolve(make_error("DATA submission failed to read response from server"))
@@ -235,6 +273,10 @@ end
 ---@return string|nil status
 ---@return string body
 function smtp_client:send_command(fd, command)
+    if type(command) ~= "string" or command:find("[\r\n%z]") then
+        fd:close()
+        return nil, ""
+    end
     if self.logging then
         print("-> " .. command)
     end
@@ -253,12 +295,16 @@ end
 function smtp_client:read_response()
     local messages = {}
     local status = ""
+    local total = 0
     while true do
-        local msg = coroutine.yield("\r\n")
+        local msg = coroutine.yield("\r\n", 4096)
         if self.logging then
             print("<- " .. tostring(msg))
         end
         if msg == nil then return nil, "" end
+        if #msg > 4096 then return nil, "" end
+        total = total + #msg
+        if total > 1048576 then return nil, "" end
         local code, continue, body = msg:match("^(%d+)([%- ])(.*)$")
         if code ~= nil and continue ~= nil and body ~= nil then
             messages[#messages+1] = body
@@ -276,13 +322,17 @@ end
 ---@return string|nil user
 ---@return string host
 function smtp_client:parse_address(address)
-    return address:match("^(.-)@(.+)$")
+    if type(address) ~= "string" or address:find("[%s%c<>]") then
+        return nil, nil
+    end
+    return address:match("^([^@]+)@([^@]+)$")
 end
 
 function smtp_client:generate_message_id()
     self.counter = self.counter + 1
     local date = os.date("%Y%m%d%H%I%S")
-    return string.format("<%s.%s.%d@%s>", NODE_ID:gsub("%/", "-"), date, self.counter, self.host)
+    local random_part = crypto.to64(crypto.random(9)):gsub("[^%w]", "")
+    return string.format("<%s.%s.%d.%s@%s>", NODE_ID:gsub("%/", "-"), date, self.counter, random_part, self.host)
 end
 
 --- Initialize SMTP client

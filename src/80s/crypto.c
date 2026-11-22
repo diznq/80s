@@ -9,7 +9,28 @@
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/crypto.h>
 #include <errno.h>
+#include <limits.h>
+
+// Per-thread buffer for OpenSSL error strings. ERR_error_string() uses a
+// process-wide static buffer and is not thread-safe; each worker has its own
+// event loop thread, so a shared buffer would race and leak the wrong reason.
+#if defined(_MSC_VER)
+    #define S80_THREAD_LOCAL __declspec(thread)
+#else
+    #define S80_THREAD_LOCAL __thread
+#endif
+
+static const char *ssl_error_string(void) {
+    static S80_THREAD_LOCAL char buf[256];
+    unsigned long err = ERR_get_error();
+    if (err == 0) {
+        return "unknown ssl error";
+    }
+    ERR_error_string_n(err, buf, sizeof(buf));
+    return buf;
+}
 
 #ifdef _WIN32
 #include <windows.h>
@@ -63,175 +84,324 @@ int crypto_sha256(const char *data, size_t len, unsigned char *out_buffer, size_
 }
 
 int crypto_hmac_sha256(const char *data, size_t len, const char *key, size_t key_len, unsigned char *out_buffer, size_t out_length) {
-    if(out_length < 32) return -1;
-    unsigned int hmac_len = 32;
-    HMAC(EVP_sha256(), (const void *)key, (int)key_len, (const unsigned char *)(data), len, (unsigned char *)out_buffer, &hmac_len);
+    unsigned int hmac_len = 0;
+    if(out_length < 32 || key_len > INT_MAX) return -1;
+    if (HMAC(EVP_sha256(), (const void *)key, (int)key_len, (const unsigned char *)(data), len, (unsigned char *)out_buffer, &hmac_len) == NULL || hmac_len != 32) {
+        OPENSSL_cleanse(out_buffer, out_length < 32 ? out_length : 32);
+        return -1;
+    }
     return 0;
 }
 
-int crypto_cipher(const char *data, size_t len, const char *key, size_t key_len, int use_iv, int encrypt, dynstr *output_str, const char **output_error_message) {
-    EVP_CIPHER_CTX *ctx;
-    size_t needed_size, i;
-    int ok, offset, out_len, final_len;
-    unsigned int ret_len, iv_len, hmac_len;
-    unsigned char iv[16];
-    unsigned char signature[32];
-    char key_buf[16];
+#define CRYPTO_CIPHER_VERSION_LEGACY 0
+#define CRYPTO_CIPHER_VERSION_KDF2 1
+#define CRYPTO_CIPHER_HMAC_LEN 32
+// Plaintexts are limited to 2^24 - 1 bytes so the most significant byte of the
+// 32-bit little-endian length field is free to carry the format version.
+#define CRYPTO_MAX_PLAINTEXT_LEN ((size_t)0x00FFFFFF)
 
-    ok = 1;
-    offset = 0;
-    final_len = 0;
-    ret_len = 0;
-    hmac_len = 32;
-    iv_len = use_iv ? 16 : 0;
-    needed_size = len;
-    if (needed_size % 16 != 0) {
-        needed_size += 16 - needed_size % 16;
+static int crypto_cipher_hmac(const unsigned char *key, size_t key_len,
+                              const unsigned char *data, size_t data_len,
+                              unsigned char out[CRYPTO_CIPHER_HMAC_LEN]) {
+    unsigned int out_len = 0;
+    if (key_len > (size_t)INT_MAX) return -1;
+    if (HMAC(EVP_sha256(), key, (int)key_len, data, data_len, out, &out_len) == NULL ||
+        out_len != CRYPTO_CIPHER_HMAC_LEN) {
+        return -1;
     }
-    out_len = (unsigned int)needed_size;
-    needed_size += hmac_len + 16 + 4; // we need to also store SHA256 + length + IV
+    return 0;
+}
+
+// Version 0 (legacy) key derivation: fold the key down to 128 bits with XOR.
+static int crypto_cipher_derive_legacy(const char *key, size_t key_len, unsigned char out[16]) {
+    size_t i;
+    if (key_len < 16) return -1;
+    memcpy(out, key, 16);
+    for (i = 16; i < key_len; i++) {
+        out[i & 15] ^= (unsigned char)key[i];
+    }
+    return 0;
+}
+
+// Version 1 key derivation: HKDF-SHA256 (extract + expand) with separate
+// encryption and MAC keys, so the AES key is never also the HMAC key.
+static int crypto_cipher_derive_v1(const char *key, size_t key_len,
+                                   unsigned char enc_key[16], unsigned char mac_key[32]) {
+    static const unsigned char salt[] = "80s-cipher-v2";
+    unsigned char prk[32], block[32], info[8];
+    int ok = 0;
+
+    if (crypto_cipher_hmac(salt, sizeof(salt) - 1, (const unsigned char *)key, key_len, prk) != 0)
+        goto done;
+
+    memcpy(info, "80s/enc", 7);
+    info[7] = 1;
+    if (crypto_cipher_hmac(prk, sizeof(prk), info, sizeof(info), block) != 0)
+        goto done;
+    memcpy(enc_key, block, 16);
+
+    memcpy(info, "80s/mac", 7);
+    info[7] = 1;
+    if (crypto_cipher_hmac(prk, sizeof(prk), info, sizeof(info), block) != 0)
+        goto done;
+    memcpy(mac_key, block, 32);
+    ok = 1;
+
+done:
+    OPENSSL_cleanse(prk, sizeof(prk));
+    OPENSSL_cleanse(block, sizeof(block));
+    return ok ? 0 : -1;
+}
+
+static void crypto_cipher_write_length(unsigned char out[4], size_t plain_len, unsigned char version) {
+    out[0] = (unsigned char)(plain_len & 0xff);
+    out[1] = (unsigned char)((plain_len >> 8) & 0xff);
+    out[2] = (unsigned char)((plain_len >> 16) & 0xff);
+    out[3] = version;
+}
+
+// PKCS#7 always appends between 1 and 16 bytes, including a full block when the
+// input length is already block aligned.
+static size_t crypto_cipher_padded_length(size_t plain_len) {
+    return ((plain_len / 16) + 1) * 16;
+}
+
+int crypto_cipher(const char *data, size_t len, const char *key, size_t key_len, int use_iv, int encrypt, dynstr *output_str, const char **output_error_message) {
+    EVP_CIPHER_CTX *ctx = NULL;
+    unsigned char legacy_key[16], enc_key[16], mac_key[32];
+    const unsigned char *aes_key = NULL;
+    const unsigned char *mac = NULL;
+    size_t mac_key_len = 0;
+    unsigned char iv[16];
+    unsigned char signature[CRYPTO_CIPHER_HMAC_LEN];
+    unsigned char version;
+    size_t plain_len, padded_len, needed_size, offset;
+    unsigned int iv_len = 0;
+    int out_len = 0, final_len = 0;
+    int result = -1;
 
     if (key_len < 16) {
         // deny keys shorter than 128 bits
         if(output_error_message)
             *output_error_message = "key must be 16 at least bytes long";
         return -1;
-    } else if (key_len > 16) {
-        // in case key is longer, compress it down to 128 bits
-        memcpy(key_buf, key, 16);
-        for (i = 16; i < key_len; i++)
-            key_buf[i & 15] ^= key[i];
-        key = key_buf;
-        key_len = 16;
     }
 
-    if (!encrypt) {
-        if (len < hmac_len + 4) {
-            use_iv = 0;
-            iv_len = 0;
-        } else if (((long long)len) - (*(int *)(data + hmac_len) + hmac_len + 4) <= 16) {
-            use_iv = 0;
-            iv_len = 0;
-        } else {
-            use_iv = 1;
-            iv_len = 16;
+    if (encrypt) {
+        if (len > CRYPTO_MAX_PLAINTEXT_LEN) {
+            if(output_error_message)
+                *output_error_message = "payload is too large";
+            return -1;
         }
-        if (len < hmac_len + iv_len + 4) {
+        if (crypto_cipher_derive_v1(key, key_len, enc_key, mac_key) != 0) {
+            if(output_error_message)
+                *output_error_message = "failed to derive key";
+            return -1;
+        }
+        aes_key = enc_key;
+        mac = mac_key;
+        mac_key_len = sizeof(mac_key);
+        plain_len = len;
+        version = CRYPTO_CIPHER_VERSION_KDF2;
+    } else {
+        if (len < 32 + 4 || len > (size_t)INT_MAX) {
             if(output_error_message)
                 *output_error_message = "decrypt payload is too short";
             return -1;
         }
+        // The length is stored as a 32-bit little-endian integer; the top byte
+        // is the format version and the low 24 bits are the plaintext length.
+        plain_len = (size_t)(unsigned char)data[32]
+                  | ((size_t)(unsigned char)data[33] << 8)
+                  | ((size_t)(unsigned char)data[34] << 16);
+        version = (unsigned char)data[35];
+        if (version == CRYPTO_CIPHER_VERSION_LEGACY) {
+            if (crypto_cipher_derive_legacy(key, key_len, legacy_key) != 0) {
+                if(output_error_message)
+                    *output_error_message = "failed to derive key";
+                return -1;
+            }
+            aes_key = legacy_key;
+            mac = legacy_key;
+            mac_key_len = sizeof(legacy_key);
+        } else if (version == CRYPTO_CIPHER_VERSION_KDF2) {
+            if (crypto_cipher_derive_v1(key, key_len, enc_key, mac_key) != 0) {
+                if(output_error_message)
+                    *output_error_message = "failed to derive key";
+                return -1;
+            }
+            aes_key = enc_key;
+            mac = mac_key;
+            mac_key_len = sizeof(mac_key);
+        } else {
+            if(output_error_message)
+                *output_error_message = "unsupported cipher version";
+            return -1;
+        }
     }
 
-    // first initialize cipher, message digest and private key for HMAC
-    // and if any of them fails, release resoruces safely as to avoid memory leaks
-    ctx = EVP_CIPHER_CTX_new();
+    padded_len = crypto_cipher_padded_length(plain_len);
 
-    if (ctx == NULL) {
+    if (encrypt) {
+        iv_len = use_iv ? 16 : 0;
+    } else {
+        size_t with_iv = 32 + 4 + 16 + padded_len;
+        size_t without_iv = 32 + 4 + padded_len;
+        if (len == with_iv) {
+            use_iv = 1;
+            iv_len = 16;
+        } else if (len == without_iv) {
+            use_iv = 0;
+            iv_len = 0;
+        } else {
+            if(output_error_message)
+                *output_error_message = "invalid cipher payload length";
+            return -1;
+        }
+    }
+
+    needed_size = 32 + 4 + iv_len + padded_len + 16;
+    if (needed_size > (size_t)INT_MAX) {
         if(output_error_message)
-            *output_error_message = "failed to create cipher context";
+            *output_error_message = "payload is too large";
         return -1;
     }
-
-    // initialize our dynamic string and try to allocate enough memory
     if (!dynstr_check(output_str, needed_size)) {
         if(output_error_message)
             *output_error_message = "failed to allocate enough memory for cipher output buffer";
-        EVP_CIPHER_CTX_free(ctx);
         return -1;
     }
 
     if (encrypt) {
-        // for encryption, generate random 16 IV bytes
-        if (use_iv) {
-            RAND_bytes(iv, iv_len);
+        if (iv_len) {
+            if (RAND_bytes(iv, (int)iv_len) != 1) {
+                if(output_error_message)
+                    *output_error_message = "failed to generate random IV";
+                goto cleanup;
+            }
         } else {
             memset(iv, 0, sizeof(iv));
         }
     } else {
-        // autodetect if IV is present, if it's present, data length - read length shoudl be < 16
-        if (use_iv) {
-            memcpy(iv, data + hmac_len + 4, iv_len);
+        if (iv_len) {
+            memcpy(iv, data + 36, 16);
         } else {
             memset(iv, 0, sizeof(iv));
         }
     }
 
-    if (EVP_CipherInit(ctx, EVP_aes_128_cbc(), (const unsigned char *)key, (const unsigned char *)iv, encrypt)) {
-        // lets go with no padding
-        EVP_CIPHER_CTX_set_padding(ctx, 16);
-
-        // when decrypting, we first compute hmac and check it
-        if (!encrypt) {
-            HMAC(EVP_sha256(), (const void *)key, (int)key_len, (const unsigned char *)(data + hmac_len), len - hmac_len, (unsigned char *)signature, &hmac_len);
-            // verify if computed signature matches received signature
-            if (memcmp(data, signature, hmac_len)) {
-                ok = 0;
-            }
-            offset = hmac_len + iv_len + 4;
-        } else {
-            // destination buffer will have following structure:
-            // hmac[0:32] + length[32:36] + iv[36:52] + contents[52:]
-            if (use_iv) {
-                memcpy(output_str->ptr + hmac_len + 4, iv, iv_len);
-            }
-            *(int *)(output_str->ptr + hmac_len) = (int)len;
-        }
-
-        if (
-            ok &&
-            EVP_CipherUpdate(ctx, (unsigned char *)(output_str->ptr + hmac_len + iv_len + 4), &out_len, (const unsigned char *)(data + offset), (int)len - offset) && EVP_CipherFinal_ex(ctx, (unsigned char *)(output_str->ptr + out_len + hmac_len + iv_len + 4), &final_len)) {
-            if (encrypt) {
-                // when encrypting, compute signature over data[32:] and set it to data[0:32]
-                HMAC(EVP_sha256(), (const void *)key, (int)key_len, (const unsigned char *)(output_str->ptr + hmac_len), out_len + final_len + iv_len + 4, (unsigned char *)output_str->ptr, &hmac_len);
-                //lua_pushlstring(L, (const char *)output_str->ptr, out_len + final_len + hmac_len + iv_len + 4);
-                output_str->length = out_len + final_len + hmac_len + iv_len + 4;
-            } else {
-                // when decrypting, let length be int(data[32:36]) and return data[52:52+length]
-                out_len = *(int *)(data + 32);
-                memmove(output_str->ptr, output_str->ptr + hmac_len + iv_len + 4, out_len);
-                output_str->length = out_len;
-            }
-        } else {
-            if(output_error_message)
-                *output_error_message = "failed to cipher";
-            ret_len = -1;
-        }
-    } else {
+    ctx = EVP_CIPHER_CTX_new();
+    if (ctx == NULL) {
+        if(output_error_message)
+            *output_error_message = "failed to create cipher context";
+        goto cleanup;
+    }
+    if (!EVP_CipherInit(ctx, EVP_aes_128_cbc(), aes_key, iv, encrypt)) {
         if(output_error_message)
             *output_error_message = "failed to initialize cipher";
-        ret_len = -1;
+        goto cleanup;
     }
-    // release all the resources we've allocated
-    EVP_CIPHER_CTX_free(ctx);
+    if (!EVP_CIPHER_CTX_set_padding(ctx, 16)) {
+        if(output_error_message)
+            *output_error_message = "failed to configure cipher padding";
+        goto cleanup;
+    }
 
-    return ret_len;
+    offset = 32 + 4 + iv_len;
+    if (encrypt) {
+        crypto_cipher_write_length((unsigned char *)output_str->ptr + 32, plain_len, version);
+        if (iv_len) {
+            memcpy(output_str->ptr + 36, iv, 16);
+        }
+        out_len = (int)padded_len;
+        if (!EVP_CipherUpdate(ctx, (unsigned char *)output_str->ptr + offset, &out_len,
+                              (const unsigned char *)data, (int)plain_len) ||
+            !EVP_CipherFinal_ex(ctx, (unsigned char *)output_str->ptr + offset + out_len, &final_len) ||
+            (size_t)(out_len + final_len) != padded_len) {
+            if(output_error_message)
+                *output_error_message = "failed to cipher";
+            goto cleanup;
+        }
+        if (crypto_cipher_hmac(mac, mac_key_len, (const unsigned char *)output_str->ptr + 32,
+                               4 + iv_len + padded_len, signature) != 0) {
+            if(output_error_message)
+                *output_error_message = "failed to compute hmac";
+            goto cleanup;
+        }
+        memcpy(output_str->ptr, signature, sizeof(signature));
+        output_str->length = 32 + 4 + iv_len + padded_len;
+    } else {
+        if (crypto_cipher_hmac(mac, mac_key_len, (const unsigned char *)(data + 32), len - 32, signature) != 0 ||
+            CRYPTO_memcmp(data, signature, sizeof(signature)) != 0) {
+            if(output_error_message)
+                *output_error_message = "failed to cipher";
+            goto cleanup;
+        }
+        out_len = (int)padded_len;
+        if (!EVP_CipherUpdate(ctx, (unsigned char *)output_str->ptr + offset, &out_len,
+                              (const unsigned char *)(data + offset), (int)(len - offset)) ||
+            !EVP_CipherFinal_ex(ctx, (unsigned char *)output_str->ptr + offset + out_len, &final_len)) {
+            if(output_error_message)
+                *output_error_message = "failed to cipher";
+            goto cleanup;
+        }
+        if ((size_t)(out_len + final_len) != plain_len) {
+            if(output_error_message)
+                *output_error_message = "invalid plaintext length";
+            goto cleanup;
+        }
+        memmove(output_str->ptr, output_str->ptr + offset, plain_len);
+        output_str->length = plain_len;
+    }
+    result = 0;
+
+cleanup:
+    if (ctx) {
+        EVP_CIPHER_CTX_free(ctx);
+    }
+    OPENSSL_cleanse(legacy_key, sizeof(legacy_key));
+    OPENSSL_cleanse(enc_key, sizeof(enc_key));
+    OPENSSL_cleanse(mac_key, sizeof(mac_key));
+    OPENSSL_cleanse(signature, sizeof(signature));
+    OPENSSL_cleanse(iv, sizeof(iv));
+    return result;
 }
 
 int crypto_to64(const char *data, size_t len, dynstr *output_str, const char **output_error_message) {
     size_t target_len;
+    int encoded_len;
 
+    if (len > (size_t)INT_MAX / 4 * 3) {
+        if(output_error_message)
+            *output_error_message = "input is too large";
+        return -1;
+    }
     target_len = 4 + 4 * ((len + 2) / 3);
     if (!dynstr_check(output_str, target_len)) {
         if(output_error_message)
             *output_error_message = "failed to allocate enough memory";
         return -1;
     }
-    target_len = EVP_EncodeBlock((unsigned char *)output_str->ptr, (const unsigned char *)data, (int)len);
-    if (target_len < 0) {
+    encoded_len = EVP_EncodeBlock((unsigned char *)output_str->ptr, (const unsigned char *)data, (int)len);
+    if (encoded_len < 0) {
         if(output_error_message)
             *output_error_message = "failed to encode";
         return -1;
     }
 
-    output_str->length = target_len;
+    output_str->length = (size_t)encoded_len;
     return 0;
 }
 
 int crypto_from64(const char *data, size_t len, dynstr *output_str, const char **output_error_message) {
     EVP_ENCODE_CTX *ctx;
-    int final_len, target_len;
-    final_len = target_len = (int)len;
+    int final_len, target_len, avail;
+
+    if (len > (size_t)INT_MAX - 4) {
+        if(output_error_message)
+            *output_error_message = "input is too large";
+        return -1;
+    }
 
     ctx = EVP_ENCODE_CTX_new();
     if (ctx == NULL) {
@@ -240,7 +410,9 @@ int crypto_from64(const char *data, size_t len, dynstr *output_str, const char *
         return -1;
     }
 
-    if (!dynstr_check(output_str, target_len)) {
+    // base64 output is at most 3/4 of the input length; reserve extra room for
+    // the final block written by EVP_DecodeFinal
+    if (!dynstr_check(output_str, len + 4)) {
         EVP_ENCODE_CTX_free(ctx);
         if(output_error_message)
             *output_error_message = "failed to allocate enough memory";
@@ -248,12 +420,18 @@ int crypto_from64(const char *data, size_t len, dynstr *output_str, const char *
     }
 
     EVP_DecodeInit(ctx);
+    // EVP_DecodeUpdate takes the output capacity in target_len (int) and
+    // replaces it with the number of bytes written
+    target_len = (int)output_str->size;
     if (
            EVP_DecodeUpdate(ctx, (unsigned char *)output_str->ptr, &target_len, (const unsigned char *)data, (int)len) >= 0 
-        && EVP_DecodeFinal(ctx, (unsigned char *)(output_str->ptr + target_len), &final_len)) {
-        output_str->length = target_len + final_len;
-        EVP_ENCODE_CTX_free(ctx);
-        return 0;
+        && (avail = (int)(output_str->size - (size_t)target_len), avail > 0)) {
+        final_len = avail;
+        if (EVP_DecodeFinal(ctx, (unsigned char *)(output_str->ptr + target_len), &final_len)) {
+            output_str->length = (size_t)target_len + (size_t)final_len;
+            EVP_ENCODE_CTX_free(ctx);
+            return 0;
+        }
     }
 
     EVP_ENCODE_CTX_free(ctx);
@@ -262,10 +440,27 @@ int crypto_from64(const char *data, size_t len, dynstr *output_str, const char *
     return -1;
 }
 
+static void crypto_harden_ssl_ctx(SSL_CTX *ctx) {
+    long options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1 |
+                   SSL_OP_NO_TLSv1_1 | SSL_OP_NO_COMPRESSION |
+                   SSL_OP_CIPHER_SERVER_PREFERENCE;
+    #ifdef SSL_OP_NO_RENEGOTIATION
+    options |= SSL_OP_NO_RENEGOTIATION;
+    #endif
+    SSL_CTX_set_options(ctx, options);
+    #if OPENSSL_VERSION_NUMBER >= 0x10100000L
+    SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
+    #endif
+}
+
 int crypto_ssl_new_server(const char *pubkey, const char *privkey, void **output_ctx, const char **output_error_message) {
     int status;
 
+    #if OPENSSL_VERSION_NUMBER >= 0x10100000L
+    SSL_CTX* ctx = SSL_CTX_new(TLS_server_method());
+    #else
     SSL_CTX* ctx = SSL_CTX_new(SSLv23_server_method());
+    #endif
     if(!ctx) {
         if(output_error_message)
             *output_error_message = "failed to allocate ssl ctx";
@@ -293,7 +488,8 @@ int crypto_ssl_new_server(const char *pubkey, const char *privkey, void **output
             *output_error_message = "keys do not match";
         return -1;
     }
-    SSL_CTX_set_options(ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
+    SSL_CTX_set_options(ctx, SSL_OP_ALL);
+    crypto_harden_ssl_ctx(ctx);
     #ifdef USE_KTLS
     if(!SSL_CTX_set_cipher_list(ctx, "ECDHE-ECDSA-AES128-GCM-SHA256") || !SSL_CTX_set_ciphersuites(ctx, "TLS_AES_128_GCM_SHA256")) {
     #else
@@ -353,7 +549,10 @@ int crypto_ssl_new_client(const char *ca_file, const char *ca_path, const char *
     while (pContext = CertEnumCertificatesInStore(hStore, pContext))
     {
         x509 = NULL;
-        x509 = d2i_X509(NULL, (const unsigned char **)&pContext->pbCertEncoded, pContext->cbCertEncoded);
+        // d2i_X509 advances the input cursor; pass a copy of the pointer so the
+        // OS-owned CERT_CONTEXT is not modified.
+        const unsigned char *der = pContext->pbCertEncoded;
+        x509 = d2i_X509(NULL, &der, (long)pContext->cbCertEncoded);
         if (x509)
         {
             int i = X509_STORE_add_cert(store, x509);
@@ -391,7 +590,8 @@ int crypto_ssl_new_client(const char *ca_file, const char *ca_path, const char *
         }
     }
 
-    SSL_CTX_set_options(ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
+    SSL_CTX_set_options(ctx, SSL_OP_ALL);
+    crypto_harden_ssl_ctx(ctx);
     #ifdef USE_KTLS
     if(!SSL_CTX_set_cipher_list(ctx, "ECDHE-ECDSA-AES128-GCM-SHA256") || !SSL_CTX_set_ciphersuites(ctx, "TLS_AES_128_GCM_SHA256")) {
     #else
@@ -432,6 +632,15 @@ int crypto_ssl_bio_new(void *ssl_ctxt, fd_t elfd, fd_t childfd, int do_ktls, voi
     ctx->rdbio = BIO_new(BIO_s_mem());
     ctx->wrbio = BIO_new(BIO_s_mem());
     ctx->ssl = SSL_new(ssl_ctx);
+    if(!ctx->rdbio || !ctx->wrbio || !ctx->ssl) {
+        if(ctx->ssl) SSL_free(ctx->ssl);
+        if(ctx->rdbio) BIO_free(ctx->rdbio);
+        if(ctx->wrbio) BIO_free(ctx->wrbio);
+        free(ctx);
+        if(output_error_message)
+            *output_error_message = "failed to allocate ssl session";
+        return -1;
+    }
     SSL_set_ex_data(ctx->ssl, 0, (void*)ctx);
     SSL_set_accept_state(ctx->ssl);
     SSL_set_bio(ctx->ssl, ctx->rdbio, ctx->wrbio);
@@ -450,22 +659,35 @@ int crypto_ssl_bio_new_connect(void *ssl_ctxt, const char *hostport, fd_t elfd, 
     SSL_CTX* ssl_ctx = (SSL_CTX*)ssl_ctxt;
     #ifdef USE_KTLS
     ctx->ktls_state = do_ktls ? KTLS_INIT : KTLS_NONE;
-    ctx->elfd = void_to_fd(lua_touserdata(L, 2));
-    ctx->fd = void_to_fd(lua_touserdata(L, 3));
+    ctx->elfd = elfd;
+    ctx->fd = childfd;
     #endif
     ctx->rdbio = BIO_new(BIO_s_mem());
     ctx->wrbio = BIO_new(BIO_s_mem());
     ctx->ssl = SSL_new(ssl_ctx);
+    if(!ctx->rdbio || !ctx->wrbio || !ctx->ssl) {
+        if(ctx->ssl) SSL_free(ctx->ssl);
+        if(ctx->rdbio) BIO_free(ctx->rdbio);
+        if(ctx->wrbio) BIO_free(ctx->wrbio);
+        free(ctx);
+        if(output_error_message)
+            *output_error_message = "failed to allocate ssl session";
+        return -1;
+    }
     BIO_set_nbio(ctx->rdbio, 1);
     BIO_set_nbio(ctx->wrbio, 1);
     SSL_set_ex_data(ctx->ssl, 0, (void*)ctx);
     SSL_set_connect_state(ctx->ssl);
     SSL_set_bio(ctx->ssl, ctx->rdbio, ctx->wrbio);
 
+    // Verification is on by default and only relaxed when the caller
+    // explicitly omits the expected host name.
     if(hostport && strlen(hostport) > 0) {
         SSL_set_verify(ctx->ssl, SSL_VERIFY_PEER, NULL);
         SSL_set1_host(ctx->ssl, hostport);
         SSL_set_tlsext_host_name(ctx->ssl, hostport);
+    } else {
+        SSL_set_verify(ctx->ssl, SSL_VERIFY_PEER, NULL);
     }
 
     *output_bio_ctx = (void*)ctx;
@@ -474,8 +696,13 @@ int crypto_ssl_bio_new_connect(void *ssl_ctxt, const char *hostport, fd_t elfd, 
 
 int crypto_ssl_bio_release(void *bio_ctx, int flags) {
     struct ssl_nb_context* ctx = (struct ssl_nb_context*)bio_ctx;
-    if(flags & 1)
-        SSL_free(ctx->ssl);
+    if(!ctx) return 0;
+    if(flags & 1) {
+        if(ctx->ssl) {
+            SSL_free(ctx->ssl);
+            ctx->ssl = NULL;
+        }
+    }
     if(flags & 2)
         free(ctx);
     return 0;
@@ -533,9 +760,7 @@ int crypto_ssl_accept(void *bio_ctx, int *output_ok, const char **output_error_m
         return 0;
     } else {
         if(output_error_message) {
-            while ((err = ERR_get_error()) != 0) {
-                *output_error_message = ERR_error_string(err, NULL);
-            }
+            *output_error_message = ssl_error_string();
         }
         return -1;
     }
@@ -553,9 +778,7 @@ int crypto_ssl_connect(void *bio_ctx, int *output_ok, const char **output_error_
         return 0;
     } else {
         if(output_error_message) {
-            while ((err = ERR_get_error()) != 0) {
-                *output_error_message = ERR_error_string(err, NULL);
-            }
+            *output_error_message = ssl_error_string();
         }
         return -1;
     }
@@ -695,7 +918,12 @@ static void ssl_secret_callback(const SSL* ssl, const char* line) {
 #endif
 
 int crypto_random(char *buf, size_t len) {
-    RAND_bytes((unsigned char *)buf, len);
+    if (len > (size_t)INT_MAX) return -1;
+    if (RAND_bytes((unsigned char *)buf, (int)len) != 1) {
+        // never hand out predictable "random" bytes on RNG failure
+        memset(buf, 0, len);
+        return -1;
+    }
     return 0;
 }
 

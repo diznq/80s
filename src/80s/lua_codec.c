@@ -12,7 +12,8 @@ char url_encode_lut[256];
 static void encode_string(dynstr *out, const char *value, size_t value_len) {
     dynstr_putc(out, '"');
     while (value_len--) {
-        switch (*value) {
+        unsigned char uc = (unsigned char)*value;
+        switch (uc) {
         case '\r':
             dynstr_puts(out, "\\r", 2);
             break;
@@ -29,15 +30,16 @@ static void encode_string(dynstr *out, const char *value, size_t value_len) {
             dynstr_puts(out, "\\\\", 2);
             break;
         case '\0':
-            dynstr_puts(out, "\\0", 2);
+            dynstr_puts(out, "\\u0000", 6);
             break;
         default:
-            if(*value < 32 && *value > 0) {
-                dynstr_puts(out, "\\x", 2);
-                dynstr_putc(out, "0123456789ABCDEF"[(*value >> 4) & 15]);
-                dynstr_putc(out, "0123456789ABCDEF"[(*value) & 15]);
+            if(uc < 32) {
+                // JSON has no \x escape; emit a valid \u00XX sequence instead
+                dynstr_puts(out, "\\u00", 4);
+                dynstr_putc(out, "0123456789abcdef"[(uc >> 4) & 15]);
+                dynstr_putc(out, "0123456789abcdef"[uc & 15]);
             } else {
-                dynstr_putc(out, *value);
+                dynstr_putc(out, (char)uc);
             }
             break;
         }
@@ -46,10 +48,17 @@ static void encode_string(dynstr *out, const char *value, size_t value_len) {
     dynstr_putc(out, '"');
 }
 
-static void json_encode(lua_State *L, dynstr *out) {
+#define JSON_MAX_DEPTH 64
+
+static void json_encode_depth(lua_State *L, dynstr *out, int depth) {
     size_t value_len;
     const char *key = 0, *value;
     int type, x, is_array, is_empty = 1, idx = lua_gettop(L);
+
+    if (depth > JSON_MAX_DEPTH) {
+        dynstr_puts(out, "null", 4);
+        return;
+    }
 
     lua_pushnil(L);
     dynstr_putc(out, '{');
@@ -63,8 +72,21 @@ static void json_encode(lua_State *L, dynstr *out) {
             }
         }
         if (!is_array) {
-            key = lua_tolstring(L, -2, &value_len);
+            int key_type = lua_type(L, -2);
+            if (key_type != LUA_TSTRING && key_type != LUA_TNUMBER) {
+                // unsupported key type: lua_tolstring would return NULL and
+                // lua_next would be confused by an in-place conversion
+                lua_pop(L, 1);
+                continue;
+            }
+            lua_pushvalue(L, -2);
+            key = lua_tolstring(L, -1, &value_len);
+            if (!key) {
+                lua_pop(L, 2);
+                continue;
+            }
             encode_string(out, key, value_len);
+            lua_pop(L, 1);
             dynstr_putc(out, ':');
         }
         if (!out->ok) {
@@ -73,7 +95,7 @@ static void json_encode(lua_State *L, dynstr *out) {
         }
         switch (type) {
         case LUA_TTABLE:
-            json_encode(L, out);
+            json_encode_depth(L, out, depth + 1);
             break;
         case LUA_TNUMBER:
             dynstr_putg(out, lua_tonumber(L, -1));
@@ -87,6 +109,11 @@ static void json_encode(lua_State *L, dynstr *out) {
             dynstr_puts(out, x ? "true" : "false", x ? 4 : 5);
             break;
         case LUA_TNIL:
+            dynstr_puts(out, "null", 4);
+            break;
+        default:
+            // functions, userdata, threads and light userdata are not
+            // representable in JSON
             dynstr_puts(out, "null", 4);
             break;
         }
@@ -108,10 +135,19 @@ static void json_encode(lua_State *L, dynstr *out) {
     }
 }
 
-static void lua_encode(lua_State *L, dynstr *out) {
+static void json_encode(lua_State *L, dynstr *out) {
+    json_encode_depth(L, out, 0);
+}
+
+static void lua_encode_depth(lua_State *L, dynstr *out, int depth) {
     size_t value_len;
     const char *key, *value;
     int type, x, is_array, is_empty = 1, idx = lua_gettop(L);
+
+    if (depth > JSON_MAX_DEPTH) {
+        dynstr_puts(out, "nil", 3);
+        return;
+    }
 
     lua_pushnil(L);
     dynstr_putc(out, '{');
@@ -122,10 +158,21 @@ static void lua_encode(lua_State *L, dynstr *out) {
             is_array = lua_type(L, -2) == LUA_TNUMBER;
         }
         if (!is_array) {
-            key = lua_tolstring(L, -2, &value_len);
+            int key_type = lua_type(L, -2);
+            if (key_type != LUA_TSTRING && key_type != LUA_TNUMBER) {
+                lua_pop(L, 1);
+                continue;
+            }
+            lua_pushvalue(L, -2);
+            key = lua_tolstring(L, -1, &value_len);
+            if (!key) {
+                lua_pop(L, 2);
+                continue;
+            }
             dynstr_putc(out, '[');
             encode_string(out, key, value_len);
             dynstr_puts(out, "]=", 2);
+            lua_pop(L, 1);
         }
         if (!out->ok) {
             lua_pop(L, 1);
@@ -133,7 +180,7 @@ static void lua_encode(lua_State *L, dynstr *out) {
         }
         switch (type) {
         case LUA_TTABLE:
-            lua_encode(L, out);
+            lua_encode_depth(L, out, depth + 1);
             break;
         case LUA_TNUMBER:
             dynstr_putg(out, lua_tonumber(L, -1));
@@ -166,6 +213,10 @@ static void lua_encode(lua_State *L, dynstr *out) {
     } else {
         dynstr_putc(out, '}');
     }
+}
+
+static void lua_encode(lua_State *L, dynstr *out) {
+    lua_encode_depth(L, out, 0);
 }
 
 static void json_decode(lua_State *L, const char *text, size_t len) {
@@ -594,13 +645,15 @@ static int l_codec_hex_encode(lua_State *L) {
     char *ptr;
     const char *data = lua_tolstring(L, 1, &len);
     dynstr_init(&str, buffer, sizeof(buffer));
-    if (dynstr_check(&str, len * 2)) {
-        ptr = str.ptr;
-        for (i = 0; i < len; i++) {
-            c = data[i] & 255;
-            ptr[j++] = chars[(c >> 4) & 15];
-            ptr[j++] = chars[c & 15];
-        }
+    if (len > (SIZE_MAX - 1) / 2 || !dynstr_check(&str, len * 2)) {
+        dynstr_release(&str);
+        return luaL_error(L, "failed to allocate output buffer");
+    }
+    ptr = str.ptr;
+    for (i = 0; i < len; i++) {
+        c = data[i] & 255;
+        ptr[j++] = chars[(c >> 4) & 15];
+        ptr[j++] = chars[c & 15];
     }
     lua_pushlstring(L, str.ptr, j);
     dynstr_release(&str);
@@ -613,23 +666,25 @@ static int l_codec_url_encode(lua_State *L) {
     }
     size_t len, i, j = 0;
     dynstr str;
-    char buffer[2048], c;
+    char buffer[2048];
+    unsigned char c;
     char chars[] = "0123456789ABCDEF";
-    char buf[3] = {'%', 0, 0};
     const char *data = lua_tolstring(L, 1, &len);
     char *ptr = NULL;
     dynstr_init(&str, buffer, sizeof(buffer));
-    if (dynstr_check(&str, len * 3)) {
-        ptr = str.ptr;
-        for (i = 0; i < len; i++) {
-            c = data[i] & 255;
-            if (url_encode_lut[c]) {
-                ptr[j++] = c;
-            } else {
-                ptr[j++] = '%';
-                ptr[j++] = chars[(c >> 4) & 15];
-                ptr[j++] = chars[c & 15];
-            }
+    if (len > (SIZE_MAX - 1) / 3 || !dynstr_check(&str, len * 3)) {
+        dynstr_release(&str);
+        return luaL_error(L, "failed to allocate output buffer");
+    }
+    ptr = str.ptr;
+    for (i = 0; i < len; i++) {
+        c = (unsigned char)data[i];
+        if (url_encode_lut[c]) {
+            ptr[j++] = (char)c;
+        } else {
+            ptr[j++] = '%';
+            ptr[j++] = chars[(c >> 4) & 15];
+            ptr[j++] = chars[c & 15];
         }
     }
     lua_pushlstring(L, ptr, j);
@@ -656,7 +711,7 @@ static int l_codec_url_decode(lua_State *L) {
         ptr = str.ptr;
         for (i = 0; i < len; i++) {
             c = data[i] & 255;
-            if (i <= len - 3) {
+            if (i + 2 < len) {
                 switch (c) {
                 case '+':
                     ptr[j++] = ' ';
@@ -703,10 +758,15 @@ static int l_codec_mysql_encode(lua_State *L) {
                 dynstr_puts(&str, "\\n", 2);
                 break;
             case '"':
+                // backslash escaping matches the standard MySQL escaping rules;
+                // single-quoted literals (the convention used by this project)
+                // are protected by quote doubling below, which is mode-independent
                 dynstr_puts(&str, "\\\"", 2);
                 break;
             case '\'':
-                dynstr_puts(&str, "\\'", 2);
+                // doubling the quote is SQL-standard and, unlike \', it cannot
+                // be bypassed by NO_BACKSLASH_ESCAPES
+                dynstr_puts(&str, "''", 2);
                 break;
             case '\b':
                 dynstr_puts(&str, "\\b", 2);
@@ -717,8 +777,8 @@ static int l_codec_mysql_encode(lua_State *L) {
             case '\0':
                 dynstr_puts(&str, "\\0", 2);
                 break;
-            case '\1':
-                dynstr_puts(&str, "\\1", 2);
+            case 26:
+                dynstr_puts(&str, "\\Z", 2);
                 break;
             default:
                 dynstr_putc(&str, c);

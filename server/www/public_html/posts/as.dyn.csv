@@ -1,12 +1,21 @@
 <?lua
+    -- CSV fields are attacker-controlled, so quote them and neutralise
+    -- spreadsheet formula prefixes (=, +, -, @, tab, CR)
+    local function csv_field(value)
+        value = tostring(value or "")
+        if value:match("^[=+%-@\t\r]") then
+            value = "'" .. value
+        end
+        return '"' .. value:gsub('"', '""') .. '"'
+    end
     write("id,author,text\n")
     local posts, err = await(SQL:select("SELECT * FROM posts ORDER BY id DESC"))
     if not posts then
-        write("Failed to load posts: " .. err)
+        write("Failed to load posts: " .. tostring(err) .. "\n")
         return done()
     end
     for i, post in ipairs(posts) do
-        write(string.format([[%s,%s,%s]] .. "\n", post.id, post.author, post.text))
+        write(csv_field(post.id) .. "," .. csv_field(post.author) .. "," .. csv_field(post.text) .. "\n")
     end
     done()
 ?>

@@ -262,18 +262,23 @@ The file rendering follows these rules:
 - If file starts with `put.`, it is assigned to `PUT` handler
 - If file starts with `delete.`, it is assigned to `DELETE` handler
 - If directory name begins with `i.`, it is ignored
+- Dotfiles, `*.bak` files and editor leftovers (`~`, `#`) inside `public_html` are not published
 
 Live reloading can be enabled by setting `RELOAD=true` environmet variable. For now that works only on systems that support inotify API.
 
 To change default public_html folder, set `PUBLIC_HTML` envirnoment variable, i.e. `PUBLIC_HTML=server/www/` will use `server/www/main.lua` + `server/www/public_html/*`.
 
-To set master key for URLs encryption, set `MASTER_KEY` environment variable, after that all URLs generated with `to_url` will be encrypted and all query parameters passed in `e` will be decrypted automatically.
+To set master key for URLs encryption, set `MASTER_KEY` environment variable, after that all URLs generated with `to_url` will be encrypted and all query parameters passed in `e` will be decrypted automatically. Encrypted URLs use a fresh random IV by default; pass `{iv=false}` to `to_url` only when deterministic URLs are explicitly required (the trade-off is that equal parameter sets then produce equal ciphertexts).
+
+Request header and body sizes are limited by default (64 KiB and 16 MiB). Override with `HTTP_MAX_HEADER_SIZE` and `HTTP_MAX_BODY_SIZE` environment variables.
 
 
 ### Templating syntax
 To insert dynamic content to the file, wrap Lua code between either `<?lu ... ?>` for synchronous code or `<?lua ... ?>` asynchronous code. 
 
-To include another file into the current file, use `<?include ... ?>` with path relative to current file, i.e. `<?include ../header.priv.html ?>`. Maximum inclusion depth is up to 64 files.
+To include another file into the current file, use `<?include ... ?>` with path relative to current file, i.e. `<?include ../header.priv.html ?>`. Maximum inclusion depth is up to 32 files, total expansion is capped at 4 MiB, and when the template engine is used through `httpd` includes may not escape the configured template root.
+
+Template files are trusted code: they are compiled and executed with full access to the Lua environment. Do not let untrusted users create or modify files under `public_html`.
 
 All asynchronous dynamic code blocks are executed in **sequential order** and in `aio:async` context, so `aio:await` is available for use. In case that file begins with `#! parallel` (either before or after resolving all includes), execution becomes parallel and there is no guaranteed order of execution of each block.
 
@@ -317,11 +322,11 @@ During code execution, several variables are set within context:
 - `status(http_status)`: write HTTP status
 - `await(promise)`: awaits a promise and returns its result
 - `header(header_name, header_value)`: write HTTP header
-- `write(text, ...)`: writer content, if ... is present, it is equal to `string.format(text, escape(x) for x in ...)`, otherwise just text
+- `write(text, ...)`: write content; if `...` is present it is equal to `string.format(text, escape(x) for x in ...)`, otherwise the text is written verbatim. Always use the format form (`write("%s", value)`) for untrusted values; a single-argument `write(value)` does **not** escape.
 - `escape(text)`: HTML escape the text
 - `post_render(handler)`: add callback `fun(rendered_page: string): string new_page` that will be called after page is rendered and can alter the page content
 - `done()`: done signalizer
-- `to_url(endpoint, params)`: create URL, i.e. `to_url("/profile", {id=user.id})`, if aio master key is set, query parameters will be encrypted into `?e` by using `master_key .. endpoint` as a key. If `params.e` is set to false, no encryption is performed and if `params.iv` exists, IV will be available in encrypted URL based on it's value, by default it won't
+- `to_url(endpoint, params)`: create URL, i.e. `to_url("/profile", {id=user.id})`, if aio master key is set, query parameters will be encrypted into `?e` using `master_key .. endpoint` as key material. If `params.e` is set to false, no encryption is performed. A random IV is used by default; pass `params.iv = false` for deterministic output, or `params.iv = true` explicitly (kept for compatibility).
 
 You can see examples in `server/public_html/` directory.
 
@@ -382,6 +387,36 @@ repo.count:byId(id: int): int?, error?
 repo.count:by(): int?, error?
 ```
 
-Optionally `{orderBy: string, limit: string}` can be passed to all select methods, i.e. `repo.all:by({orderBy = "author", limit = 2})`. **Keep in mind that `orderBy` and `limit` aren't escaped in any way**.
+Optionally `{orderBy: string, limit: string|number}` can be passed to all select methods, i.e. `repo.all:by({orderBy = "author", limit = 2})`. `orderBy` must be a comma-separated list of column names with optional `ASC`/`DESC`, and `limit` must be a non-negative integer; anything else is rejected with an error instead of being interpolated into SQL.
 
 Method names always use keys specified in `entity` object using during creation and not `.field` that maps to raw database. Same goes for `repo:save(object)`. All generated queries use `AND` to filter for the result, i.e. `findByIpAndPort` would be `WHERE ip = ? AND port = ?`.
+
+## Security notes
+
+The following hardening measures are applied by default:
+
+- Request framing is strict: `Transfer-Encoding` is rejected, duplicate/ambiguous `Content-Length` is rejected, and malformed lengths return `400`. This prevents request smuggling when the server sits behind a proxy.
+- HTTP request header/body sizes and per-connection read/write buffers are bounded (see `HTTP_MAX_HEADER_SIZE` / `HTTP_MAX_BODY_SIZE`); SMTP and the HTTP client have equivalent caps.
+- `aio:get_ip()` trusts `X-Real-IP` (and any header configured with `aio:set_ip_header(...)`) as the client address. This assumes the server sits behind a trusted proxy that overwrites that header; do not expose the origin directly, or clients can spoof their address.
+- HTTP response status lines and header names/values are sanitized against CR/LF injection; template includes cannot escape the template root; template compiler errors are not reflected to clients.
+- MySQL string escaping is independent of `NO_BACKSLASH_ESCAPES` for quote break-out (single quotes are doubled); untrusted values should still be passed as `:exec`/`:select` arguments rather than concatenated into SQL.
+- HTTP clients validate request methods, URLs and header names and verify TLS certificates; SMTP STARTTLS verifies the server certificate and refuses to fall back to plaintext when TLS was requested.
+- `server/simple_http.lua` requires `RELOAD_TOKEN` for `POST /reload`, restricts `/visit` to absolute `http(s)` URLs with bounded output, and sanitizes chat input.
+- `crypto.cipher` payloads are versioned. New encryptions use version 1 with HKDF-SHA256-derived, domain-separated AES and HMAC keys; legacy version 0 payloads (XOR-folded key) are still decrypted for compatibility.
+
+### Cipher payload format
+
+`crypto.cipher` produces `hmac[32] || length[4] || [iv[16]] || ciphertext`, where the length is a 32-bit little-endian integer. The most significant byte of that integer is the format version and the low 24 bits are the plaintext length, so plaintexts are limited to `2^24 - 1` bytes:
+
+- version `0`: legacy key derivation (fold the supplied key to 128 bits with XOR, use it for both AES-CBC and HMAC-SHA256);
+- version `1`: HKDF-SHA256 key derivation with separate encryption and MAC keys, used for all new ciphertexts.
+
+The version byte is covered by the HMAC, so modifying it makes authentication fail. Decryption selects the derivation from the payload itself; existing version 0 data keeps working without re-encryption. New version 1 ciphertexts are not readable by binaries that predate this format (they use a different key derivation), so upgrade all nodes before issuing them.
+
+Residual risks that require deployment-specific decisions:
+
+- **Legacy ciphertexts (version 0)**: compatibility requires retaining the old XOR-folded 128-bit derivation for decryption, so old messages retain the old key strength and the single-key AES/HMAC construction. Re-encrypt or reissue them to migrate to version 1, and rotate `MASTER_KEY` if it may have been weak or exposed.
+- **MySQL transport** is plaintext (no TLS support in the bundled client); do not connect over untrusted networks.
+- **Templates are trusted code** and execute with full Lua privileges; they must not be writable by untrusted users.
+- The `server/simple_http.lua` endpoints `/visit` (fetches a caller-supplied URL) and `/cipher` (encrypts with a caller-supplied key) are demonstrations and should be removed or access-controlled in production; `/visit` remains SSRF-capable by design.
+- **`MASTER_KEY`/`RELOAD_TOKEN`/database credentials** must be provisioned via the environment; the literals in the example files are illustrative only.

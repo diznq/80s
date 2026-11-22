@@ -2,6 +2,7 @@
 #ifdef USE_IOCP
 #include <stdio.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -139,7 +140,7 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
     }
     
     // create a non-blocking socket
-    childfd = (fd_t)WSASocket(AF_INET, sock_type, ip_proto, NULL, 0, WSA_FLAG_OVERLAPPED);
+    childfd = (fd_t)WSASocket(protocol, sock_type, ip_proto, NULL, 0, WSA_FLAG_OVERLAPPED);
     if(childfd == (fd_t)INVALID_SOCKET) {
         return (fd_t)-1;
     }
@@ -154,18 +155,21 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
     
     if(lpConnectEx == NULL) {
         dbgf(LOG_ERROR, "l_net_connect: couldn't retrieve ConnectEx");
+        closesocket((sock_t)childfd);
         return (fd_t)-1;
     }
 
     // connectex requires the socket to be bound before it's being used
     if(bind((sock_t)childfd, (struct sockaddr*)final, final_len) < 0) {
         dbgf(LOG_ERROR, "l_net_connect: bind failed");
+        closesocket((sock_t)childfd);
         return (fd_t)-1;
     }
     
     // assign to the very same event loop as of caller
     if(CreateIoCompletionPort(childfd, elfd, (ULONG_PTR)S80_FD_SOCKET, 0) == NULL) {
         dbgf(LOG_ERROR, "l_net_connect: couldn't associate with iocp");
+        closesocket((sock_t)childfd);
         return (fd_t)-1;
     }
 
@@ -199,6 +203,20 @@ fd_t s80_connect(void *ctx, fd_t elfd, const char *addr, int portno, int is_udp)
 
 int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, size_t offset, size_t len) {
     int status;
+    size_t remaining;
+
+    if (offset > len) {
+        errno = EINVAL;
+        return -1;
+    }
+    remaining = len - offset;
+    if (remaining == 0) {
+        return 0;
+    }
+    if (remaining > (size_t)INT_MAX) {
+        errno = EMSGSIZE;
+        return -1;
+    }
 
     context_holder *cx = (context_holder*)childfd;
     // if there was some previous buffer, free it, although this shouldn't happen
@@ -210,9 +228,13 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
     // create a new throw-away buffer and fill it with contents to be sent
     // we gotta do it this way, as directly sending data buffer
     // doesn't guarantee it wouldn't get GC-ed in meantime
-    cx->send->wsaBuf.buf = (char*)calloc(len - offset, 1);
-    cx->send->wsaBuf.len = len - offset;
-    memcpy(cx->send->wsaBuf.buf, data + offset, len - offset);
+    cx->send->wsaBuf.buf = (char*)calloc(remaining, 1);
+    if(!cx->send->wsaBuf.buf) {
+        errno = ENOMEM;
+        return -1;
+    }
+    cx->send->wsaBuf.len = (ULONG)remaining;
+    memcpy(cx->send->wsaBuf.buf, data + offset, remaining);
     // wsa send the stuff, if it's too large it later produces cx->send->ol event
     if(cx->fdtype == S80_FD_PIPE) {
         status = WriteFile(cx->fd, cx->send->wsaBuf.buf, cx->send->wsaBuf.len, NULL, &cx->send->ol) == FALSE ? FALSE : TRUE;
@@ -231,7 +253,7 @@ int s80_write(void *ctx, fd_t elfd, fd_t childfd, int fdtype, const char *data, 
         free(cx->send->wsaBuf.buf);
         cx->send->wsaBuf.buf = NULL;
         cx->send->wsaBuf.len = 0;
-        return len - offset;
+        return (int)remaining;
     }
 }
 
@@ -297,6 +319,35 @@ int s80_peername(fd_t fd, char *buf, size_t bufsize, int *port) {
     }
 }
 
+// Quote a single argument following the MS C runtime rules used by
+// CreateProcessA/CommandLineToArgvW so an argument containing spaces or quotes
+// cannot inject additional arguments.
+static int append_win_arg(dynstr *ds, const char *arg) {
+    const char *p;
+    if(!dynstr_putc(ds, '"')) return 0;
+    for(p = arg; ; p++) {
+        size_t backslashes = 0, k;
+        while(*p == '\\') {
+            backslashes++;
+            p++;
+        }
+        if(*p == '"') {
+            if(!dynstr_putc(ds, '\\')) return 0;
+            for(k = 0; k < 2 * backslashes; k++) {
+                if(!dynstr_putc(ds, '\\')) return 0;
+            }
+            if(!dynstr_putc(ds, '"')) return 0;
+        } else {
+            for(k = 0; k < backslashes; k++) {
+                if(!dynstr_putc(ds, '\\')) return 0;
+            }
+            if(!*p) break;
+            if(!dynstr_putc(ds, *p)) return 0;
+        }
+    }
+    return dynstr_putc(ds, '"');
+}
+
 int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args) {
     static int pipe_counter = 0;
     SECURITY_ATTRIBUTES saAttr;
@@ -318,10 +369,9 @@ int s80_popen(fd_t elfd, fd_t* pipes_out, const char *command, char *const *args
     dynstr_init(&ds, buf, sizeof(buf));
 
     //TODO: this is not really well implemented, escaping should be done!
-    while(args[0] != NULL) {
-        dynstr_putsz(&ds, *args);
-        dynstr_putc(&ds, ' ');
-        args++;
+    for(i = 0; args && args[i] != NULL; i++) {
+        if(i > 0 && !dynstr_putc(&ds, ' ')) break;
+        if(!append_win_arg(&ds, args[i])) break;
     }
     dynstr_putc(&ds, '\0');
 
