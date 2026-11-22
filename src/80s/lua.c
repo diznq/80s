@@ -46,7 +46,9 @@ void on_message(struct message_params_ params) {
     lua_pushinteger(L, params.mail->type);
     lua_pushlstring(L, (const char*)params.mail->message, params.mail->size);
     if (lua_pcall(L, 7, 0, 0) != 0) {
-        printf("on_message: error running on_data: %s\n", lua_tostring(L, -1));
+        const char *err = lua_tostring(L, -1);
+        printf("on_message: error running on_data: %s\n", err ? err : "(non-string error)");
+        lua_pop(L, 1);
     }
 }
 
@@ -59,7 +61,9 @@ void on_receive(struct read_params_ params) {
     lua_pushlstring(L, params.buf, params.readlen);
     lua_pushinteger(L, params.readlen);
     if (lua_pcall(L, 5, 0, 0) != 0) {
-        printf("on_receive: error running on_data: %s\n", lua_tostring(L, -1));
+        const char *err = lua_tostring(L, -1);
+        printf("on_receive: error running on_data: %s\n", err ? err : "(non-string error)");
+        lua_pop(L, 1);
     }
 }
 
@@ -69,7 +73,9 @@ void on_close(struct close_params_ params) {
     lua_pushlightuserdata(L, fd_to_void(params.elfd));
     lua_pushlightuserdata(L, fd_to_void(params.childfd));
     if (lua_pcall(L, 2, 0, 0) != 0) {
-        printf("on_close: error running on_data: %s\n", lua_tostring(L, -1));
+        const char *err = lua_tostring(L, -1);
+        printf("on_close: error running on_data: %s\n", err ? err : "(non-string error)");
+        lua_pop(L, 1);
     }
 }
 
@@ -80,7 +86,9 @@ void on_write(struct write_params_ params) {
     lua_pushlightuserdata(L, fd_to_void(params.childfd));
     lua_pushinteger(L, params.written);
     if (lua_pcall(L, 3, 0, 0) != 0) {
-        printf("on_write: error running on_write: %s\n", lua_tostring(L, -1));
+        const char *err = lua_tostring(L, -1);
+        printf("on_write: error running on_write: %s\n", err ? err : "(non-string error)");
+        lua_pop(L, 1);
     }
 }
 
@@ -92,7 +100,9 @@ void on_accept(struct accept_params_ params) {
     lua_pushlightuserdata(L, fd_to_void(params.childfd));
     lua_pushlightuserdata(L, int_to_void(params.fdtype));
     if (lua_pcall(L, 4, 0, 0) != 0) {
-        printf("on_accept: error running on_accept: %s\n", lua_tostring(L, -1));
+        const char *err = lua_tostring(L, -1);
+        printf("on_accept: error running on_accept: %s\n", err ? err : "(non-string error)");
+        lua_pop(L, 1);
     }
 }
 
@@ -102,7 +112,9 @@ void on_init(struct init_params_ params) {
     lua_pushlightuserdata(L, fd_to_void(params.elfd));
     lua_pushlightuserdata(L, fd_to_void(params.parentfd));
     if (lua_pcall(L, 2, 0, 0) != 0) {
-        printf("on_init: error running on_data: %s\n", lua_tostring(L, -1));
+        const char *err = lua_tostring(L, -1);
+        printf("on_init: error running on_data: %s\n", err ? err : "(non-string error)");
+        lua_pop(L, 1);
     }
 }
 
@@ -228,7 +240,7 @@ static void set_package_path(lua_State *L) {
     lua_getfield( L, -1, "path" ); 
     current_path = lua_tostring( L, -1 );
 
-    dynstr_putsz(&str, current_path);
+    dynstr_putsz(&str, current_path ? current_path : "");
     dynstr_putc(&str, ';');
 
 #if defined(__FreeBSD__) || defined(__APPLE__)
@@ -238,12 +250,12 @@ static void set_package_path(lua_State *L) {
 #elif defined(_WIN32)
     GetModuleFileNameA(NULL, exe_path, sizeof(exe_path) - 1);
 #endif
-    len = strlen(exe_path) - 1;
+    len = strlen(exe_path);
     for(; len > 0; len--) {
-        if(exe_path[len] == '/' || exe_path[len] == '\\') {
+        if(exe_path[len - 1] == '/' || exe_path[len - 1] == '\\') {
             parents++;
             if(parents == 2) {
-                exe_path[len + 1] = 0;
+                exe_path[len] = 0;
                 break;
             }
         }

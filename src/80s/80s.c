@@ -55,6 +55,9 @@ static int get_arg(const char *arg, int default_value, int flag, int argc, const
             if (flag) {
                 return 1;
             }
+            if (i + 1 >= argc) {
+                return default_value;
+            }
             int count = atoi(argv[i + 1]);
             if(count == 0 && strcmp(argv[i + 1], "0")) return default_value;
             return count;
@@ -213,9 +216,18 @@ int main(int argc, const char **argv) {
 
     size_t client_len = 0;
 
+    if (workers < 1 || workers > 4096) {
+        fprintf(stderr, "invalid concurrency (-c): must be between 1 and 4096\n");
+        return 1;
+    }
+
     char resolved[200], *p, *q;
     int optval, i,
         portno = get_arg("-p", 8080, 0, argc, argv);
+    if (portno < 0 || portno > 65535) {
+        fprintf(stderr, "invalid port (-p): must be between 0 and 65535\n");
+        return 1;
+    }
     fd_t parentfd;
     union addr_common serveraddr;
     module_extension *module = NULL, 
@@ -360,9 +372,15 @@ int main(int argc, const char **argv) {
             #ifdef UNIX_BASED
             serveraddr.ux.sun_family = protocol;
             addr += 5;
-            strncpy(serveraddr.ux.sun_path, addr, sizeof(serveraddr.ux.sun_path));
-            strncpy(resolved, addr, sizeof(resolved));
-            client_len = sizeof(serveraddr.ux);
+            {
+                size_t sock_path_len = strlen(addr);
+                if (sock_path_len >= sizeof(serveraddr.ux.sun_path)) {
+                    error("main: unix socket path is too long");
+                }
+                memcpy(serveraddr.ux.sun_path, addr, sock_path_len + 1);
+                snprintf(resolved, sizeof(resolved), "%s", addr);
+                client_len = offsetof(struct sockaddr_un, sun_path) + sock_path_len + 1;
+            }
             #else
             error("main: UDS not supported on Windows");
             exit(1);
@@ -380,7 +398,9 @@ int main(int argc, const char **argv) {
         } else {
             protocol = AF_INET;
             serveraddr.v4.sin_family = protocol;
-            serveraddr.v4.sin_addr.s_addr = inet_addr(addr);
+            if (inet_pton(AF_INET, addr, &serveraddr.v4.sin_addr) <= 0) {
+                error("failed to resolve bind IP address");
+            }
             serveraddr.v4.sin_port = htons((unsigned short)portno);
             inet_ntop(AF_INET, &serveraddr.v4.sin_addr, resolved, sizeof(resolved));
             client_len = sizeof(serveraddr.v4);

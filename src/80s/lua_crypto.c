@@ -4,6 +4,7 @@
 #include "crypto.h"
 
 #include <string.h>
+#include <limits.h>
 #include <lauxlib.h>
 
 static int l_crypto_sha1(lua_State *L) {
@@ -39,7 +40,9 @@ static int l_crypto_hmac_sha256(lua_State* L) {
     const char *data = lua_tolstring(L, 1, &len);
     const char *key = lua_tolstring(L, 2, &key_len);
     char signature[32];
-    crypto_hmac_sha256(data, len, key, key_len, (unsigned char*)signature, sizeof(signature));
+    if (crypto_hmac_sha256(data, len, key, key_len, (unsigned char*)signature, sizeof(signature)) != 0) {
+        return luaL_error(L, "hmac_sha256 failed");
+    }
     lua_pushlstring(L, signature, 32);
     return 1;  
 }
@@ -339,7 +342,7 @@ static int l_crypto_ssl_requests_io(lua_State *L) {
     void *bio_ctx = lua_touserdata(L, 1);
     int n = lua_tointeger(L, 2);
     int ok = crypto_ssl_requests_io(bio_ctx, n);
-    if(n < 0) {
+    if(ok < 0) {
         lua_pushnil(L);
         return 1;
     }
@@ -351,10 +354,17 @@ static int l_crypto_random(lua_State *L) {
     if(lua_gettop(L) != 1 || lua_type(L, 1) != LUA_TNUMBER) {
         return luaL_error(L, "expecting 1 argument: length (integer)");
     }
-    const size_t len = ((size_t)lua_tointeger(L, 1));
-    char *buf = calloc(len, sizeof(char));
-    if(!buf) return 0;
-    crypto_random(buf, len);
+    lua_Integer requested = lua_tointeger(L, 1);
+    if (requested < 0 || requested > (lua_Integer)INT_MAX) {
+        return luaL_error(L, "invalid random length");
+    }
+    const size_t len = (size_t)requested;
+    char *buf = (char*)malloc(len > 0 ? len : 1);
+    if(!buf) return luaL_error(L, "out of memory");
+    if (crypto_random(buf, len) != 0) {
+        free(buf);
+        return luaL_error(L, "failed to generate random data");
+    }
     lua_pushlstring(L, buf, len);
     free(buf);
     return 1;

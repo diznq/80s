@@ -248,6 +248,13 @@ function aiosocket:__gc()
     end
 end
 
+--- Remove CR/LF/NUL so user data cannot split the HTTP response
+---@param value any
+---@return string
+local function header_safe(value)
+    return (tostring(value):gsub("[\r\n%z]", " "))
+end
+
 --- Write HTTP respose
 ---@param status string status code
 ---@param headers {[string]: any}|string headers or content-type
@@ -258,14 +265,26 @@ function aiosocket:http_response(status, headers, response)
     local str_headers = ""
     if type(response) == "table" then
         response = codec.json_encode(response)
+    elseif response == nil then
+        response = ""
+    else
+        response = tostring(response)
     end
     if type(headers) == "string" then
-        str_headers = "content-type: " .. headers .. "\r\n"
-    else
+        str_headers = "content-type: " .. header_safe(headers) .. "\r\n"
+    elseif type(headers) == "table" then
         for k, v in pairs(headers) do
-            str_headers = str_headers .. k .. ": " .. v .. "\r\n"
+            local name = tostring(k):lower()
+            -- framing headers are generated below and must not be overridden
+            if name:match("^[%w%-_]+$")
+                and name ~= "content-length"
+                and name ~= "connection"
+                and name ~= "transfer-encoding" then
+                str_headers = str_headers .. name .. ": " .. header_safe(v) .. "\r\n"
+            end
         end
     end
+    status = header_safe(status)
     return self:write(
         "HTTP/1.1 " .. status .. 
         "\r\nconnection: " .. (self.cw and "close" or "keep-alive") .. 
@@ -420,8 +439,8 @@ if not aio then
         },
         --- @type dnsprovider
         dns = simple_dns,
-        http_max_header = nil,
-        http_max_body = nil,
+        http_max_header = 65536,
+        http_max_body = 16777216,
         http_stream = {
             --- @type {[string]: aiohttphandler}
             GET={},
@@ -563,6 +582,9 @@ function aio:handle_as_http(fd)
     self:buffered_cor(fd, function (resolve)
         while true do
             local header, err = coroutine.yield("\r\n\r\n", self.http_max_header)
+            if header and self.http_max_header and #header > self.http_max_header then
+                header, err = nil, "overflow"
+            end
             if not header then
                 if "overflow" == err then
                     fd.cw = true
@@ -576,7 +598,27 @@ function aio:handle_as_http(fd)
             -- resolve method, script and query pre-maturely so
             -- we can do checks for stream handlers
             local method, url, headers = aio:parse_http(header)
-            local length = headers["content-length"]
+            if headers["\0framing"] then
+                headers["\0framing"] = nil
+                fd.cw = true
+                fd:http_response("400 Bad Request", "text/plain", "ambiguous message framing")
+                break
+            end
+            -- Reject framing this server does not implement. Accepting
+            -- Transfer-Encoding or a malformed Content-Length while a front-end
+            -- proxy interprets it differently enables request smuggling.
+            if headers["transfer-encoding"] ~= nil then
+                fd.cw = true
+                fd:http_response("400 Bad Request", "text/plain", "transfer-encoding is not supported")
+                break
+            end
+            local content_length = headers["content-length"]
+            if content_length ~= nil and not content_length:match("^%d+$") then
+                fd.cw = true
+                fd:http_response("400 Bad Request", "text/plain", "invalid content-length")
+                break
+            end
+            local length = content_length
             local pivot = url:find("?", 0, true)
             local script = url:sub(0, pivot and pivot - 1 or nil)
             local query = pivot and url:sub(pivot + 1) or ""
@@ -600,14 +642,16 @@ function aio:handle_as_http(fd)
             else
                 -- if it's not a stream, handle it as usual
                 if length and length ~= "0" then
-                    body, err = coroutine.yield(tonumber(length), self.http_max_body)
+                    local body_length = tonumber(length)
+                    local max_body = self.http_max_body or 16777216
+                    if not body_length or body_length > max_body then
+                        fd.cw = true
+                        fd:http_response("413 Content Too Large", "text/plain", string.format("request body is above the limit of %d bytes", max_body))
+                        break
+                    end
+                    body, err = coroutine.yield(body_length)
                     if not body then
-                        if "overflow" == err then
-                            fd.cw = true
-                            fd:http_response("413 Content Too Large", "text/plain", string.format("request body is above the limit of %d bytes", self.http_max_body or 0))
-                        else
-                            fd:close()
-                        end
+                        fd:close()
                         break
                     end
                 end
@@ -650,7 +694,8 @@ function aio:wrap_tls(fd, ssl, client, skip_tls_verify)
             fd.bio = bio
             fd.tls = false
         else
-            initialized = false
+            resolve(make_error("failed to allocate tls session"))
+            return resolver
         end
     end
 
@@ -808,15 +853,17 @@ end
 function aio:get_ip(sock, headers)
     local fd = sock.fd
     local ip, port = net.sockname(fd)
-    if headers ~= nil then
-        if self.ip_header ~= nil then
-            local value = headers[self.ip_header]
-            if value ~= nil then
-                return value, port
+    -- Only an explicitly configured proxy header is trusted. Previously the
+    -- client-controlled X-Real-IP header was always honoured, which let any
+    -- request spoof its source address for rate limiting/audit decisions.
+    if headers ~= nil and self.ip_header ~= nil then
+        local value = headers[self.ip_header]
+        if type(value) == "string" then
+            -- accept the leading address (X-Forwarded-For may be a list)
+            local candidate = value:match("^%s*([%x%.:%-]+)")
+            if candidate then
+                return candidate, port
             end
-        end
-        if headers["x-real-ip"] then
-            ip = headers["x-real-ip"]
         end
     end
     return ip, port
@@ -849,7 +896,16 @@ function aio:parse_http(data, response)
     end
 
     for key, value in header:gmatch("\n(.-):[ ]*([^\r]+)") do
-        headers[key:lower()] = value
+        key = key:lower()
+        -- flag ambiguous framing: a duplicate Content-Length/Transfer-Encoding or
+        -- a bare-LF inside a header value can desynchronize us from a proxy
+        if (key == "content-length" or key == "transfer-encoding") and headers[key] ~= nil then
+            headers["\0framing"] = true
+        end
+        if value:find("\n", 1, true) then
+            headers["\0framing"] = true
+        end
+        headers[key] = value
     end
 
     return method, url, headers
@@ -888,7 +944,9 @@ end
 ---@param iv boolean|false true if IV in URL is to be used
 ---@return string result query string
 function aio:create_query(params, private_key, ordered, iv)
-    iv = iv or false
+    -- Use a fresh random IV per encrypted query unless the caller explicitly
+    -- opts out; a fixed/zero IV makes encryption deterministic (equality leaks)
+    if iv == nil then iv = true end
     local values = {}
     for key, value in pairs(params) do
         if type(value) ~= "table" then
@@ -1008,7 +1066,9 @@ function aio:to_url(endpoint, params, hash)
     local path = endpoint
     local private_key = aio.master_key and endpoint or nil
     if type(params) == "table" then
-        local iv = params.iv or false
+        -- default to a random IV (see create_query)
+        local iv = params.iv
+        if iv == nil then iv = true end
         local ordered = true
         if params.e == false then
             private_key = nil
@@ -1045,6 +1105,9 @@ function aio:set_master_key(key)
     if type(key) == "string" then
         if key:match("^b64:") then
             key = crypto.from64(key:sub(5))
+            if type(key) ~= "string" then
+                error("master key is not valid base64")
+            end
         end
         if #key == 0 then
             key = nil
@@ -1058,13 +1121,17 @@ end
 --- Set maximum HTTP header size
 ---@param size integer|nil max size in bytes
 function aio:set_max_http_header(size)
-    self.http_max_header = size
+    if type(size) == "number" and size > 0 then
+        self.http_max_header = size
+    end
 end
 
 --- Set maximum HTTP request body size
 ---@param size integer|nil
 function aio:set_max_http_body(size)
-    self.http_max_body = size
+    if type(size) == "number" and size > 0 then
+        self.http_max_body = size
+    end
 end
 
 --- Set max cache size
@@ -1716,6 +1783,7 @@ function aio:buffered_cor(target, reader)
         -- requested number of bytes to be read
         local ok, requested, up_limit = coroutine.resume(reader, resolve)
         local read, read_len = {}, 0
+        local limit_scan = 0
         local req_delim = false
         local exit = requested == nil
         local nil_resolve = false
@@ -1733,8 +1801,25 @@ function aio:buffered_cor(target, reader)
         -- iterate over bytes from network as we receive them
         for data in stream do
             if up_limit ~= nil and read_len + #data > up_limit then
-                coroutine.resume(reader, nil, "overflow")
-                break
+                -- The limit applies to bytes accumulated while searching for
+                -- the delimiter. Data that already arrived past the delimiter
+                -- (for example a request body sent in the same packet) must not
+                -- cause a false overflow, so check for the delimiter first.
+                local found = false
+                local hard = read_len + #data > up_limit + 65536
+                if type(requested) ~= "string" then
+                    -- a numeric read is satisfied as soon as enough bytes are buffered
+                    found = read_len + #data >= requested
+                elseif hard or read_len - limit_scan >= 4096 then
+                    limit_scan = read_len
+                    local full = table.concat(read) .. data
+                    local _, match_len = net.partscan(full, requested, 1)
+                    found = match_len == #requested
+                end
+                if hard and not found then
+                    coroutine.resume(reader, nil, "overflow")
+                    break
+                end
             end
             table.insert(read, data)
             read_len = read_len + #data

@@ -8,6 +8,45 @@ local function tointeger(x)
     if num ~= nil then return math.floor(num) end
 end
 
+--- Validate an identifier that is concatenated into generated SQL
+---@param name string
+---@return string
+local function safe_identifier(name)
+    if type(name) ~= "string" or #name > 64 or not name:match("^[%a_][%w_%.]*$") then
+        error("orm: invalid SQL identifier: " .. tostring(name))
+    end
+    return name
+end
+
+--- Restrict ORDER BY to comma separated column references with optional ASC/DESC
+---@param value any
+---@return string|nil
+local function safe_order_by(value)
+    if type(value) ~= "string" or #value == 0 or #value > 256 then return nil end
+    for item in value:gmatch("[^,]+") do
+        local v = item:match("^%s*(.-)%s*$")
+        if not (v:match("^[%a_][%w_%.]*$")
+            or v:match("^[%a_][%w_%.]*%s+[Aa][Ss][Cc]$")
+            or v:match("^[%a_][%w_%.]*%s+[Dd][Ee][Ss][Cc]$")) then
+            return nil
+        end
+    end
+    return value
+end
+
+--- Restrict LIMIT to a non-negative integer
+---@param value any
+---@return string|nil
+local function safe_limit(value)
+    if type(value) == "number" then
+        value = math.floor(value)
+        if value < 0 then return nil end
+        return tostring(value)
+    end
+    if type(value) ~= "string" or not value:match("^%s*%d+%s*$") then return nil end
+    return value
+end
+
 --- @alias ormentity {[string]: ormfield}
 
 --- @class ormfield
@@ -119,7 +158,7 @@ local orm = {
 ---@return ormrepo
 function orm:create(sql, repo)
     --- @type string
-    local source = repo.source
+    local source = safe_identifier(repo.source)
     --- @type ormentity
     local entity = repo.entity
     --- @type string[]
@@ -136,7 +175,7 @@ function orm:create(sql, repo)
     local decoders = {}
     for field, def in pairs(entity) do
         if type(def) == "table" then
-            def.field = def.field or field
+            def.field = safe_identifier(def.field or field)
             decoders[def.field] = {dest = field, decode = def.type.fromstring}
             table.insert(insert_fields, def.field)
             table.insert(insert_order, field)
@@ -198,12 +237,24 @@ function orm:create(sql, repo)
         local where = {}
         local params = {}
         for k, v in pairs(update) do
-            table.insert(sets, entity[k].field .."='" .. entity[k].type.format() .. "'")
-            table.insert(params, entity[k].type.toformat(v))
+            local def = entity[k]
+            if def == nil then
+                local resolve, resolver = aio:prepare_promise()
+                resolve(make_error("unknown field: " .. tostring(k)))
+                return resolver
+            end
+            table.insert(sets, def.field .."='" .. def.type.format() .. "'")
+            table.insert(params, def.type.toformat(v))
         end
         for _, key in ipairs(index) do
-            table.insert(where, entity[key].field .. "='".. entity[key].type.format() .."'")
-            table.insert(params, entity[key].type.toformat(object[key]))
+            local def = entity[key]
+            if def == nil then
+                local resolve, resolver = aio:prepare_promise()
+                resolve(make_error("unknown index field: " .. tostring(key)))
+                return resolver
+            end
+            table.insert(where, def.field .. "='".. def.type.format() .."'")
+            table.insert(params, def.type.toformat(object[key]))
         end
         local final_query = string.format(update_base_query, table.concat(sets, ","), table.concat(where, " AND "))
         return sql:exec(final_query, unpack(params))
@@ -290,12 +341,22 @@ function orm:create_method(sql, query, types, decoders, single, count, parent, d
         for i, v in pairs({...}) do
             -- do this so if it is called as :method, it still works
             local special = false
-            if type(v) == "table" and v.orderBy then
-                table.insert(extras, "ORDER BY " .. v.orderBy)
+            if type(v) == "table" and v.orderBy ~= nil then
+                local order = safe_order_by(v.orderBy)
+                if not order then
+                    on_resolved(make_error("invalid orderBy"))
+                    return resolver
+                end
+                table.insert(extras, "ORDER BY " .. order)
                 special = true
             end
-            if type(v) == "table" and v.limit then
-                table.insert(extras, "LIMIT " .. v.limit)
+            if type(v) == "table" and v.limit ~= nil then
+                local limit = safe_limit(v.limit)
+                if not limit then
+                    on_resolved(make_error("invalid limit"))
+                    return resolver
+                end
+                table.insert(extras, "LIMIT " .. limit)
                 has_limit = true
                 special = true
             end

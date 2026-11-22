@@ -422,14 +422,22 @@ end
 ---@return string method authentication method
 ---@return string scramble authentication scramble (nonce)
 function mysql:decode_server_handshake(data)
-    local pivot = data:find("\0", 0, true)
-    --- @type string
+    local pivot = data:find("\0", 1, true)
+    if not pivot or #data < pivot + 32 then
+        return nil, nil
+    end
     local rest = data:sub(pivot + 1)
     local scramble1 = rest:sub(5, 12)
     local len = rest:byte(21)
+    if not len then
+        return nil, nil
+    end
     local off = 32 + math.max(13, len - 8)
     local scramble2 = rest:sub(32, off - 2)
     local scramble = scramble1 .. scramble2
+    if #scramble < 20 then
+        return nil, nil
+    end
     local method = rest:sub(off, #rest - 1)
     return method, scramble
 end
@@ -443,6 +451,9 @@ function mysql:handshake()
         return false, "connection dropped in first auth step"
     end
     local method, scramble = self:decode_server_handshake(packet)
+    if not method or #method == 0 then
+        return false, "malformed server handshake"
+    end
     self:write_packet(
         1,
         encode_le32(CONN_FLAGS) .. 
@@ -458,7 +469,10 @@ function mysql:handshake()
     if not seq then
         return false, "connection dropped in seccond auth step"
     end
-    local response_type = response:byte(1, 1)
+    local response_type = response and response:byte(1, 1)
+    if response_type == nil then
+        return false, "empty authentication response"
+    end
     if response_type == 0 then
         return true, "ok"
     elseif response_type == 255 then
@@ -475,13 +489,22 @@ function mysql:escape(text)
         else
             local results = {}
             for _, v in ipairs(text) do
-                table.insert(results, string.format("'%s'", self:escape(v)))
+                if type(v) ~= "string" then
+                    error("mysql:escape: array elements must be strings")
+                end
+                table.insert(results, "'" .. codec.mysql_encode(v) .. "'")
             end
             return string.format("(%s)", table.concat(results, ","))
         end
     end
-    if type(text) ~= "string" then
-        return text
+    if type(text) == "number" then
+        return math.floor(text)
+    elseif type(text) == "boolean" then
+        return text and 1 or 0
+    elseif text == nil then
+        return "NULL"
+    elseif type(text) ~= "string" then
+        error("mysql:escape: unsupported parameter type " .. type(text))
     end
     return codec.mysql_encode(text)
 end
@@ -501,7 +524,9 @@ function mysql:raw_exec(query, ...)
             end
             ok, command = pcall(string.format, query, unpack(params))
             if not ok then
-                on_resolved(nil, {error="string format failed: " .. command .. ", query: " .. query})
+                -- do not echo the query (it may contain credentials/secrets)
+                print("[mysql] string format failed for query of length " .. tostring(#query))
+                on_resolved(nil, {error="string format failed"})
                 return
             end
         end

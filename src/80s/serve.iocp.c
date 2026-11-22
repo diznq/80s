@@ -272,8 +272,22 @@ void *serve(void *vparams) {
                 } else if(events[n].dwNumberOfBytesTransferred == 0) {
                     // when in read state, check if we received zero bytes as that is error
                     cx->recv->connected = 0;
+                    cx->send->connected = 0;
                     params_close.childfd = (fd_t)cx->recv;
                     on_close(params_close);
+                    // peer closed: close the kernel handle (otherwise every
+                    // disconnect leaks a SOCKET) and cancel queued I/O before
+                    // releasing the contexts it may still reference
+                    CancelIoEx((HANDLE)cx->fd, NULL);
+                    if(cx->recv->fdtype == S80_FD_PIPE) {
+                        CloseHandle(cx->fd);
+                    } else {
+                        closesocket((sock_t)cx->fd);
+                    }
+                    if(cx->send->wsaBuf.buf) {
+                        free(cx->send->wsaBuf.buf);
+                        cx->send->wsaBuf.buf = NULL;
+                    }
                     free(cx->recv->send);
                     free(cx->recv);
                 } else {
@@ -336,7 +350,7 @@ void *serve(void *vparams) {
                 cx->send->op = S80_WIN_OP_WRITE;
                 // this is a special state for write when connection is created, use setsockopt to check
                 // if creation was okay, if not, close the socket, if yes, move to write state instead
-                if(((sock_t)childfd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0) < 0) {
+                if(setsockopt((sock_t)childfd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0) < 0) {
                     dbgf(LOG_DEBUG, "[%d] connect to %llu, setsockopt failed with %d\n", id, cx->fd, GetLastError());
                     cx->recv->connected = 0;
                     closesocket((sock_t)cx->fd);

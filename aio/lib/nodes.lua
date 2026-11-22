@@ -42,6 +42,13 @@ function nodes:register(fd, name, node)
     end
     fd.name = name
     for i, part in ipairs(name) do
+        if type(part) == "string" then
+            if #part == 0 or #part > 256 then
+                return false
+            end
+        elseif type(part) ~= "number" then
+            return false
+        end
         if i < #name then
             local hit = root[part]
             if (type(hit) == "table" and getmetatable(hit) == aiosocket) or (hit ~= nil and type(hit) ~= "table") then
@@ -154,6 +161,9 @@ function nodes:announce(from, selector, except, method, endpoint, message)
                         if promise then
                             promise({status = tonumber(method), body = body, headers = headers})
                             self.messages[message_id] = nil
+                            if self.message_count and self.message_count > 0 then
+                                self.message_count = self.message_count - 1
+                            end
                         end
                     end
                 end
@@ -172,6 +182,16 @@ function nodes:announce(from, selector, except, method, endpoint, message)
             except_str = codec.json_encode(except)
         end
         self.messages[msg_id] = resolve
+        -- bound the pending-response map so peers that never answer cannot
+        -- grow memory without limit
+        self.message_count = (self.message_count or 0) + 1
+        if self.message_count > 1024 then
+            local oldest = next(self.messages)
+            if oldest ~= nil and oldest ~= msg_id then
+                self.messages[oldest] = nil
+                self.message_count = self.message_count - 1
+            end
+        end
         local formatted = string.format(
             "%s %s HTTP/1.1\r\nMessage: %s\r\nFrom: %s\r\nTo: %s\r\nExcept: %s\r\nAuthorization: %s\r\nContent-length: %d\r\nConnection: keep-alive\r\n\r\n%s", 
             method,
@@ -254,6 +274,23 @@ function nodes:recursively_fill(output, dict, filter)
     end
 end
 
+--- Compare two strings without an early exit (avoids a trivial timing oracle)
+---@param a string|nil
+---@param b string|nil
+---@return boolean
+local function secure_equals(a, b)
+    if type(a) ~= "string" or type(b) ~= "string" or #a ~= #b then
+        return false
+    end
+    local diff = 0
+    for i = 1, #a do
+        if a:byte(i) ~= b:byte(i) then
+            diff = diff + 1
+        end
+    end
+    return diff == 0
+end
+
 --- Validate HTTP request
 ---@param fd aiosocket fd
 ---@param headers table http headers
@@ -266,17 +303,21 @@ function nodes:validate_request(fd, headers, body, min_body)
     local message_id = headers.message
     body = body or ""
     min_body = min_body or 0
-    if self.authorization and headers.authorization ~= self.authorization then
-        self:response(fd, "401 Unauthorized", message_id, "text/plain", "unauthorized")
+    if self.authorization and not secure_equals(headers.authorization, self.authorization) then
+        self:response(fd, "401 Unauthorized", nil, "text/plain", "unauthorized")
         return nil, {}, {}
     end
-    if not (headers.from and headers.to and message_id and headers.except and #body >= 0) then
-        self:response(fd, "400 Bad request", message_id, "text/plain", "invalid request")
+    if headers.from == nil or headers.to == nil or headers.except == nil or #body < min_body then
+        self:response(fd, "400 Bad request", nil, "text/plain", "invalid request")
+        return nil, {}, {}
+    end
+    if type(message_id) ~= "string" or not message_id:match("^[%w%._%-]+$") then
+        self:response(fd, "400 Bad request", nil, "text/plain", "invalid request")
         return nil, {}, {}
     end
     local from = codec.json_decode(headers.from)
     local to = codec.json_decode(headers.to)
-    if not (from and to) then
+    if type(from) ~= "table" or type(to) ~= "table" then
         self:response(fd, "400 Bad request", message_id, "text/plain", "invalid request")
         return nil, {}, {}
     end

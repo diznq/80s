@@ -30,13 +30,18 @@ function smtp:init(params)
         end
     end
     aio:add_protocol_handler("smtp", {
+        -- only claim connections that actually start with an SMTP command,
+        -- otherwise loading this module would hijack every protocol
         matches = function (data)
-            return true
-        end,
-        on_accept = function (fd, parentfd)
-            self:write(fd, "220 " .. params.host .. " ESMTP 80s\r\n")
+            local verb = data:match("^([A-Za-z]+)")
+            if not verb then return false end
+            verb = verb:upper()
+            return verb == "HELO" or verb == "EHLO" or verb == "MAIL" or verb == "RCPT"
+                or verb == "DATA" or verb == "QUIT" or verb == "RSET" or verb == "NOOP"
+                or verb == "STARTTLS"
         end,
         handle = function (fd)
+            self:write(fd, "220 " .. params.host .. " ESMTP 80s\r\n")
             self:handle_as_smtp(fd)
         end
     })
@@ -53,12 +58,12 @@ function smtp:set_logging(state)
     self.logging = state
 end
 
-function smtp:read(data)
-    local data = coroutine.yield(data)
-    if data ~= nil then
-        self:log("[smtp] <- " .. data)
+function smtp:read(data, limit)
+    local value = coroutine.yield(data, limit)
+    if value ~= nil then
+        self:log("[smtp] <- " .. value)
     end
-    return data
+    return value
 end
 
 function smtp:write(fd, data, close)
@@ -79,8 +84,12 @@ function smtp:handle_as_smtp(fd)
         end
         while ok do
             --- @type string|nil
-            local line = self:read("\r\n")
+            local line = self:read("\r\n", 4096)
             if line == nil then return end
+            if #line > 4096 then
+                self:write(fd, "500 Command line too long\r\n")
+                return
+            end
             --- @type string|nil
             local msg_type = line:match("^([A-Za-z]+)")
             local handled = false
@@ -90,11 +99,11 @@ function smtp:handle_as_smtp(fd)
                 handled = true
             elseif msg_type == "HELO" then
                 hello = true
-                self:write(fd, "250 HELO " .. line:sub(6) .. "\r\n")
+                self:write(fd, "250 HELO " .. line:sub(6):gsub("[\r\n%z]", " ") .. "\r\n")
                 handled = true
             elseif msg_type == "EHLO" then
                 hello = true
-                self:write(fd, "250-".. self.host .. " is my domain name. Hello " .. line:sub(6) .. "!\r\n250-8BITMIME\r\n" .. tls_capability .. "250 SIZE 1000000\r\n")
+                self:write(fd, "250-".. self.host .. " is my domain name. Hello " .. line:sub(6):gsub("[\r\n%z]", " ") .. "!\r\n250-8BITMIME\r\n" .. tls_capability .. "250 SIZE 1000000\r\n")
                 handled = true
             elseif msg_type == "STARTTLS" then
                 if self.tls then
@@ -131,7 +140,7 @@ function smtp:handle_as_smtp(fd)
                 if line:sub(6, 8) == "TO:" then
                     local raw_to = line:sub(9)
                     local parsed_to = self:extract_email(raw_to)
-                    if raw_to then
+                    if parsed_to then
                         if to == nil then to = {} end
                         if #to >= 100 then
                             self:write(fd, "501 Limit for number of recipients is 100\r\n")
@@ -151,8 +160,14 @@ function smtp:handle_as_smtp(fd)
             elseif msg_type == "DATA" then
                 if from and to and #to > 0 and hello then
                     self:write(fd, "354 Send message content; end with <CR><LF>.<CR><LF>\r\n")
-                    message = self:read("\r\n.\r\n")
-                    if message ~= nil then
+                    message = self:read("\r\n.\r\n", 1000000)
+                    if message == nil then
+                        self:write(fd, "552 Message exceeds the maximum message size\r\n")
+                        from = nil
+                        message = nil
+                        to = {}
+                        handled = true
+                    else
                         local email_subject = message:match("Subject: (.-)\r\n") or "No subject"
                         local messageId = self:generate_message_id()
                         local handle_ok = true
@@ -175,8 +190,9 @@ function smtp:handle_as_smtp(fd)
                                     self:write(fd, "250 OK: queued as " .. messageId .. "\r\n")
                                 end,
                                 error = function (message)
-                                    if message ~= nil then
-                                        self:write(fd, "451 Server failed to handle the message: " .. message .. ", try again later\r\n")
+                                    local reason = message ~= nil and tostring(message):gsub("[\r\n%z]", " ") or nil
+                                    if reason ~= nil then
+                                        self:write(fd, "451 Server failed to handle the message: " .. reason .. ", try again later\r\n")
                                     else
                                         self:write(fd, "451 Server failed to handle the message, try again later\r\n")
                                     end
@@ -199,9 +215,6 @@ function smtp:handle_as_smtp(fd)
                                 self:write(fd, "451 Server failed to handle the message, try again later\r\n")
                             end
                         end
-                        handled = true
-                    else
-                        self:write(fd, "500 Message was missing\r\n")
                         handled = true
                     end
                 else
@@ -245,7 +258,8 @@ end
 function smtp:generate_message_id()
     self.counter = self.counter + 1
     local date = os.date("%Y%m%d%H%I%S")
-    return string.format("<%s.%s.%d@%s>", NODE_ID:gsub("%/", "-"), date, self.counter, self.host)
+    local random_part = crypto.to64(crypto.random(9)):gsub("[^%w]", "")
+    return string.format("<%s.%s.%d.%s@%s>", NODE_ID:gsub("%/", "-"), date, self.counter, random_part, self.host)
 end
 
 function smtp:default_initialize()

@@ -8,6 +8,7 @@
 
 #include <fcntl.h>
 #include <netdb.h>
+#include <time.h>
 #include <unistd.h>
 #include <signal.h>
 
@@ -40,7 +41,6 @@ void *serve(void *vparams) {
     
     read_params params_read;
     init_params params_init;
-    close_params params_close;
     write_params params_write;
     accept_params params_accept;
 
@@ -70,7 +70,6 @@ void *serve(void *vparams) {
             error("serve: failed to create kqueue");
 
         params->reload->mailboxes[id].elfd = elfd;
-        params_read.elfd = params_write.elfd = params_close.elfd = params_init.elfd = params_accept.elfd = elfd;
 
         EV_SET(&ev, selfpipe, EVFILT_READ, EV_ADD, 0, 0, int_to_void(S80_FD_PIPE));
         if(kevent(elfd, &ev, 1, NULL, 0, NULL) < 0) {
@@ -88,12 +87,13 @@ void *serve(void *vparams) {
 
         ctx = ctxes[id] = create_context(elfd, &params->node, params->entrypoint, params->reload);
         params->reload->mailboxes[id].ctx = ctx;
-        params_read.ctx = params_write.ctx = params_close.ctx = params_init.ctx = params_accept.ctx = ctx;
 
         if (ctx == NULL) {
             error("failed to initialize context");
         }
 
+        params_init.ctx = ctx;
+        params_init.elfd = elfd;
         on_init(params_init);
         params->ctx = ctx;
         params->initialized = 1;
@@ -101,6 +101,10 @@ void *serve(void *vparams) {
         refresh_context(ctx, elfd, &params->node, params->entrypoint, params->reload);
         is_reload = 1;
     }
+
+    // used by every callback below and must be restored after a hot reload too
+    params_read.ctx = params_write.ctx = params_init.ctx = params_accept.ctx = ctx;
+    params_read.elfd = params_write.elfd = params_init.elfd = params_accept.elfd = elfd;
 
     while(module) {
         if(module->load) module->load(ctx, params, is_reload);
@@ -124,46 +128,62 @@ void *serve(void *vparams) {
             if (fdtype == S80_FD_SERVER_SOCKET) {
                 // only parent socket (server) can receive accept
                 parentfd = childfd;
+                clientlen = sizeof(clientaddr);
                 childfd = accept(parentfd, (struct sockaddr *)&clientaddr, &clientlen);
                 if (childfd < 0) {
                     dbgf(LOG_ERROR, "serve: error on server accept (%s)\n", strerror(errno));
+                    if (errno == EMFILE || errno == ENFILE || errno == ENOBUFS || errno == ENOMEM) {
+                        struct timespec pause = {0, 50 * 1000 * 1000};
+                        nanosleep(&pause, NULL);
+                    }
                     continue;
                 }
                 // set non blocking flag to the newly created child socket
                 s80_enable_async(childfd);
                 // call on_accept, in case it is supposed to run in another worker
                 // send it to it's mailbox
-                params_accept.ctx = ctxes[accepts]; // different worker has different context!
-                params_accept.elfd = els[accepts];  // same with event loop
-                params_accept.parentfd = parentfd;
-                params_accept.childfd = childfd;
-                params_accept.fdtype = S80_FD_SOCKET;
-                memcpy(params_accept.address, &clientaddr, clientlen > 64 ? 64 : clientlen);
-                params_accept.addrlen = clientlen > 64 ? 64 : clientlen;
-                if(accepts == id) {
-                    EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(S80_FD_SOCKET));
-                    // add the child socket to the event loop it belongs to based on modulo
-                    // with number of workers, to balance the load to other threads
-                    if (kevent(els[accepts], &ev, 1, NULL, 0, NULL) < 0) {
-                        dbgf(LOG_ERROR, "serve: on add child socket to kqueue (%s)\n", strerror(errno));
+                {
+                    int target = accepts;
+                    if (target < 0 || target >= workers || ctxes[target] == NULL || els[target] == 0) {
+                        target = id;
                     }
-                    on_accept(params_accept);
-                } else {
-                    message = &outbound_message;
-                    message->sender_id = id;
-                    message->sender_elfd = elfd;
-                    message->sender_fd = parentfd;
-                    message->receiver_fd = childfd;
-                    message->type = S80_MB_ACCEPT;
-                    message->size = sizeof(accept_params);
-                    message->message = (void*)calloc(sizeof(accept_params), 1);
-                    if(message->message) {
-                        memcpy(message->message, &params_accept, sizeof(accept_params));
-                        if(s80_mail(params->reload->mailboxes + accepts, message) < 0) {
-                            dbgf(LOG_ERROR, "serve: failed to send mailbox message");
+                    params_accept.ctx = ctxes[target];
+                    params_accept.elfd = els[target];
+                    params_accept.parentfd = parentfd;
+                    params_accept.childfd = childfd;
+                    params_accept.fdtype = S80_FD_SOCKET;
+                    memcpy(params_accept.address, &clientaddr, clientlen > 64 ? 64 : (size_t)clientlen);
+                    params_accept.addrlen = clientlen > 64 ? 64 : (int)clientlen;
+                    if(target == id) {
+                        EV_SET(&ev, childfd, EVFILT_READ, EV_ADD, 0, 0, int_to_void(S80_FD_SOCKET));
+                        // add the child socket to the event loop it belongs to based on modulo
+                        // with number of workers, to balance the load to other threads
+                        if (kevent(els[target], &ev, 1, NULL, 0, NULL) < 0) {
+                            dbgf(LOG_ERROR, "serve: on add child socket to kqueue (%s)\n", strerror(errno));
+                            close(childfd);
+                        } else {
+                            on_accept(params_accept);
                         }
                     } else {
-                        dbgf(LOG_ERROR, "serve: failed to allocate message (%s)\n", strerror(errno));
+                        message = &outbound_message;
+                        message->sender_id = id;
+                        message->sender_elfd = elfd;
+                        message->sender_fd = parentfd;
+                        message->receiver_fd = childfd;
+                        message->type = S80_MB_ACCEPT;
+                        message->size = sizeof(accept_params);
+                        message->message = (void*)calloc(sizeof(accept_params), 1);
+                        if(message->message) {
+                            memcpy(message->message, &params_accept, sizeof(accept_params));
+                            if(s80_mail(params->reload->mailboxes + target, message) < 0) {
+                                dbgf(LOG_ERROR, "serve: failed to send mailbox message");
+                                free(message->message);
+                                close(childfd);
+                            }
+                        } else {
+                            dbgf(LOG_ERROR, "serve: failed to allocate message (%s)\n", strerror(errno));
+                            close(childfd);
+                        }
                     }
                 }
                 accepts++;
@@ -197,11 +217,7 @@ void *serve(void *vparams) {
                 case EVFILT_WRITE:
                     if (flags & (EV_EOF | EV_ERROR)) {
                         if(fdtype == S80_FD_PIPE) {
-                            if(close(childfd) < 0) {
-                                dbgf(LOG_ERROR, "serve: failed to close write socket (%s)\n", strerror(errno));
-                            }
-                            params_close.childfd = childfd;
-                            on_close(params_close);
+                            s80_close(ctx, elfd, childfd, fdtype, 1);
                         }
                     } else if(events[n].data > 0) {
                         params_write.childfd = childfd;
@@ -238,11 +254,9 @@ void *serve(void *vparams) {
                             params_read.readlen = readlen;
                             on_receive(params_read);
                         }
-                        if (close(childfd) < 0) {
-                            dbgf(LOG_ERROR, "serve: failed to close child socket (%s)\n", strerror(errno));
-                        }
-                        params_close.childfd = childfd;
-                        on_close(params_close);
+                        // use the shared close path so a socket that a Lua
+                        // handler already closed is not closed a second time
+                        s80_close(ctx, elfd, childfd, fdtype, 1);
                     }
                     break;
                 case EVFILT_PROC:

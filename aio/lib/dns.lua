@@ -40,6 +40,18 @@ end
 ---@param record_type string record type
 ---@return aiopromise<dnsresponse> response
 function dns:get_ip(host_name, record_type)
+    record_type = record_type or "A"
+    if type(host_name) ~= "string" or #host_name == 0 or #host_name > 253
+        or not host_name:match("^[%w%._%-]+$") then
+        local resolve, resolver = aio:prepare_promise()
+        resolve(make_error("invalid host name"))
+        return resolver
+    end
+    if not query_types[record_type] then
+        local resolve, resolver = aio:prepare_promise()
+        resolve(make_error("invalid record type"))
+        return resolver
+    end
     local a, b, c, d = host_name:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
     if a and b and c and d then
         local resolve, resolver = aio:prepare_promise()
@@ -54,7 +66,7 @@ function dns:get_ip(host_name, record_type)
         local resolve, resolver = aio:prepare_promise()
         http_client:request({
             method = "GET",
-            url = "https://dns.google/resolve?name=" .. host_name .. "&type=" .. record_type
+            url = "https://dns.google/resolve?name=" .. codec.url_encode(host_name) .. "&type=" .. codec.url_encode(record_type)
         })(function (result)
             if result.status ~= 200 then
                 resolve(make_error("failed to resolve " .. host_name .. ":" .. record_type))
@@ -120,9 +132,5 @@ function dns:init(params)
 end
 
 dns:init()
-
-dns:get_ip("gmail.com", "MX")(function (result)
-    print(codec.json_encode(result))
-end)
 
 return dns

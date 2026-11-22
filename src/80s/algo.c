@@ -33,6 +33,14 @@ kmp_result kmp(const char* haystack, size_t len, const char* pattern, size_t pat
         return result;
     }
 
+    // never allow a caller-supplied offset to move outside the haystack: both
+    // the memchr path below and the KMP loop assume offset <= len
+    if (offset > len) {
+        result.offset = len;
+        result.length = 0;
+        return result;
+    }
+
     // if pattern is single character, we can afford to just use memchr for this
     if (pattern_len == 1) {
         pattern = (const char*)memchr((const void*)(haystack + offset), pattern[0], len - offset);
