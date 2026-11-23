@@ -495,7 +495,7 @@ function mysql:escape(text)
         end
     end
     if type(text) == "number" then
-        return math.floor(text)
+        return text
     elseif type(text) == "boolean" then
         return text and 1 or 0
     elseif text == nil then
